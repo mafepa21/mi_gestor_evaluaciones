@@ -110,6 +110,8 @@ struct TournamentPlan: Identifiable, Equatable, Codable, Sendable {
     var savedKnockoutResults: [KnockoutMatchResult] = []
     /// Datos que solo tienen los torneos migrados del módulo antiguo de EF. Se conservan al guardar.
     var legacyExtras: TournamentLegacyExtras?
+    /// Formulario de inscripción por entregas web, si el torneo lo usa.
+    var registration: TournamentRegistration?
 
     init(
         id: UUID = UUID(),

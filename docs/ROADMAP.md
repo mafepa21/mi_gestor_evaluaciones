@@ -34,6 +34,9 @@ Prioridad: alta.
   Avance: en macOS, una columna de notas se rellena con el teclado: flechas para moverse, número para sustituir la nota, Esc para recuperar el valor anterior. El teclado táctil del iPad no cambia.
   Avance: Mayús+clic marca un rango en una columna. Pegar varias líneas o rellenar ese rango se deshace de una sola vez.
   Avance: las notas sueltas ya no se pintan de rojo, ámbar o verde. El color de banda, si se enciende, queda solo en la Media.
+  Avance: «Revisar cierre» lista los huecos del grupo antes de poner notas y lleva a cada celda. Siguiente paso: enlazarlo con la exportación a Educamos.
+  Avance: en columnas numéricas, un texto que no es nota («8,5a») ya no se queda pintado sin guardarse: la celda vuelve a la nota anterior y avisa; al pegar se saltan los inválidos.
+  Avance (2026-10-31): el cambio de grupo publica los datos en cuanto llegan (226 → 108 ms en Mac Debug) y la primera apertura ya no congela la pantalla (montaje en tres vueltas). Ninguna vista observa ya el bridge entero (62 → 0). Pendiente: recortar los repintados de `MacRootView` al cambiar de módulo (la primera vuelta del Cuaderno ronda 270 ms en Debug) y medir en iPad.
 - Rubricas: evaluacion fiable, integracion con cuaderno e informes.
   Pendiente: los quizzes no se autocorrigen. `QuizQuestionDraft` importa pregunta y opciones pero no la respuesta correcta, y `saveResponses` solo deriva nota para la rejilla de observacion 1-4 y la checklist proporcional. Faltan clave de respuestas, contrato de autoria en el DOCX, puntuacion por pregunta, versionado de la clave y derivacion local verificable. Detalle en `docs/importacion_documentos_sa.md`.
 - Asistencia: flujo diario rapido y consistente.
@@ -93,6 +96,10 @@ Prioridad: alta.
   Avance: el inspector presenta `EarlyWarning` como señal preventiva revisable y no como diagnóstico, con confianza cualitativa y procedencia visible.
 - Agentes educativos internos: agrupar capacidades de Tutor, Evaluador y EF sin interfaz de chat.
   Avance: `AppleAIOrchestrator` completa el router tipado con catálogo de capacidades, trazabilidad y consumo desde Cuaderno/EF sobre servicios estructurados ya implementados.
+- Libreta (iPad): notas a mano con Apple Pencil dentro de la app.
+  Avance: la app Cuadernos entra como módulo «Libreta» en Planificación, con datos propios en SwiftData (ver `ADR-2026-10-15-libreta-swiftdata-propia.md`).
+  Avance fase 2: libretas ligadas a una clase y abiertas desde el Diario y el Planner; la Libreta entra en las copias de Seguridad del iPad.
+  Pendiente: probar restaurar en un iPad real y decidir si las libretas deben viajar por SyncLAN o iCloud.
 - Accesibilidad: contraste, foco, labels y navegacion por teclado donde aplique.
 - UI/UX: reducir ruido visual, reforzar jerarquia y mantener rejilla disciplinada.
   Avance P1: foco, IA y recargas dejan de competir con la acción principal en la toolbar iPad y pasan a divulgación progresiva; el Dashboard concentra el peso visual en "Acción principal".

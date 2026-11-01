@@ -39,6 +39,7 @@ struct DashboardView: View {
     @State private var isInspectorPresented = false
     @State private var isQuickEvaluationPresented = false
     @State private var isObservationPresented = false
+    @State private var isCourtVoicePresented = false
 
     // Análisis (briefing de una frase).
     @State private var classTrends: KmpBridge.AITrendsSnapshot? = nil
@@ -139,6 +140,14 @@ struct DashboardView: View {
                 .presentationDragIndicator(.visible)
                 #endif
             }
+            .sheet(isPresented: $isCourtVoicePresented) {
+                CourtVoiceCaptureSheet(bridge: bridge, initialClassId: dashboardActionClassId)
+                #if os(iOS)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                #endif
+            }
+            .reloadOnLanSync(.dashboard) { await reloadDashboard() }
             .task {
                 await bridge.ensureClassesLoaded()
                 if selectedClassId == nil {
@@ -254,9 +263,9 @@ struct DashboardView: View {
                 .id("modo-despacho")
             }
         }
-        // Error de red: el contenido anterior sigue a la vista con su contraste
-        // normal (el aviso de error ya avisa); solo pierde algo de color.
-        .saturation(loadFailed ? 0.7 : 1)
+        // Error de red: el contenido anterior sigue a la vista con su color y
+        // contraste normales; el aviso de error ya avisa. No se atenúa: la
+        // severidad de Atención (rojo/naranja) debe seguir leyéndose.
         .animation(
             reduceMotion ? .linear(duration: 0.2) : .easeInOut(duration: 0.35),
             value: isClassroomMode
@@ -369,6 +378,8 @@ struct DashboardView: View {
             performQuickEvaluation()
         case .openPlanner, .openJournal:
             onOpenModule(.planner, classId, nil)
+        case .courtVoice:
+            isCourtVoicePresented = true
         }
     }
 

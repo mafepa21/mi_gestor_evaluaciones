@@ -20,6 +20,9 @@ struct MiGestorKMPMacApp: App {
 
     init() {
         MacWritingToolsMenuSanitizer.install()
+        // Antes de que `MacAppSessionController` abra la base: el helper que siguió vivo
+        // con la app cerrada no puede tenerla abierta si el arranque la sustituye.
+        MacCommandCenterCoordinator.terminateLeftoverHelpersBeforeOpeningDatabase()
     }
 
     var body: some Scene {
@@ -123,9 +126,11 @@ struct MiGestorKMPMacApp: App {
         case .active:
             session.handleScenePhase(.active)
             NotificationCenter.default.post(name: .appleAppDidBecomeActive, object: nil)
+            AppleBackupService.shared.handleScenePhaseForAutomaticBackup(isActive: true)
         case .background:
             session.handleScenePhase(.background)
             NotificationCenter.default.post(name: .appleAppDidEnterBackground, object: nil)
+            AppleBackupService.shared.handleScenePhaseForAutomaticBackup(isActive: false)
         case .inactive:
             break
         @unknown default:

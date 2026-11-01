@@ -59,8 +59,6 @@ import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
-import javax.jmdns.JmDNS
-import javax.jmdns.ServiceInfo
 import javax.net.ssl.KeyManagerFactory
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
@@ -293,8 +291,7 @@ class LocalSyncServer(
     @Volatile
     private var lastAdoptionStatus: String = "idle"
     private var server: HttpsServer? = null
-    private var jmDns: JmDNS? = null
-    private var serviceInfo: ServiceInfo? = null
+    private val bonjour: BonjourAdvertiser = BonjourAdvertiser.create()
     private var networkMonitor: ScheduledExecutorService? = null
     private var dbMonitor: ScheduledExecutorService? = null
     @Volatile
@@ -339,6 +336,12 @@ class LocalSyncServer(
         )
     }
 
+    /** El iPad mantiene abierto el canal de avisos; la app del Mac entra por loopback. */
+    private fun hasRemoteSseConnection(): Boolean =
+        sseConnections.any { connection ->
+            runCatching { connection.remoteAddress?.address?.isLoopbackAddress == false }.getOrDefault(false)
+        }
+
     private fun notifyStatusChanged() {
         _status.value = createStatus()
         stateListener?.invoke(currentSnapshot())
@@ -365,6 +368,7 @@ class LocalSyncServer(
             fingerprint = certFingerprintSha256,
             pairedDeviceId = pairedDeviceId,
             isPaired = isPaired(),
+            peerOnline = hasRemoteSseConnection(),
             networkErrorMessage = if (validHost == null) {
                 networkErrorMessage ?: "No se pudo resolver una IP LAN válida para este Mac."
             } else {
@@ -484,6 +488,7 @@ class LocalSyncServer(
             val out = ex.responseBody
             sseConnections.add(ex)
             println("📡 Conexión SSE abierta.")
+            notifyStatusChanged()
 
             try {
                 // `ex` también es el lock usado por broadcastSseEvent para esta misma
@@ -518,6 +523,7 @@ class LocalSyncServer(
                 sseConnections.remove(ex)
                 runCatching { ex.close() }
                 println("📡 Conexión SSE cerrada.")
+                notifyStatusChanged()
             }
         }
 
@@ -783,10 +789,7 @@ class LocalSyncServer(
         sseConnections.clear()
         connections.forEach { runCatching { it.close() } }
 
-        serviceInfo?.let { jmDns?.unregisterService(it) }
-        serviceInfo = null
-        jmDns?.close()
-        jmDns = null
+        bonjour.close()
         advertisedLanAddress = null
         networkErrorMessage = null
         notifyStatusChanged()
@@ -817,16 +820,7 @@ class LocalSyncServer(
             advertisedLanAddress = localAddress
             networkErrorMessage = null
             notifyStatusChanged()
-            jmDns = JmDNS.create(localAddress)
-            serviceInfo = ServiceInfo.create(
-                "_migestor-sync._tcp.local.",
-                "MiGestorDesktop-$serverId",
-                port,
-                0,
-                0,
-                buildBonjourTxtMap()
-            )
-            jmDns?.registerService(serviceInfo)
+            bonjour.publish(localAddress, bonjourInstanceName, port, buildBonjourTxtMap())
         }.onFailure {
             advertisedLanAddress = null
             networkErrorMessage = "No se pudo publicar el servicio LAN en esta red."
@@ -885,6 +879,7 @@ class LocalSyncServer(
     }
 
     private fun refreshNetworkBindingIfNeeded() {
+        bonjour.ensurePublished()
         if (pairingPinState.current().rotated) {
             notifyStatusChanged()
         }
@@ -919,20 +914,8 @@ class LocalSyncServer(
 
     private fun republishBonjourOn(address: InetAddress) {
         runCatching {
-            serviceInfo?.let { jmDns?.unregisterService(it) }
-            serviceInfo = null
-            jmDns?.close()
-            jmDns = JmDNS.create(address)
             advertisedLanAddress = address
-            serviceInfo = ServiceInfo.create(
-                "_migestor-sync._tcp.local.",
-                "MiGestorDesktop-$serverId",
-                port,
-                0,
-                0,
-                buildBonjourTxtMap()
-            )
-            serviceInfo?.let { jmDns?.registerService(it) }
+            bonjour.publish(address, bonjourInstanceName, port, buildBonjourTxtMap())
             networkErrorMessage = null
             notifyStatusChanged()
         }.onFailure {
@@ -943,22 +926,12 @@ class LocalSyncServer(
 
     private fun refreshBonjourService() {
         runCatching {
-            val service = serviceInfo
-            val dns = jmDns
-            if (service != null && dns != null) {
-                dns.unregisterService(service)
-                serviceInfo = ServiceInfo.create(
-                    "_migestor-sync._tcp.local.",
-                    "MiGestorDesktop-$serverId",
-                    port,
-                    0,
-                    0,
-                    buildBonjourTxtMap()
-                )
-                serviceInfo?.let { dns.registerService(it) }
-            }
+            val address = advertisedLanAddress ?: return@runCatching
+            bonjour.publish(address, bonjourInstanceName, port, buildBonjourTxtMap())
         }
     }
+
+    private val bonjourInstanceName: String get() = "MiGestorDesktop-$serverId"
 
     private fun buildBonjourTxtMap(): Map<String, String> {
         // El PIN NUNCA debe publicarse por Bonjour: el registro TXT es legible por
@@ -1144,6 +1117,7 @@ class LocalSyncServer(
         if (disconnected.isNotEmpty()) {
             sseConnections.removeAll(disconnected)
             disconnected.forEach { runCatching { it.close() } }
+            notifyStatusChanged()
         }
     }
 }
@@ -1373,6 +1347,8 @@ data class CommandCenterSnapshot(
     val pairedDeviceId: String?,
     val isPaired: Boolean,
     val networkErrorMessage: String?,
+    /** Hay un dispositivo (no el propio Mac) escuchando los avisos ahora mismo. */
+    val peerOnline: Boolean = false,
 ) {
     val pairingPayload: String?
         get() {

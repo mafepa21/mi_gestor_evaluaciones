@@ -776,6 +776,8 @@ class NotebookViewModel(
 
     fun saveColumnGrade(studentId: Long, column: NotebookColumnDefinition, value: String) {
         activeClassId ?: return
+        // Validar ANTES del borrador optimista: un texto no numérico no debe quedarse pintado.
+        if (column.type == NotebookColumnType.NUMERIC && !isValidNotebookNumericInput(column.inputKind, value)) return
         // Optimistic update for immediate UI feedback without forcing full notebook reloads.
         updateDraft(studentId, column.id, column.type, value)
         markCellAsSaving(studentId, column.id)
@@ -1121,25 +1123,7 @@ class NotebookViewModel(
     private fun parseNotebookNumericValue(
         inputKind: NotebookCellInputKind?,
         value: String,
-    ): Double? {
-        val raw = value.trim()
-        if (raw.isEmpty()) return null
-        if (inputKind != NotebookCellInputKind.TIME) {
-            return raw.replace(",", ".").toDoubleOrNull()
-        }
-
-        val normalized = raw.replace('.', ',')
-        val minuteParts = normalized.split(':')
-        if (minuteParts.size == 2) {
-            val minutes = minuteParts[0].replace(',', '.').toDoubleOrNull() ?: return null
-            val secondParts = minuteParts[1].split(',')
-            val seconds = secondParts.firstOrNull()?.toDoubleOrNull() ?: return null
-            val fraction = secondParts.drop(1).firstOrNull()?.let { "0.$it".toDoubleOrNull() } ?: 0.0
-            return (minutes * 60.0 + seconds + fraction).takeIf { it.isFinite() && it >= 0.0 }
-        }
-
-        return raw.replace(',', '.').toDoubleOrNull()
-    }
+    ): Double? = parseNotebookNumericText(inputKind, value)
 
     private fun List<PersistedNotebookCell>.upsertLocalCell(
         classId: Long,
@@ -2315,3 +2299,31 @@ private fun NotebookUiState.toAverageState(): NotebookAverageState = when (this)
     is NotebookUiState.Error -> NotebookAverageState(isLoading = false, errorMessage = message)
     NotebookUiState.Loading -> NotebookAverageState()
 }
+
+/** Valor numérico de un texto de nota (acepta coma o punto; con TIME también «1:25»). Null si no es número. */
+private fun parseNotebookNumericText(
+    inputKind: NotebookCellInputKind?,
+    value: String,
+): Double? {
+    val raw = value.trim()
+    if (raw.isEmpty()) return null
+    if (inputKind != NotebookCellInputKind.TIME) {
+        return raw.replace(",", ".").toDoubleOrNull()
+    }
+
+    val normalized = raw.replace('.', ',')
+    val minuteParts = normalized.split(':')
+    if (minuteParts.size == 2) {
+        val minutes = minuteParts[0].replace(',', '.').toDoubleOrNull() ?: return null
+        val secondParts = minuteParts[1].split(',')
+        val seconds = secondParts.firstOrNull()?.toDoubleOrNull() ?: return null
+        val fraction = secondParts.drop(1).firstOrNull()?.let { "0.$it".toDoubleOrNull() } ?: 0.0
+        return (minutes * 60.0 + seconds + fraction).takeIf { it.isFinite() && it >= 0.0 }
+    }
+
+    return raw.replace(',', '.').toDoubleOrNull()
+}
+
+/** Vacío o número válido. Lo usa Swift para avisar antes de guardar una nota que no lo es. */
+fun isValidNotebookNumericInput(inputKind: NotebookCellInputKind?, value: String): Boolean =
+    value.isBlank() || parseNotebookNumericText(inputKind, value) != null

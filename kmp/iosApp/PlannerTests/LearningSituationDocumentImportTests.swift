@@ -24,6 +24,178 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.instruments.count, 1)
     }
 
+    // MARK: - Pasaporte por paradas
+
+    private func paragraph(_ text: String, style: String? = nil) -> String {
+        let estilo = style.map { "<w:pPr><w:pStyle w:val=\"\($0)\"/></w:pPr>" } ?? ""
+        return "<w:p>\(estilo)<w:r><w:t xml:space=\"preserve\">\(text)</w:t></w:r></w:p>"
+    }
+
+    func testPassportDocumentImportsEveryStopAndQuestion() throws {
+        let body = [
+            paragraph("Mi Pasaporte de progreso — SA 9: Prueba", style: "Heading1"),
+            paragraph("Educación Física — 1.º de Bachillerato · Curso 2026–2027", style: "Heading2"),
+            paragraph("Technical Passport · Es tuyo: no se entrega ni se califica."),
+            paragraph("Nombre y apellidos: ______________ Grupo: _____"),
+            paragraph("¿Para qué sirve?", style: "Heading3"),
+            paragraph("Cuatro paradas cortas en clase (2–4 minutos): escribe poco y en concreto."),
+            paragraph("Parada 1 · U01 — Mi punto de partida", style: "Heading3"),
+            paragraph("Mi mejor reto de hoy: ☐ 10 con mi mano buena ☐ 20 seguidos"),
+            paragraph("Lo que más me cuesta: ☐ agarre de derecha ☐ agarre de revés ☐ otro: __________"),
+            paragraph("Una cosa que quiero mejorar: ______________________"),
+            paragraph("Parada 2 · U03 — Nuestro mejor rally", style: "Heading3"),
+            paragraph("Nuestro mejor Rally Length: _____ golpes (reto: 16)"),
+            paragraph("Parada 3 · U07 — A mitad de camino", style: "Heading3"),
+            paragraph("Un error que he corregido: antes __________ → ahora __________"),
+            paragraph("Mi semáforo de hoy:"),
+            paragraph("Técnica: ☐ rojo ☐ ámbar ☐ verde"),
+            paragraph("Fair play: ☐ rojo ☐ ámbar ☐ verde"),
+            paragraph("Parada 4 · U12 — Mi balance", style: "Heading3"),
+            paragraph("Mi siguiente paso en bádminton: ______________"),
+            paragraph("Después de la última sesión: tienes 48 horas para rellenar la autoevaluación."),
+        ].joined(separator: "\n")
+        let docxURL = try makeDocx(named: "pasaporte", body: body)
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: Data(contentsOf: docxURL)
+        )
+
+        XCTAssertEqual(draft.instruments.count, 1)
+        let pasaporte = try XCTUnwrap(draft.instruments.first)
+        XCTAssertEqual(pasaporte.title, "Mi Pasaporte de progreso — SA 9: Prueba")
+        XCTAssertEqual(pasaporte.kind, .quizQuestions)
+        XCTAssertEqual(pasaporte.scoreStrategy, AssessmentInstrumentScoreStrategy.none)
+        XCTAssertFalse(pasaporte.countsTowardAverage)
+        XCTAssertTrue(pasaporte.isSelected)
+        XCTAssertEqual(pasaporte.quizQuestions.map(\.questionText), [
+            "Parada 1: U01 — Mi punto de partida · Mi mejor reto de hoy",
+            "Parada 1: U01 — Mi punto de partida · Lo que más me cuesta",
+            "Parada 1: U01 — Mi punto de partida · Lo que más me cuesta (otro)",
+            "Parada 1: U01 — Mi punto de partida · Una cosa que quiero mejorar",
+            "Parada 2: U03 — Nuestro mejor rally · Nuestro mejor Rally Length: … golpes (reto: 16)",
+            "Parada 3: U07 — A mitad de camino · Un error que he corregido: antes … → ahora",
+            "Parada 3: U07 — A mitad de camino · Mi semáforo de hoy: Técnica",
+            "Parada 3: U07 — A mitad de camino · Mi semáforo de hoy: Fair play",
+            "Parada 4: U12 — Mi balance · Mi siguiente paso en bádminton",
+        ])
+        XCTAssertEqual(pasaporte.quizQuestions[1].options, ["agarre de derecha", "agarre de revés", "Otro"])
+        XCTAssertEqual(pasaporte.quizQuestions[6].options, ["rojo", "ámbar", "verde"])
+        XCTAssertTrue(pasaporte.quizQuestions[3].options.isEmpty)
+
+        // Al publicarlo en modo Pasaporte salen las cuatro paradas.
+        let reparto = WebPassportSections.split(
+            titles: pasaporte.quizQuestions.map(\.questionText),
+            fallbackTitle: pasaporte.title
+        )
+        XCTAssertEqual(reparto.stops.map(\.title), [
+            "Parada 1: U01 — Mi punto de partida",
+            "Parada 2: U03 — Nuestro mejor rally",
+            "Parada 3: U07 — A mitad de camino",
+            "Parada 4: U12 — Mi balance",
+        ])
+    }
+
+    func testPassportSectionWithoutStopsWarnsInsteadOfCreatingOneCheckbox() throws {
+        let body = [
+            paragraph("1. Rúbrica de juego - CE 2.2 - 100%"),
+            "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Indicador</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>2</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>3</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>4</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>Decisiones</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>b</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>c</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>d</w:t></w:r></w:p></w:tc></w:tr></w:tbl>",
+            paragraph("2. El Pasaporte técnico: material del alumnado, sin peso"),
+            paragraph("El Pasaporte acompaña al alumnado en cuatro paradas breves para que reflexione sobre su progreso."),
+        ].joined(separator: "\n")
+        let docxURL = try makeDocx(named: "instrumentos-con-pasaporte", body: body)
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: Data(contentsOf: docxURL)
+        )
+
+        XCTAssertEqual(draft.instruments.map(\.title), ["Rúbrica de juego"])
+        XCTAssertTrue(draft.warnings.contains { $0.contains("no trae paradas") })
+        XCTAssertFalse(draft.warnings.contains { $0.contains("No se ha podido interpretar") })
+    }
+
+    func testSeveralWordDocumentsMergeIntoOneReview() throws {
+        let instrumentos = try makeDocx(named: "instrumentos", body: [
+            paragraph("1. Rúbrica de juego - CE 2.2 - 100%"),
+            "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Indicador</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>2</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>3</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>4</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>Decisiones</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>b</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>c</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>d</w:t></w:r></w:p></w:tc></w:tr></w:tbl>",
+            paragraph("2. El Pasaporte técnico: material del alumnado, sin peso"),
+            paragraph("El Pasaporte acompaña al alumnado en cuatro paradas breves para que reflexione sobre su progreso."),
+        ].joined(separator: "\n"))
+        let pasaporte = try makeDocx(named: "pasaporte", body: [
+            paragraph("Mi Pasaporte de progreso — SA 9", style: "Heading1"),
+            paragraph("Parada 1 · Inicio", style: "Heading3"),
+            paragraph("Una cosa que quiero mejorar: ______________"),
+        ].joined(separator: "\n"))
+        defer {
+            try? FileManager.default.removeItem(at: instrumentos.deletingLastPathComponent())
+            try? FileManager.default.removeItem(at: pasaporte.deletingLastPathComponent())
+        }
+        let servicio = LearningSituationAssessmentInstrumentsImportService()
+        let borradorInstrumentos = try servicio.preview(from: instrumentos, data: Data(contentsOf: instrumentos))
+        let borradorPasaporte = try servicio.preview(from: pasaporte, data: Data(contentsOf: pasaporte))
+
+        // Un solo Word: igual que antes.
+        let solo = try XCTUnwrap(LearningSituationAssessmentImportDraft.merged([borradorInstrumentos]))
+        XCTAssertEqual(solo.id, borradorInstrumentos.id)
+        XCTAssertTrue(solo.warnings.contains { $0.contains("no trae paradas") })
+
+        let junto = try XCTUnwrap(LearningSituationAssessmentImportDraft.merged([borradorInstrumentos, borradorPasaporte]))
+        XCTAssertEqual(junto.instruments.map(\.title), ["Rúbrica de juego", "Mi Pasaporte de progreso — SA 9"])
+        XCTAssertEqual(junto.sourceFileName, "\(instrumentos.lastPathComponent) + \(pasaporte.lastPathComponent)")
+        XCTAssertFalse(junto.warnings.contains { $0.contains("no trae paradas") })
+        XCTAssertNil(LearningSituationAssessmentImportDraft.merged([]))
+    }
+
+    func testEnglishPassportWithStopsImports() throws {
+        let docxURL = try makeDocx(named: "passport-en", body: [
+            paragraph("My Progress Passport — SA 9", style: "Heading1"),
+            paragraph("Technical Passport · It is yours: it is not handed in or marked."),
+            paragraph("Stop 1 · U01 — My starting point", style: "Heading3"),
+            paragraph("What I find hardest: ☐ forehand grip ☐ backhand grip ☐ other: __________"),
+            paragraph("My traffic light today:"),
+            paragraph("Technique: ☐ red ☐ amber ☐ green"),
+            paragraph("Stop 2 · U03 — Our best rally", style: "Heading3"),
+            paragraph("What I will try next time: ______________"),
+        ].joined(separator: "\n"))
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: Data(contentsOf: docxURL)
+        )
+
+        let passport = try XCTUnwrap(draft.instruments.first)
+        XCTAssertEqual(draft.instruments.count, 1)
+        XCTAssertEqual(passport.quizQuestions.map(\.questionText), [
+            "Stop 1: U01 — My starting point · What I find hardest",
+            "Stop 1: U01 — My starting point · What I find hardest (other)",
+            "Stop 1: U01 — My starting point · My traffic light today: Technique",
+            "Stop 2: U03 — Our best rally · What I will try next time",
+        ])
+        XCTAssertEqual(passport.quizQuestions[0].options, ["forehand grip", "backhand grip", "Other"])
+    }
+
+    func testPassportChecklistWithCheckboxesStaysAChecklist() throws {
+        let body = [
+            paragraph("1. Pasaporte saludable - checklist"),
+            paragraph("☐ Me hidrato antes de clase ☐ Caliento 10 minutos"),
+        ].joined(separator: "\n")
+        let docxURL = try makeDocx(named: "pasaporte-checklist", body: body)
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: Data(contentsOf: docxURL)
+        )
+
+        let instrumento = try XCTUnwrap(draft.instruments.first)
+        XCTAssertEqual(instrumento.kind, .checklist)
+        XCTAssertEqual(instrumento.checklistItems.map(\.title), ["Me hidrato antes de clase", "Caliento 10 minutos"])
+    }
+
     func testStudentSelfAssessmentWithoutOpenQuestionsDoesNotGenerateOpenQuestions() throws {
         let docxURL = try makeStudentAssessmentDocx(includeOpenQuestions: false)
         defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
@@ -230,6 +402,93 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(plan.activities.first?.purpose, "Establish a safe baseline.")
         XCTAssertEqual(plan.activities.first?.prepares, "Rehearse the long-block vocabulary.")
         XCTAssertEqual(plan.activities.first?.consolidates, "Record the evidence in the passport.")
+    }
+
+    func testDurationLineMarksSessionAsDoubleWhenHeaderHasNoType() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("Sesión S01 · Gimnasia · Equilibrios y giros"),
+            .paragraph("Objetivo de hoy: mantener 4 equilibrios estáticos."),
+            .paragraph("1. Explicación inicial · 4 minutos"),
+            .paragraph("Presentamos los roles de ayuda."),
+            .paragraph("Duración útil: 60 minutos (sesión doble · turno de mañana)"),
+            .paragraph("Sesión S02 · Acrosport de pie · Figuras en parejas"),
+            .paragraph("Objetivo de hoy: construir 3 figuras de pareja."),
+            .paragraph("1. Explicación inicial · 4 minutos"),
+            .paragraph("Recordamos la señal de desmontaje.")
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks, data: Data("duration-double".utf8), url: URL(fileURLWithPath: "/tmp/duration-double.docx")
+        )
+
+        XCTAssertEqual(draft.plans.map(\.sessionType), ["Doble", "Simple"])
+        XCTAssertEqual(draft.plans.first?.effectiveMinutes, 60)
+    }
+
+    func testParagraphSessionSplitsFichaAndTurnsNumberedPhasesIntoActivities() throws {
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: Self.tavernesSessionBlocks, data: Data("tavernes-phases".utf8), url: URL(fileURLWithPath: "/tmp/tavernes-phases.docx")
+        )
+
+        let plan = try XCTUnwrap(draft.plans.first)
+        XCTAssertEqual(plan.objective, "al terminar, el alumnado será capaz de mantener 4 equilibrios estáticos.")
+        XCTAssertEqual(plan.material, "pabellón; 2 bancos suecos, conos y aros; 10 tríos.")
+        XCTAssertEqual(plan.adaptations.first, "quien tenga poco equilibrio usa la mano del ayudante.")
+        XCTAssertEqual(plan.activities.map(\.activity), ["Explicación inicial", "Calentamiento mediante juego", "Actividad principal", "Vuelta a la calma, registro y recogida"])
+        XCTAssertEqual(plan.activities.map(\.plannedMinutes), [4, 8, 40, 8])
+        XCTAssertEqual(plan.activities[2].clilFocus, "«Eyes on a point — Hold the balance!»")
+        XCTAssertTrue(plan.activities[2].teacherActions.contains("Ajuste docente y DUA"))
+        XCTAssertFalse(plan.activities.contains { $0.teacherActions.contains("Tight tummy") })
+        XCTAssertFalse(plan.activities.contains { $0.teacherActions.contains("Unidad curricular") })
+        XCTAssertFalse(plan.activities.contains { $0.teacherActions.contains("Esquema de organización") })
+        let chunks = try XCTUnwrap(plan.development.first { $0.title.hasPrefix("Chunks") })
+        let parsed = try XCTUnwrap(LearningSituationSessionDevelopmentPayload.parseCLILChunks(from: chunks.lines.joined(separator: "\n")))
+        XCTAssertEqual(parsed.teacherCues, ["Tight tummy", "Soft knees on landing"])
+        XCTAssertEqual(parsed.studentInteraction, ["Ready?", "I’ve got you!"])
+        XCTAssertEqual(parsed.debrief, ["What helps you keep your balance?"])
+    }
+
+    static let tavernesSessionBlocks: [WordDocumentBlock] = [
+        .paragraph("Sesión S01 · Gimnasia · Equilibrios, giros y saltos con recepción"),
+        .paragraph("Objetivo de hoy: al terminar, el alumnado será capaz de mantener 4 equilibrios estáticos. Material, espacio y agrupamiento: pabellón; 2 bancos suecos, conos y aros; 10 tríos. Atención especial: quien tenga poco equilibrio usa la mano del ayudante."),
+        .paragraph("1. Explicación inicial · 4 minutos"),
+        .paragraph("Presentación del reto de la SA y de los roles del trío."),
+        .paragraph("2. Calentamiento mediante juego · 8 minutos"),
+        .paragraph("«Espejos rítmicos» por parejas."),
+        .paragraph("3. Actividad principal · 40 minutos"),
+        .paragraph("Bloque 1 · Circuito de 5 estaciones (30’)."),
+        .paragraph("Bloque 2 · Mini-reto de enlace (10’)."),
+        .paragraph("Consigna CLIL: 🗣️ «Eyes on a point — Hold the balance!»"),
+        .paragraph("Chunks lingüísticos (CLIL)"),
+        .paragraph("Docente: «Tight tummy», «Soft knees on landing»"),
+        .paragraph("Alumnado: «Ready?», «I’ve got you!»"),
+        .paragraph("Reflexión: «What helps you keep your balance?»"),
+        .paragraph("Ajuste docente y DUA: el docente se sitúa entre las estaciones 2 y 4."),
+        .paragraph("Esquema de organización: circuito de equilibrios, giros y saltos"),
+        .paragraph("4. Vuelta a la calma, registro y recogida · 8 minutos"),
+        .paragraph("Respiración y estiramiento suave de pie (2’)."),
+        .paragraph("Trazabilidad curricular"),
+        .paragraph("Unidad curricular: SA02 · U01"),
+        .paragraph("Duración útil: 60 minutos (sesión doble · turno de mañana)"),
+        .paragraph("Evidencia: rúbrica CE 3.1, indicador «Equilibrios, giros y recepciones».")
+    ]
+
+    func testDurationLineMarksTableSessionAsDouble() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("Sesión S01 · Gimnasia · Equilibrios y giros"),
+            .table([
+                ["Fase", "Descripción"],
+                ["Calentamiento", "Juego de estatuas"]
+            ]),
+            .paragraph("Duración útil: 60 minutos (sesión doble · turno de mañana)")
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks, data: Data("duration-double-table".utf8), url: URL(fileURLWithPath: "/tmp/duration-double-table.docx")
+        )
+
+        XCTAssertEqual(draft.plans.first?.sessionType, "Doble")
+        XCTAssertEqual(draft.plans.first?.effectiveMinutes, 60)
     }
 
     func testFormatCDuplicateSessionNumberKeepsFirstPlanAndWarns() throws {
@@ -750,6 +1009,29 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertFalse(longResult.html.contains("Short-only activity"))
         XCTAssertTrue(shortResult.html.contains("Short-only activity"))
         XCTAssertFalse(shortResult.html.contains("Long-only activity"))
+    }
+
+    func testSessionDocxRendererSelectsTavernesSessionWithSPrefix() throws {
+        let docxURL = try makeDocx(named: "planner-tavernes-docx", body: """
+          <w:p/>
+          <w:p><w:r><w:t>Mapa general de la secuencia</w:t></w:r></w:p>
+          <w:tbl><w:tr><w:tc><w:p><w:r><w:t>Map row</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+          <w:p><w:r><w:t>Sesión S01 (Mar 27/10) · Basketball · Bote</w:t></w:r></w:p>
+          <w:p/>
+          <w:p><w:r><w:t>First-session activity</w:t></w:r></w:p>
+          <w:p><w:r><w:t>Sesión S02 (Mar 03/11) · Basketball · Parada</w:t></w:r></w:p>
+          <w:p><w:r><w:t>Second-session activity</w:t></w:r></w:p>
+        """)
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let first = try PlannerSessionDocxRenderer().render(from: docxURL, sourceLabel: "", sessionNumber: 1)
+        let second = try PlannerSessionDocxRenderer().render(from: docxURL, sourceLabel: "", sessionNumber: 2)
+
+        XCTAssertTrue(first.html.contains("First-session activity"))
+        XCTAssertFalse(first.html.contains("Map row"))
+        XCTAssertFalse(first.html.contains("Second-session activity"))
+        XCTAssertTrue(second.html.contains("Second-session activity"))
+        XCTAssertFalse(second.html.contains("First-session activity"))
     }
 
     func testNarrativeRouteLedgerImportsBothRoutesAndPartialLong() throws {
@@ -1385,6 +1667,28 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         try Data(relationships.utf8).write(to: relationshipsDirectory.appendingPathComponent("document.xml.rels"))
         try Data([0x89, 0x50, 0x4E, 0x47]).write(to: mediaDirectory.appendingPathComponent("image1.png"))
 
+        let archiveURL = root.appendingPathComponent("session.docx")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+        process.currentDirectoryURL = root
+        process.arguments = ["-q", "-r", archiveURL.path, "word"]
+        try process.run()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0)
+        return archiveURL
+    }
+
+    private func makeDocx(named prefix: String, body: String) throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
+        let wordDirectory = root.appendingPathComponent("word", isDirectory: true)
+        try FileManager.default.createDirectory(at: wordDirectory, withIntermediateDirectories: true)
+        let document = """
+        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+        \(body)
+        </w:body></w:document>
+        """
+        try Data(document.utf8).write(to: wordDirectory.appendingPathComponent("document.xml"))
         let archiveURL = root.appendingPathComponent("session.docx")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")

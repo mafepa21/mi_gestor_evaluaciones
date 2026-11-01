@@ -1,0 +1,413 @@
+<title>Voz de Pista con criterios</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: columna estrecha tipo sheet de iPad; cada estado es una ficha de la bandeja con su etiqueta encima. Rejilla de 8 pt. */
+:root{
+  --bg:#f2f2f7; --surface:#ffffff; --fill:#e9e9ef; --fill-2:#f4f4f8;
+  --fg:#1c1c1e; --fg-2:#5b5b63; --fg-3:#6e6e76; --line:#dcdce3;
+  --accent:#2f5bea; --accent-soft:#e6ecfd; --ai:#6a3dd1; --ai-soft:#f0eafd;
+  --ok:#2e9a54; --ok-soft:#e3f4e8; --warn:#8f5400; --warn-soft:#fbf0dc; --bad:#c9372c; --bad-soft:#fbe6e4;
+  --c1:#2f5bea; --c2:#0f8c8c; --c3:#b05a17; --c4:#8a3fb8;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",system-ui,sans-serif;
+  --font-round:ui-rounded,-apple-system,"SF Pro Rounded",system-ui,sans-serif;
+  --r-card:16px; --r-ctl:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#000000; --surface:#1c1c1e; --fill:#2c2c30; --fill-2:#242428;
+  --fg:#f2f2f7; --fg-2:#a9a9b2; --fg-3:#7c7c85; --line:#38383d;
+  --accent:#6f8fff; --accent-soft:#1d2645; --ai:#a98bff; --ai-soft:#2a2140;
+  --ok:#4cc373; --ok-soft:#163222; --warn:#f0a53a; --warn-soft:#3a2a10; --bad:#ff6a5e; --bad-soft:#3d1a17;
+  --c1:#6f8fff; --c2:#3cc4c4; --c3:#f0954f; --c4:#c58af0; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#000000; --surface:#1c1c1e; --fill:#2c2c30; --fill-2:#242428;
+  --fg:#f2f2f7; --fg-2:#a9a9b2; --fg-3:#7c7c85; --line:#38383d;
+  --accent:#6f8fff; --accent-soft:#1d2645; --ai:#a98bff; --ai-soft:#2a2140;
+  --ok:#4cc373; --ok-soft:#163222; --warn:#f0a53a; --warn-soft:#3a2a10; --bad:#ff6a5e; --bad-soft:#3d1a17;
+  --c1:#6f8fff; --c2:#3cc4c4; --c3:#f0954f; --c4:#c58af0; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.4 var(--font);-webkit-font-smoothing:antialiased}
+.page{max-width:760px;margin:0 auto;padding-block:0 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:48px}
+header.intro{display:grid;gap:8px}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3)}
+h1{margin:0;font:700 28px/1.15 var(--font-round);text-wrap:balance}
+.lede{margin:0;color:var(--fg-2);max-width:62ch}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:8px;font-size:13px;color:var(--fg-2)}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+
+.state{display:grid;gap:16px}
+.state-head{display:grid;gap:4px}
+.state-head h2{margin:0;font-size:17px;font-weight:600}
+.state-head p{margin:0;color:var(--fg-2);font-size:14px;max-width:64ch}
+
+/* Ficha de la bandeja */
+.card{background:var(--surface);border-radius:var(--r-card);padding:16px;display:grid;gap:16px;box-shadow:0 0 0 1px var(--line)}
+.card.selected{box-shadow:0 0 0 1.5px var(--accent)}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.check{width:44px;height:44px;margin:-10px;background-clip:content-box;padding:10px!important;border-radius:50%;flex:none;border:1.5px solid var(--fg-3);display:grid;place-items:center;background:none;cursor:pointer;padding:0}
+.check[aria-checked="true"]{background:var(--accent);border-color:var(--accent)}
+.check[aria-checked="true"]::after{content:"";width:6px;height:11px;border:solid #fff;border-width:0 2px 2px 0;transform:translateY(-1px) rotate(45deg)}
+.picker{min-height:44px;display:inline-flex;align-items:center;gap:8px;padding:0 12px;border-radius:var(--r-ctl);background:var(--fill);font-weight:500;border:0;color:var(--fg);font:inherit;cursor:pointer}
+.picker .chev{color:var(--fg-3);font-size:11px}
+.kind{margin-left:auto;min-height:44px;display:inline-flex;align-items:center;gap:8px;padding:0 12px;border-radius:999px;font-size:14px;font-weight:600;background:var(--accent-soft);color:var(--accent)}
+.kind.obs{background:var(--fill);color:var(--fg-2)}
+
+.quote{margin:0;font-size:15px;color:var(--fg);line-height:1.55}
+.quote mark{background:none;color:inherit;border-bottom:2px solid var(--mc);padding-bottom:1px}
+.quote mark sup{font-size:10px;font-weight:700;color:var(--mc);margin-left:2px}
+
+.instrument{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px;color:var(--fg-2)}
+.instrument .picker{font-size:14px}
+.ai{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:var(--ai);background:var(--ai-soft);padding:2px 8px;border-radius:999px}
+.ai svg{width:12px;height:12px}
+
+/* Criterios */
+.criteria{display:grid;gap:8px}
+.crit{display:grid;gap:8px;padding:12px;border-radius:12px;background:var(--fill-2)}
+.crit-top{display:flex;align-items:baseline;gap:8px;min-width:0}
+.dot{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:11px;font-weight:700;color:#fff;background:var(--mc);transform:translateY(3px)}
+.crit-title{font-weight:600;min-width:0}
+.crit-why{font-size:13px;color:var(--fg-2)}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:2px;border-radius:var(--r-ctl);background:var(--fill)}
+.seg button{min-height:44px;border:0;border-radius:8px;background:none;color:var(--fg-2);font:inherit;font-size:13px;cursor:pointer;display:grid;place-items:center;line-height:1.15;padding:4px;position:relative}
+.seg button b{display:block;font-size:15px;color:var(--fg);font-variant-numeric:tabular-nums}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px var(--line);font-weight:600}
+.seg button.sug::before,.tri button.sug::before{content:"";position:absolute;top:6px;right:6px;width:6px;height:6px;border-radius:50%;background:var(--ai)}
+.sugline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--fg-2);padding:0 4px}
+.sugline .btn{min-height:44px;font-size:13px;padding:0 8px}
+.chip[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.chip[aria-pressed="true"]::before{content:"✓ "}
+.toolbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:2;display:flex;align-items:center;justify-content:space-between;gap:8px;padding-block:8px;background:var(--bg);box-shadow:0 1px 0 var(--line)}
+.toolbar strong{font-size:17px}
+.desc{margin:0;font-size:13px;color:var(--fg-2);padding:0 4px}
+.desc strong{color:var(--fg)}
+
+.skipped{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px;border-radius:12px;border:1px dashed var(--line);font-size:14px;color:var(--fg-2);background:none;width:100%;font:inherit;cursor:pointer;text-align:left}
+.skipped .count{font-weight:600;color:var(--fg)}
+
+/* Lista de cotejo */
+.items{display:grid;gap:0;border-radius:12px;background:var(--fill-2);overflow:hidden}
+.item{display:flex;align-items:center;gap:12px;padding:8px 12px;min-height:52px}
+.item + .item{box-shadow:inset 0 1px 0 var(--line)}
+.item-label{flex:1;min-width:0}
+.item-label small{display:block;color:var(--fg-2);font-size:12px}
+.tri{display:inline-grid;grid-template-columns:repeat(3,auto);gap:2px;padding:2px;border-radius:var(--r-ctl);background:var(--fill);flex:none}
+.tri button{min-width:64px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:4px;border:0;border-radius:8px;background:none;color:var(--fg-2);font:inherit;font-size:13px;font-weight:600;cursor:pointer;position:relative}
+.tri button[aria-pressed="true"][data-v="si"]{background:var(--ok-soft);color:var(--ok)}
+.tri button[aria-pressed="true"][data-v="no"]{background:var(--bad-soft);color:var(--bad)}
+.tri button[aria-pressed="true"][data-v="na"]{background:var(--surface);color:var(--fg)}
+
+.footer{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:14px;color:var(--fg-2)}
+.score{font:600 15px var(--font-round);color:var(--fg);font-variant-numeric:tabular-nums}
+.note-field{min-height:40px;display:flex;align-items:center;padding:0 12px;border-radius:var(--r-ctl);box-shadow:inset 0 0 0 1px var(--line);font-size:14px;color:var(--fg)}
+
+/* Sugerencia dentro de una observación */
+.suggest{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px;border-radius:12px;background:var(--ai-soft)}
+.suggest p{margin:0;flex:1;min-width:200px;font-size:14px}
+.btn{min-height:44px;padding:0 16px;border-radius:999px;border:0;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.plain{background:none;color:var(--accent);padding:0 8px}
+.btn.tinted{background:var(--accent-soft);color:var(--accent)}
+
+.banner{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:12px;font-size:14px}
+.banner.warn{background:var(--warn-soft);color:var(--fg)}
+.banner.err{background:var(--bad-soft);color:var(--fg)}
+.banner b{display:block}
+.banner .ic{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff}
+.banner.warn .ic{background:var(--warn)} .banner.err .ic{background:var(--bad)}
+
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{min-height:44px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:inherit;font-size:13px;cursor:pointer}
+
+.sk{height:12px;border-radius:6px;background:var(--fill);animation:pulse 1.2s ease-in-out infinite alternate}
+@keyframes pulse{to{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.sk{animation:none}}
+
+.status{display:grid;grid-template-columns:repeat(2,1fr);gap:2px;padding:2px;border-radius:var(--r-ctl);background:var(--fill);max-width:280px}
+.status button{min-height:44px;border:0;border-radius:8px;background:none;font:inherit;font-size:14px;color:var(--fg-2);cursor:pointer}
+.status button[aria-pressed="true"]{background:var(--surface);color:var(--fg);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+
+.apply{position:sticky;bottom:0;margin-top:-24px;padding-block:16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;justify-content:flex-end;gap:8px;background:linear-gradient(to top,var(--bg) 70%,transparent)}
+.apply .btn{min-height:44px;padding:0 24px;font-size:16px}
+.apply .btn.secondary{background:var(--fill);color:var(--fg)}
+
+.notes{display:grid;gap:8px;font-size:14px;color:var(--fg-2);padding:16px;border-radius:var(--r-card);box-shadow:0 0 0 1px var(--line)}
+.notes h2{margin:0;font-size:15px;color:var(--fg)}
+.notes ul{margin:0;padding-left:20px;display:grid;gap:4px}
+
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:480px){
+  .kind{margin-left:0}
+  .seg button{font-size:11px}
+  .item{flex-wrap:wrap}
+}
+</style>
+
+<div class="page">
+  <div class="toolbar" role="toolbar" aria-label="Acciones de la bandeja">
+    <button class="btn plain" type="button">Cancelar</button>
+    <strong>Voz de Pista</strong>
+    <button class="btn primary" type="button" id="applyBtn">Aplicar (3)</button>
+  </div>
+  <header class="intro">
+    <span class="eyebrow">Maqueta · Voz de Pista · Bandeja de confirmación</span>
+    <h1>Del dictado a los criterios de la rúbrica</h1>
+    <p class="lede">Al describir cómo trabaja un alumno, Voz de Pista busca los criterios del instrumento que encajan y propone un nivel para cada uno. Tú confirmas. Lo que no dices no se valora. Datos de ejemplo.</p>
+    <div class="legend">
+      <span><span class="ai"><svg viewBox="0 0 12 12" aria-hidden="true"><path fill="currentColor" d="M6 0l1.3 4.7L12 6l-4.7 1.3L6 12 4.7 7.3 0 6l4.7-1.3z"/></svg>Sugerido</span> propuesta de Apple Intelligence</span>
+      <span><span class="dot" style="--mc:var(--c1);transform:none">1</span> color que une frase y criterio</span>
+    </div>
+  </header>
+
+  <!-- 1. Rúbrica con datos -->
+  <section class="state" aria-labelledby="s1">
+    <div class="state-head">
+      <h2 id="s1">1 · Rúbrica: criterios encontrados</h2>
+      <p>La frase menciona dos criterios. Cada uno trae su nivel sugerido y el fragmento que lo justifica. Los otros dos quedan sin valorar, plegados.</p>
+    </div>
+    <article class="card selected">
+      <div class="row">
+        <button class="check" role="checkbox" aria-checked="true" aria-label="Incluir acción"></button>
+        <button class="picker">Lucía Ferrer Soler <span class="chev">▾</span></button>
+        <span class="kind">Evaluación rápida</span>
+      </div>
+      <p class="quote">«Lucía <mark style="--mc:var(--c1)">ejecuta golpes técnicos adecuados<sup>1</sup></mark> y <mark style="--mc:var(--c2)">se mueve bien por la pista<sup>2</sup></mark>»</p>
+      <div class="instrument">
+        Instrumento
+        <button class="picker">Rúbrica de bádminton: juego en pista <span class="chev">▾</span></button>
+        <span class="ai"><svg viewBox="0 0 12 12" aria-hidden="true"><path fill="currentColor" d="M6 0l1.3 4.7L12 6l-4.7 1.3L6 12 4.7 7.3 0 6l4.7-1.3z"/></svg>Sugerido</span>
+      </div>
+      <div class="criteria" data-group="r1">
+        <div class="crit" style="--mc:var(--c1)">
+          <div class="crit-top"><span class="dot">1</span><div><div class="crit-title" id="c1t">Ejecución técnica de golpeos</div><div class="crit-why">Por «golpes técnicos adecuados»</div></div></div>
+          <div class="seg" role="radiogroup" aria-labelledby="c1t">
+            <button data-d="Golpea sin técnica reconocible; el volante rara vez pasa la red." aria-pressed="false"><b>1</b>Inicial</button>
+            <button data-d="Técnica correcta en clear, irregular en dejada y remate." aria-pressed="false"><b>2</b>En desarrollo</button>
+            <button class="sug" data-d="Técnica correcta en la mayoría de golpeos, con alguna pérdida bajo presión." aria-pressed="true"><b>3</b>Logrado</button>
+            <button data-d="Técnica precisa y variada incluso en intercambios rápidos." aria-pressed="false"><b>4</b>Avanzado</button>
+          </div>
+          <p class="desc"><strong>Logrado:</strong> Técnica correcta en la mayoría de golpeos, con alguna pérdida bajo presión.</p>
+          <div class="sugline" data-sug="3"><span class="ai">Sugerido: Logrado</span><button class="btn plain restore" type="button" hidden>Volver a la sugerencia</button></div>
+        </div>
+        <div class="crit" style="--mc:var(--c2)">
+          <div class="crit-top"><span class="dot">2</span><div><div class="crit-title" id="c2t">Desplazamiento y colocación en pista</div><div class="crit-why">Por «se mueve bien por la pista»</div></div></div>
+          <div class="seg" role="radiogroup" aria-labelledby="c2t">
+            <button data-d="Espera el volante parado; no vuelve al centro." aria-pressed="false"><b>1</b>Inicial</button>
+            <button data-d="Se desplaza, pero llega tarde con frecuencia." aria-pressed="false"><b>2</b>En desarrollo</button>
+            <button class="sug" data-d="Llega a tiempo y vuelve a la posición base casi siempre." aria-pressed="true"><b>3</b>Logrado</button>
+            <button data-d="Anticipa la trayectoria y cubre toda la pista con eficiencia." aria-pressed="false"><b>4</b>Avanzado</button>
+          </div>
+          <p class="desc"><strong>Logrado:</strong> Llega a tiempo y vuelve a la posición base casi siempre.</p>
+          <div class="sugline" data-sug="3"><span class="ai">Sugerido: Logrado</span><button class="btn plain restore" type="button" hidden>Volver a la sugerencia</button></div>
+        </div>
+        <button class="skipped" aria-expanded="false"><span><span class="count">2 criterios sin mencionar</span> · Toma de decisiones, Juego limpio</span><span>Sin valorar ▸</span></button>
+      </div>
+      <div class="footer">
+        <span>2 de 4 criterios · los demás no cuentan</span>
+        <span class="score" data-score="r1">Nota 7,5</span>
+      </div>
+    </article>
+  </section>
+
+  <!-- 2. Lista de cotejo -->
+  <section class="state" aria-labelledby="s2">
+    <div class="state-head">
+      <h2 id="s2">2 · Lista de cotejo: Sí / No / Sin marcar</h2>
+      <p>Cada ítem tiene tres estados con icono y texto, no solo color. Solo se rellenan los que se dicen. «No recoge» es un No claro. Lo no dicho queda sin marcar, nunca en No.</p>
+    </div>
+    <article class="card selected">
+      <div class="row">
+        <button class="check" role="checkbox" aria-checked="true" aria-label="Incluir acción"></button>
+        <button class="picker">Marcos Vidal Prieto <span class="chev">▾</span></button>
+        <span class="kind">Evaluación rápida</span>
+      </div>
+      <p class="quote">«Marcos <mark style="--mc:var(--c1)">hace el calentamiento él solo<sup>1</sup></mark> pero <mark style="--mc:var(--c4)">no recoge el material<sup>4</sup></mark>»</p>
+      <div class="instrument">
+        Instrumento
+        <button class="picker">Lista de cotejo: calentamiento autónomo <span class="chev">▾</span></button>
+        <span class="ai"><svg viewBox="0 0 12 12" aria-hidden="true"><path fill="currentColor" d="M6 0l1.3 4.7L12 6l-4.7 1.3L6 12 4.7 7.3 0 6l4.7-1.3z"/></svg>Sugerido</span>
+      </div>
+      <div class="items">
+        <div class="item"><span class="dot" style="--mc:var(--c1);transform:none">1</span><div class="item-label">Inicia el calentamiento sin indicaciones<small>Por «hace el calentamiento él solo»</small></div>
+          <div class="tri" role="group" aria-label="Respuesta"><button data-v="si" class="sug" aria-pressed="true">✓ Sí</button><button data-v="no" aria-pressed="false">✕ No</button><button data-v="na" aria-pressed="false">Sin marcar</button></div></div>
+        <div class="item"><span class="dot" style="--mc:var(--fg-3);transform:none">2</span><div class="item-label">Moviliza todas las articulaciones<small>No mencionado</small></div>
+          <div class="tri" role="group" aria-label="Respuesta"><button data-v="si" aria-pressed="false">✓ Sí</button><button data-v="no" aria-pressed="false">✕ No</button><button data-v="na" aria-pressed="true">Sin marcar</button></div></div>
+        <div class="item"><span class="dot" style="--mc:var(--fg-3);transform:none">3</span><div class="item-label">Aumenta la intensidad poco a poco<small>No mencionado</small></div>
+          <div class="tri" role="group" aria-label="Respuesta"><button data-v="si" aria-pressed="false">✓ Sí</button><button data-v="no" aria-pressed="false">✕ No</button><button data-v="na" aria-pressed="true">Sin marcar</button></div></div>
+        <div class="item"><span class="dot" style="--mc:var(--c4);transform:none">4</span><div class="item-label">Recoge y ordena el material<small>Por «no recoge el material»</small></div>
+          <div class="tri" role="group" aria-label="Respuesta"><button data-v="si" aria-pressed="false">✓ Sí</button><button data-v="no" class="sug" aria-pressed="true">✕ No</button><button data-v="na" aria-pressed="false">Sin marcar</button></div></div>
+      </div>
+      <div class="footer"><span>2 de 4 ítems marcados</span><span class="score">1 de 2 logrados</span></div>
+    </article>
+  </section>
+
+  <!-- 3. Observación que encaja con una rúbrica -->
+  <section class="state" aria-labelledby="s3">
+    <div class="state-head">
+      <h2 id="s3">3 · Observación que encaja con criterios</h2>
+      <p>El caso de tu captura. Se queda como observación, pero aparece una sugerencia en línea. Un toque la convierte en evaluación con criterios. La observación se puede conservar.</p>
+    </div>
+    <article class="card">
+      <div class="row">
+        <button class="check" role="checkbox" aria-checked="true" aria-label="Incluir acción"></button>
+        <button class="picker">Lucía Ferrer Soler <span class="chev">▾</span></button>
+        <span class="kind obs">Observación / Actitud</span>
+      </div>
+      <div class="note-field">Ejecuta golpes técnicos adecuados y se mueve bien por la pista</div>
+      <div class="suggest" id="convert">
+        <p><b>Encaja con 2 criterios</b> de «Rúbrica de bádminton: juego en pista».</p>
+        <button class="btn plain" type="button">Ahora no</button>
+        <button class="btn primary" type="button" id="convertBtn">Evaluar con rúbrica</button>
+      </div>
+    </article>
+  </section>
+
+  <!-- 4. Sin coincidencia clara -->
+  <section class="state" aria-labelledby="s4">
+    <div class="state-head">
+      <h2 id="s4">4 · Sin criterio claro</h2>
+      <p>La frase es vaga. No se inventa nada: la acción no se marca y se ofrecen los criterios del instrumento para elegir con un toque.</p>
+    </div>
+    <article class="card">
+      <div class="row">
+        <button class="check" role="checkbox" aria-checked="false" aria-label="Incluir acción"></button>
+        <button class="picker">Hugo Navas Gil <span class="chev">▾</span></button>
+        <span class="kind">Evaluación rápida</span>
+      </div>
+      <p class="quote">«Hugo hoy muy bien en el partido»</p>
+      <div class="banner warn"><span class="ic">!</span><div><b>No encuentro a qué criterio te refieres</b>Elige uno o varios. El nivel se propone después.</div></div>
+      <div class="chips">
+        <button class="chip" aria-pressed="false">Ejecución técnica</button>
+        <button class="chip" aria-pressed="false">Desplazamiento</button>
+        <button class="chip" aria-pressed="false">Toma de decisiones</button>
+        <button class="chip" aria-pressed="false">Juego limpio</button>
+      </div>
+    </article>
+  </section>
+
+  <!-- 5. Instrumento estructurado: estado de entrega (ya en develop) -->
+  <section class="state" aria-labelledby="s5">
+    <div class="state-head">
+      <h2 id="s5">5 · Formulario: solo entrega</h2>
+      <p>Lo que ya está en develop. Si además dictas un indicador («autoconciencia un 3»), aparece debajo como criterio, igual que en el estado 1.</p>
+    </div>
+    <article class="card selected">
+      <div class="row">
+        <button class="check" role="checkbox" aria-checked="true" aria-label="Incluir acción"></button>
+        <button class="picker">Elena Ríos Mora <span class="chev">▾</span></button>
+        <span class="kind">Evaluación rápida</span>
+      </div>
+      <div class="instrument">Instrumento <button class="picker">Rúbrica de autoevaluación y coevaluación <span class="chev">▾</span></button></div>
+      <div class="status" role="group" aria-label="Estado de entrega"><button aria-pressed="true">Completada</button><button aria-pressed="false">Pendiente</button></div>
+    </article>
+  </section>
+
+  <!-- 6. Cargando -->
+  <section class="state" aria-labelledby="s6">
+    <div class="state-head">
+      <h2 id="s6">6 · Buscando criterios</h2>
+      <p>Mientras se lee la plantilla. La ficha ya muestra alumno y frase; solo la zona de criterios espera.</p>
+    </div>
+    <article class="card">
+      <div class="row">
+        <button class="check" role="checkbox" aria-checked="false" aria-label="Incluir acción"></button>
+        <button class="picker">Lucía Ferrer Soler <span class="chev">▾</span></button>
+        <span class="kind">Evaluación rápida</span>
+      </div>
+      <p class="quote">«Lucía ejecuta golpes técnicos adecuados y se mueve bien por la pista»</p>
+      <div class="criteria" aria-busy="true" aria-label="Buscando criterios">
+        <div class="crit"><div class="sk" style="width:55%"></div><div class="sk" style="height:44px;border-radius:10px"></div></div>
+        <div class="crit"><div class="sk" style="width:40%"></div><div class="sk" style="height:44px;border-radius:10px"></div></div>
+      </div>
+    </article>
+  </section>
+
+  <!-- 7. Error -->
+  <section class="state" aria-labelledby="s7">
+    <div class="state-head">
+      <h2 id="s7">7 · No se pudo leer la rúbrica</h2>
+      <p>Sin conexión no hace falta: todo es local. El error real es una plantilla borrada o dañada. La frase no se pierde.</p>
+    </div>
+    <article class="card">
+      <div class="row">
+        <button class="check" role="checkbox" aria-checked="false" aria-label="Incluir acción"></button>
+        <button class="picker">Lucía Ferrer Soler <span class="chev">▾</span></button>
+        <span class="kind">Evaluación rápida</span>
+      </div>
+      <div class="banner err"><span class="ic">!</span><div><b>No se pudieron cargar los criterios de esta rúbrica</b>Puedes guardarlo como observación o elegir otro instrumento.</div></div>
+      <div class="row"><button class="btn tinted">Guardar como observación</button><button class="btn plain">Reintentar</button></div>
+    </article>
+  </section>
+
+
+  <aside class="notes">
+    <h2>Decisiones HIG</h2>
+    <ul>
+      <li>Un control segmentado por criterio: el nivel es una elección exclusiva y visible, sin menús.</li>
+      <li>Al tocar un nivel se lee su descriptor debajo. Sin ventanas emergentes.</li>
+      <li>Lo sugerido se dice con texto («Sugerido: Logrado»), no solo con un punto. Si cambias el nivel, aparece «Volver a la sugerencia».</li>
+      <li>Cancelar y Aplicar van en la barra de la hoja (cancellationAction / confirmationAction). Aplicar cuenta las acciones marcadas.</li>
+      <li>Con texto muy grande, los 4 niveles pasan a una lista vertical con su descriptor.</li>
+      <li>Objetivos táctiles de 44 pt. El color nunca es la única pista: cada criterio lleva número.</li>
+      <li>VoiceOver: «Ejecución técnica de golpeos, Logrado, 3 de 4, sugerido».</li>
+      <li>Nota parcial: solo cuentan los criterios valorados, como en la evaluación masiva.</li>
+    </ul>
+  </aside>
+</div>
+
+<script>
+document.querySelectorAll('.seg').forEach(seg=>{
+  const desc=seg.parentElement.querySelector('.desc');
+  seg.addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    pick(seg,b);
+  });
+});
+function pick(seg,b){
+  const desc=seg.parentElement.querySelector('.desc');
+  seg.querySelectorAll('button').forEach(x=>{x.setAttribute('aria-pressed',x===b);x.setAttribute('aria-checked',x===b)});
+  const name=b.lastChild.textContent.trim();
+  desc.innerHTML='<strong>'+name+':</strong> '+b.dataset.d;
+  const sl=seg.parentElement.querySelector('.sugline');
+  if(sl){const sug=seg.querySelector('.sug'); sl.querySelector('.restore').hidden=(b===sug);}
+  updateScore();
+}
+document.querySelectorAll('.seg button').forEach(b=>{b.setAttribute('role','radio');b.setAttribute('aria-checked',b.getAttribute('aria-pressed'));});
+document.querySelectorAll('.restore').forEach(r=>r.addEventListener('click',()=>{const seg=r.closest('.crit').querySelector('.seg');pick(seg,seg.querySelector('.sug'));}));
+function updateApply(){const n=document.querySelectorAll('.check[aria-checked="true"]').length;const a=document.getElementById('applyBtn');a.textContent='Aplicar ('+n+')';a.disabled=n===0;}
+function updateScore(){
+  const grp=document.querySelector('[data-group="r1"]');
+  const pts=[...grp.querySelectorAll('.seg button[aria-pressed="true"] b')].map(b=>+b.textContent);
+  const s=pts.length? (pts.reduce((a,b)=>a+b,0)/(pts.length*4)*10):0;
+  document.querySelector('[data-score="r1"]').textContent='Nota '+s.toFixed(1).replace('.',',');
+}
+document.querySelectorAll('.tri').forEach(t=>t.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  t.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+}));
+document.querySelectorAll('.check').forEach(c=>c.addEventListener('click',()=>{
+  const v=c.getAttribute('aria-checked')!=='true'; c.setAttribute('aria-checked',v);
+  c.closest('.card').classList.toggle('selected',v);
+  updateApply();
+}));
+document.querySelectorAll('.status').forEach(s=>s.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  s.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+}));
+document.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>{
+  c.setAttribute('aria-pressed',c.getAttribute('aria-pressed')!=='true');
+}));
+const cb=document.getElementById('convertBtn');
+cb.addEventListener('click',()=>{
+  const box=document.getElementById('convert');
+  box.setAttribute('role','status');
+  box.innerHTML='<p><b>Convertida.</b> Se guardará la evaluación con 2 criterios y se conserva la observación.</p><button class="btn plain" type="button">Deshacer</button>';
+  box.closest('.card').querySelector('.kind').textContent='Evaluación + observación';
+  box.closest('.card').querySelector('.kind').classList.remove('obs');
+});
+document.querySelector('.skipped').addEventListener('click',e=>{
+  const b=e.currentTarget; const open=b.getAttribute('aria-expanded')==='true';
+  b.setAttribute('aria-expanded',!open);
+  b.lastElementChild.textContent=open?'Sin valorar ▸':'Valorar también ▾';
+});
+</script>

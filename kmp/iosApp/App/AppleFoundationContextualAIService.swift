@@ -831,6 +831,23 @@ enum AppleFoundationModelSupport {
         debugPrint("[AppleFoundationModels] runtime unavailable [\(failureKind), cooldown: \(Int(cooldown))s]: \(error.localizedDescription)")
     }
 
+    /// Fallos que dependen de una petición concreta y no de que el modelo esté caído.
+    static let requestScopedFailureKinds: Set<String> = [
+        "exceededContextWindowSize", "decodingFailure", "guardrailViolation",
+        "refusal", "unsupportedLanguageOrLocale", "concurrentRequests"
+    ]
+
+    /// Como `recordRuntimeFailure`, pero un fallo de la propia petición (texto demasiado largo, respuesta mal formada,
+    /// bloqueo de seguridad…) no pone la IA en pausa para las peticiones siguientes.
+    static func recordRequestFailure(_ error: Error) {
+        let failureKind = runtimeFailureKind(for: error)
+        guard !requestScopedFailureKinds.contains(failureKind) else {
+            debugPrint("[AppleFoundationModels] request failed [\(failureKind), sin pausa]: \(error.localizedDescription)")
+            return
+        }
+        recordRuntimeFailure(error)
+    }
+
     static func runtimeFailureKind(for error: Error) -> String {
         let description = "\(String(reflecting: error)) \(error.localizedDescription)".lowercased()
         let knownGenerationErrors: [(needle: String, label: String)] = [

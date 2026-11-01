@@ -1359,6 +1359,12 @@ insertTutoringSession:
 INSERT INTO student_tutoring_sessions(student_id, date_iso, channel, attendees, topics, agreements, review_due_iso, is_closed, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+-- Sync LAN: el acta llega del otro dispositivo con su id. La tabla no tiene hijas,
+-- asi que REPLACE es seguro.
+upsertTutoringSessionWithId:
+INSERT OR REPLACE INTO student_tutoring_sessions(id, student_id, date_iso, channel, attendees, topics, agreements, review_due_iso, is_closed, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
 -- Actualiza en el sitio los campos editables sin tocar created_at_epoch_ms:
 -- corregir el acta de una entrevista no debe reescribir cuando se registro.
 -- sync_version se incrementa siempre, para mantener la monotonia que usa la
@@ -1421,6 +1427,12 @@ insertMeeting:
 INSERT INTO meetings(title, date_iso, type, location, attendees, summary, is_closed, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+-- Sync LAN: la reunion llega del otro dispositivo con su id. OR IGNORE y luego
+-- updateMeeting, nunca REPLACE: REPLACE borra la fila y con ella (CASCADE) sus acuerdos.
+insertMeetingWithId:
+INSERT OR IGNORE INTO meetings(id, title, date_iso, type, location, attendees, summary, is_closed, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
 -- Actualiza en el sitio sin tocar created_at_epoch_ms e incrementando siempre
 -- sync_version, igual que updateTutoringSession: corregir el acta no debe
 -- reescribir cuando se creo la reunion.
@@ -1452,6 +1464,11 @@ insertMeetingAgreement:
 INSERT INTO meeting_agreements(meeting_id, description, responsible, due_iso, is_done, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+-- Sync LAN: el acuerdo llega del otro dispositivo con su id. No tiene hijas.
+upsertMeetingAgreementWithId:
+INSERT OR REPLACE INTO meeting_agreements(id, meeting_id, description, responsible, due_iso, is_done, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
 updateMeetingAgreement:
 UPDATE meeting_agreements
 SET description = ?, responsible = ?, due_iso = ?, is_done = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
@@ -1480,6 +1497,10 @@ selectWeekPlan:
 SELECT id, class_id, year, week, strategies, instruments, notes, updated_at_epoch_ms, device_id, sync_version
 FROM planner_week_plan
 WHERE class_id = ? AND year = ? AND week = ?;
+
+-- Sync LAN: claves de todos los planes semanales (se identifican por grupo, año y semana).
+selectAllWeekPlanKeys:
+SELECT class_id, year, week FROM planner_week_plan;
 
 insertWeekPlan:
 INSERT INTO planner_week_plan(class_id, year, week, strategies, instruments, notes, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
@@ -3054,6 +3075,11 @@ SELECT id, student_id, measure_id, template_key, title, phase, due_date_iso, due
 FROM inclusion_tasks
 WHERE id = ?;
 
+-- Sync LAN: todas las tareas del Manual de Inclusión, de todos los cursos.
+selectAllInclusionTasks:
+SELECT id, student_id, measure_id, template_key, title, phase, due_date_iso, due_is_custom, done_at_iso, notes, school_year, created_at, updated_at
+FROM inclusion_tasks;
+
 -- OR IGNORE + UNIQUE(student_id, template_key, school_year): regenerar es idempotente
 -- y nunca pisa lo que el docente ya marcó o editó.
 insertInclusionTemplateTaskIfAbsent:
@@ -3083,6 +3109,10 @@ SELECT changes();
 
 selectInclusionGroupInitialEval:
 SELECT initial_eval_date_iso FROM inclusion_group_settings WHERE class_id = ? AND school_year = ?;
+
+-- Sync LAN: fecha de evaluación inicial de cada grupo y curso.
+selectAllInclusionGroupSettings:
+SELECT class_id, school_year, initial_eval_date_iso FROM inclusion_group_settings;
 
 upsertInclusionGroupInitialEval:
 INSERT OR REPLACE INTO inclusion_group_settings(class_id, school_year, initial_eval_date_iso)

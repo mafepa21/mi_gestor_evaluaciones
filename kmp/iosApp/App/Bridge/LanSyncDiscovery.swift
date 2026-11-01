@@ -4,10 +4,29 @@ final class LanSyncDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDel
     private let browser = NetServiceBrowser()
     private var services: [NetService] = []
     var onPeersChanged: (([LanDiscoveredPeer]) -> Void)?
+    private(set) var lastRestartAt: Date = .distantPast
 
     func start() {
         browser.delegate = self
         browser.searchForServices(ofType: "_migestor-sync._tcp.", inDomain: "local.")
+    }
+
+    /// Vuelve a buscar desde cero. Tras un cambio de Wi-Fi o al volver de segundo plano
+    /// el navegador de Bonjour puede quedarse con resultados viejos o sin buscar.
+    func restart() {
+        lastRestartAt = Date()
+        browser.stop()
+        services.forEach { $0.stop() }
+        services.removeAll()
+        start()
+    }
+
+    /// iOS rechaza la búsqueda (p. ej. sin permiso de red local todavía): se reintenta.
+    func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
+        print("[Sync:debug] Bonjour no pudo buscar: \(errorDict)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            self?.restart()
+        }
     }
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {

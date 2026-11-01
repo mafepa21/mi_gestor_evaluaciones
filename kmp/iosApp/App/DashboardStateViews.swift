@@ -197,6 +197,9 @@ struct DashboardErrorBanner: View {
         .overlay(DashboardStyle.controlShape().strokeBorder(DashboardStyle.Tint.alert.opacity(0.6), lineWidth: 1))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sin conexión")
+        // Cabecera del aviso: el rotor de encabezados lleva a él y VoiceOver
+        // lo presenta como el estado de la pantalla, no como un texto más.
+        .accessibilityAddTraits([.isHeader, .isSummaryElement])
         .onAppear {
             AccessibilityNotification.Announcement("Sin conexión. Se muestran los últimos datos cargados.").post()
         }

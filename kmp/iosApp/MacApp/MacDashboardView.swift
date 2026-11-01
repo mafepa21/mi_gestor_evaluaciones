@@ -7,6 +7,7 @@ struct MacDashboardToolbarActions {
     let refresh: () -> Void
     let passList: () -> Void
     let observation: () -> Void
+    let courtVoice: () -> Void
     var snapshot: DashboardSnapshot? = nil
     var syncPill: DashboardSyncPill? = nil
 }
@@ -146,12 +147,18 @@ struct MacDashboardView: View {
             case .observation(let classId):
                 DashboardObservationSheet(bridge: bridge, initialClassId: classId)
                     .frame(minWidth: 520, minHeight: 460)
+            case .courtVoice(let classId):
+                CourtVoiceCaptureSheet(bridge: bridge, initialClassId: classId)
+                    .frame(minWidth: 640, minHeight: 600)
             }
         }
         .task {
             await backupStore.loadBackups()
         }
         .task {
+            await reloadDashboard()
+        }
+        .reloadOnLanSync(.dashboard) {
             await reloadDashboard()
         }
         .onAppear { scheduleToolbarActionsSync() }
@@ -346,6 +353,8 @@ struct MacDashboardView: View {
             onNavigate(.plannerAgenda)
         case .openJournal:
             onNavigate(.plannerSession(sessionId: activeContext?.sessionId?.int64Value))
+        case .courtVoice:
+            activeSheet = .courtVoice(classId: classId)
         }
     }
 
@@ -397,10 +406,11 @@ struct MacDashboardView: View {
     private func syncToolbarActions() {
         onToolbarActionsChange(
             MacDashboardToolbarActions(
-                canRunActions: activeContext?.classId != nil,
+                canRunActions: !dashboardStore.classes.isEmpty,
                 refresh: { retryLoad() },
-                passList: { onNavigate(.attendance(classId: activeContext?.classId?.int64Value)) },
-                observation: { activeSheet = .observation(classId: activeContext?.classId?.int64Value) },
+                passList: { onNavigate(.attendance(classId: activeClassId)) },
+                observation: { activeSheet = .observation(classId: activeClassId) },
+                courtVoice: { activeSheet = .courtVoice(classId: activeClassId) },
                 snapshot: snapshot,
                 syncPill: syncPill
             )
@@ -588,11 +598,13 @@ struct MacDashboardView: View {
 private enum DashboardSheet: Identifiable, Hashable {
     case quickEvaluation(classId: Int64?)
     case observation(classId: Int64?)
+    case courtVoice(classId: Int64?)
 
     var id: String {
         switch self {
         case .quickEvaluation(let classId): return "quick-\(classId ?? -1)"
         case .observation(let classId): return "observation-\(classId ?? -1)"
+        case .courtVoice(let classId): return "courtVoice-\(classId ?? -1)"
         }
     }
 }
@@ -667,7 +679,7 @@ private struct QuickEvaluationSheet: View {
                 attachRubric(rubricId)
                 showingRubricBuilder = false
             })
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
             .frame(minWidth: 1_120, idealWidth: 1_280, maxWidth: 1_600, minHeight: 720, idealHeight: 900)
         }
         .alert("No se pudo preparar la evaluación", isPresented: Binding(

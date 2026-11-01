@@ -3,206 +3,93 @@ import UniformTypeIdentifiers
 
 struct BackupCenterView: View {
     @StateObject private var service = AppleBackupService.shared
-    @Environment(\.colorScheme) private var colorScheme
 
-    var body: some View {
-        ZStack {
-            BackupBackdrop()
+    @State private var searchText = ""
+    @State private var backupForRestore: AppleBackupDescriptor?
+    @State private var backupToExport: AppleBackupDescriptor?
+    @State private var backupToDelete: AppleBackupDescriptor?
 
-            ScrollView {
-                backupWorkspaceContent
-                .padding(IOSAppStyle.pagePadding)
-            }
-        }
-        .navigationTitle("Copias de Seguridad")
-        .appInlineNavigationBarTitleDisplayMode()
-        .task {
-            await service.scanBackups()
-        }
-    }
-
-    @ViewBuilder
-    private var backupWorkspaceContent: some View {
-        ViewThatFits(in: .horizontal) {
-            regularBackupWorkspace
-            compactBackupWorkspace
-        }
-    }
-
-    private var regularBackupWorkspace: some View {
-        HStack(alignment: .top, spacing: 24) {
-            VStack(alignment: .leading, spacing: 16) {
-                backupHeader
-                errorBanner
-                BackupStatusHero(service: service)
-                BackupActionsBar(service: service)
-                BackupSecurityCard(service: service)
-            }
-            .frame(minWidth: 320, idealWidth: 344, maxWidth: 376, alignment: .topLeading)
-
-            VStack(alignment: .leading, spacing: 16) {
-                historyHeader
-                BackupHistoryList(service: service)
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
-        .frame(minWidth: 840, alignment: .topLeading)
-    }
-
-    private var compactBackupWorkspace: some View {
-        VStack(alignment: .leading, spacing: IOSAppStyle.sectionSpacing) {
-            backupHeader
-            errorBanner
-            BackupStatusHero(service: service)
-            BackupActionsBar(service: service)
-            BackupSecurityCard(service: service)
-
-            VStack(alignment: .leading, spacing: 16) {
-                historyHeader
-                BackupHistoryList(service: service)
-            }
-        }
-    }
-
-    private var backupHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("MÓDULO DE SEGURIDAD")
-                .font(IOSAppStyle.captionText)
-                .tracking(1.2)
-                .foregroundStyle(IOSAppStyle.info)
-
-            Text("Copias de Seguridad")
-                .font(IOSAppStyle.pageTitle)
-                .foregroundStyle(.primary)
-
-            Text("Protege, valida y restaura tus datos locales de forma segura.")
-                .font(IOSAppStyle.bodyText)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private var errorBanner: some View {
-        if let error = service.lastError {
-            HStack(spacing: 16) {
-                Image(systemName: "exclamationmark.octagon.fill")
-                    .foregroundStyle(IOSAppStyle.danger)
-                    .font(.title3)
-
-                Text(error)
-                    .font(IOSAppStyle.bodyText)
-                    .foregroundStyle(.primary)
-
-                Spacer()
-
-                Button(action: { service.lastError = nil }) {
-                    Image(systemName: "xmark.circle")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Cerrar aviso de error")
-            }
-            .padding(16)
-            .background(
-                IOSAppStyle.danger.opacity(0.08),
-                in: RoundedRectangle(cornerRadius: IOSAppStyle.controlRadius)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: IOSAppStyle.controlRadius)
-                    .stroke(IOSAppStyle.danger.opacity(0.18), lineWidth: 1)
-            )
-        }
-    }
-
-    private var historyHeader: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Copias Guardadas")
-                    .font(IOSAppStyle.sectionTitle)
-
-                Text("Valida, exporta o restaura desde el historial local.")
-                    .font(IOSAppStyle.captionText)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            if service.operationState == .scanning {
-                ProgressView()
-                    .controlSize(.small)
-            }
-        }
-    }
-}
-
-// MARK: - Quick Actions Bar
-
-struct BackupActionsBar: View {
-    @ObservedObject var service: AppleBackupService
     @State private var showCreateSheet = false
     @State private var backupNote = ""
+
     @State private var showImportPicker = false
     @State private var importSelection: ApplePortableBackupImportSelection?
     @State private var importError: String?
 
+    private var filteredBackups: [AppleBackupDescriptor] {
+        service.backups.filter { $0.matches(search: searchText) }
+    }
+
+    private var isBusy: Bool {
+        switch service.operationState {
+        case .creating, .importing, .verifying, .restoring: return true
+        default: return false
+        }
+    }
+
+    private var isInitialScan: Bool {
+        service.operationState == .scanning && service.backups.isEmpty
+    }
+
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                // Crear — siempre disponible
-                BackupActionChip(
-                    label: service.operationState == .creating ? "Creando…" : "Crear copia",
-                    systemImage: "plus.shield.fill",
-                    tint: IOSAppStyle.info,
-                    style: .primary,
-                    isLoading: service.operationState == .creating
-                ) {
-                    backupNote = ""
-                    showCreateSheet = true
-                }
-                .disabled(service.operationState == .creating)
+        List {
+            if let error = service.lastError {
+                Section { errorRow(error) }
+            }
 
-                BackupActionChip(
-                    label: service.operationState == .importing ? "Importando…" : "Importar copia",
-                    systemImage: "square.and.arrow.down",
-                    tint: IOSAppStyle.info,
-                    style: .secondary,
-                    isLoading: service.operationState == .importing
-                ) {
-                    showImportPicker = true
+            if !service.backups.isEmpty {
+                Section {
+                    BackupStatusSummary(service: service, detailOverride: summaryDetail)
                 }
-                .disabled(service.operationState == .importing)
+            }
 
-                // Verificar todo
-                BackupActionChip(
-                    label: service.operationState == .verifying ? "Verificando…" : "Verificar todo",
-                    systemImage: "shield.checkerboard",
-                    tint: IOSAppStyle.success,
-                    style: .secondary,
-                    isLoading: service.operationState == .verifying
-                ) {
-                    Task {
-                        for backup in service.backups {
-                            _ = await service.verifyBackup(backup)
+            if isInitialScan {
+                Section("Hoy") {
+                    ForEach(0..<3, id: \.self) { _ in BackupPlaceholderRow() }
+                }
+            } else {
+                let groups = BackupDayGroup.groups(from: filteredBackups)
+                ForEach(groups) { group in
+                    Section {
+                        ForEach(group.backups) { backup in
+                            BackupRowView(
+                                backup: backup,
+                                onOpen: { backupForRestore = backup },
+                                onVerify: { Task { _ = await service.verifyBackup(backup) } },
+                                onExport: { backupToExport = backup },
+                                onDelete: { backupToDelete = backup }
+                            )
+                        }
+                    } header: {
+                        Text(group.title)
+                    } footer: {
+                        if group.id == groups.first?.id {
+                            Text("Pulsa una copia para ver qué contiene antes de restaurarla.")
                         }
                     }
                 }
-                .disabled(service.backups.isEmpty || service.operationState == .verifying)
-
-                // Escanear
-                BackupActionChip(
-                    label: "Actualizar lista",
-                    systemImage: "arrow.clockwise",
-                    tint: .secondary,
-                    style: .ghost
-                ) {
-                    Task { await service.scanBackups() }
-                }
             }
         }
+        .backupCenterListStyle()
+        .overlay { emptyState }
+        .searchable(text: $searchText, prompt: "Buscar copias")
+        .refreshable { await service.scanBackups() }
+        .navigationTitle("Copias de seguridad")
+        .appInlineNavigationBarTitleDisplayMode()
+        .toolbar { toolbarContent }
+        .task { await service.scanBackups() }
         .sheet(isPresented: $showCreateSheet) {
             CreateBackupSheet(isPresented: $showCreateSheet, note: $backupNote) {
                 let finalNote = backupNote.trimmingCharacters(in: .whitespacesAndNewlines)
                 _ = try await service.createBackup(note: finalNote.isEmpty ? nil : finalNote)
+            }
+        }
+        .sheet(item: $backupForRestore) { backup in
+            BackupRestorePreviewSheet(service: service, backup: backup)
+        }
+        .sheet(item: $backupToExport) { backup in
+            EncryptedBackupExportSheet(backup: backup) { destinationURL, password in
+                try await service.exportEncryptedBackup(backup, to: destinationURL, password: password)
             }
         }
         .sheet(item: $importSelection) { selection in
@@ -236,158 +123,139 @@ struct BackupActionsBar: View {
         } message: {
             Text(importError ?? "Error desconocido")
         }
+        .confirmationDialog(
+            deleteTitle,
+            isPresented: Binding(
+                get: { backupToDelete != nil },
+                set: { if !$0 { backupToDelete = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: backupToDelete
+        ) { backup in
+            Button("Eliminar", role: .destructive) {
+                Task { try? await service.deleteBackup(backup) }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: { backup in
+            Text("\(backup.sizeText). No se puede deshacer.")
+        }
     }
-}
 
-// MARK: - Action Chip
+    // MARK: - Toolbar
 
-private enum BackupChipStyle { case primary, secondary, ghost }
-
-private struct BackupActionChip: View {
-    let label: String
-    let systemImage: String
-    let tint: Color
-    var style: BackupChipStyle = .secondary
-    var isLoading: Bool = false
-    var action: (() -> Void)?
-
-    var body: some View {
-        Button {
-            action?()
-        } label: {
-            HStack(spacing: 8) {
-                if isLoading {
-                    ProgressView()
-                        .controlSize(.mini)
-                        .tint(style == .primary ? .white : tint)
-                } else {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 13, weight: .semibold))
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Menu {
+                Button {
+                    Task {
+                        for backup in service.backups {
+                            _ = await service.verifyBackup(backup)
+                        }
+                    }
+                } label: {
+                    Label("Validar todas", systemImage: "checkmark.shield")
                 }
-                Text(label)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .disabled(service.backups.isEmpty || isBusy)
+
+                Button {
+                    Task { await service.scanBackups() }
+                } label: {
+                    Label("Actualizar lista", systemImage: "arrow.clockwise")
+                }
+            } label: {
+                Label("Más", systemImage: "ellipsis.circle")
             }
-            .foregroundStyle(style == .primary ? .white : tint)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background {
-                RoundedRectangle(cornerRadius: IOSAppStyle.controlRadius, style: .continuous)
-                    .fill(style == .primary
-                          ? tint
-                          : (style == .secondary ? tint.opacity(0.12) : IOSAppStyle.subtleFill))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: IOSAppStyle.controlRadius, style: .continuous)
-                            .stroke(tint.opacity(style == .ghost ? 0.1 : 0.2), lineWidth: 1)
-                    )
-                    .shadow(
-                        color: (style == .primary ? tint : Color.clear).opacity(0.25),
-                        radius: 8, x: 0, y: 4
-                    )
+
+            Button {
+                showImportPicker = true
+            } label: {
+                Label("Importar copia", systemImage: "square.and.arrow.down")
             }
+            .disabled(isBusy)
+            .help("Importar copia")
+
+            Button {
+                backupNote = ""
+                showCreateSheet = true
+            } label: {
+                Label("Crear copia", systemImage: "plus")
+            }
+            .disabled(isBusy)
+            .help("Crear copia")
         }
-        .buttonStyle(.plain)
+    }
+
+    // MARK: - Partes
+
+    private var summaryDetail: String {
+        let total = service.backups.reduce(Int64(0)) { $0 + $1.sizeBytes }
+        let size = ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        let count = service.backups.count
+        var text = "\(count) \(count == 1 ? "copia" : "copias") · \(size) en este dispositivo"
+        let validated = service.backups.filter(\.isValidated).count
+        if validated > 0 {
+            text += " · \(validated) \(validated == 1 ? "validada" : "validadas")"
+        }
+        return text
+    }
+
+    private var deleteTitle: String {
+        guard let backup = backupToDelete else { return "¿Eliminar esta copia?" }
+        return "¿Eliminar la copia del \(backup.longDateText)?"
+    }
+
+    private func errorRow(_ error: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+                .accessibilityHidden(true)
+            Text(error)
+                .font(.subheadline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Reintentar") {
+                service.lastError = nil
+                Task { await service.scanBackups() }
+            }
+            Button {
+                service.lastError = nil
+            } label: {
+                Label("Cerrar aviso", systemImage: "xmark")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderless)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var emptyState: some View {
+        if service.backups.isEmpty && !isInitialScan && service.lastError == nil {
+            ContentUnavailableView {
+                Label("Aún no hay copias", systemImage: "externaldrive")
+            } description: {
+                Text("Crea la primera para proteger tu cuaderno, alumnado y rúbricas.")
+            } actions: {
+                Button("Crear copia") {
+                    backupNote = ""
+                    showCreateSheet = true
+                }
+                .buttonStyle(.borderedProminent)
+                Button("Importar…") { showImportPicker = true }
+            }
+        } else if !service.backups.isEmpty && filteredBackups.isEmpty {
+            ContentUnavailableView.search(text: searchText)
+        }
     }
 }
 
-// MARK: - Security Card
-
-struct BackupSecurityCard: View {
-    @ObservedObject var service: AppleBackupService
-
-    private var totalSizeText: String {
-        let total = service.backups.reduce(0) { $0 + $1.sizeBytes }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
-    }
-
-    private var verifiedCount: Int {
-        service.backups.filter { $0.isVerified && $0.verificationError == nil }.count
-    }
-
-    var body: some View {
-        PremiumCard.section(title: "Estado de seguridad", systemImage: "lock.shield.fill") {
-            LazyVGrid(
-                columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
-                spacing: 16
-            ) {
-                SecurityMetric(
-                    title: "Copias",
-                    value: "\(service.backups.count)",
-                    systemImage: "archivebox.fill",
-                    tint: IOSAppStyle.info
-                )
-                SecurityMetric(
-                    title: "Verificadas",
-                    value: "\(verifiedCount)",
-                    systemImage: "checkmark.shield.fill",
-                    tint: IOSAppStyle.success
-                )
-                SecurityMetric(
-                    title: "Tamaño total",
-                    value: totalSizeText,
-                    systemImage: "internaldrive.fill",
-                    tint: .purple
-                )
-            }
-        }
-    }
-}
-
-private struct SecurityMetric: View {
-    let title: String
-    let value: String
-    let systemImage: String
-    let tint: Color
-
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(tint)
-            Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
-            Text(title.uppercased())
-                .font(.system(size: 9, weight: .bold))
-                .tracking(0.5)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .background(tint.opacity(0.07), in: RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous))
-    }
-}
-
-// MARK: - Backdrop (unchanged)
-
-struct BackupBackdrop: View {
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        ZStack {
-            IOSAppStyle.pageBackground
-
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [IOSAppStyle.info.opacity(colorScheme == .dark ? 0.08 : 0.04), .clear],
-                        center: .center, startRadius: 0, endRadius: 260
-                    )
-                )
-                .frame(width: 460, height: 460)
-                .offset(x: -180, y: -220)
-                .blur(radius: 40)
-
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [Color.blue.opacity(colorScheme == .dark ? 0.06 : 0.03), .clear],
-                        center: .center, startRadius: 0, endRadius: 220
-                    )
-                )
-                .frame(width: 380, height: 380)
-                .offset(x: 180, y: 260)
-                .blur(radius: 50)
-        }
-        .ignoresSafeArea()
+private extension View {
+    @ViewBuilder
+    func backupCenterListStyle() -> some View {
+        #if os(macOS)
+        self.listStyle(.inset)
+        #else
+        self.listStyle(.insetGrouped)
+        #endif
     }
 }

@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Junta de evaluación</title>
+<style>
+/* Tokens de la app. Contraste AA medido (mismos valores que la maqueta de Revisar cierre). */
+:root{--bg:#f2f2f7;--card:#fff;--fill:#f2f2f7;--fg:#1c1c1e;--mut:#5c5c61;--line:#e5e5ea;--acc:#0062c4;--accfg:#fff;--ok:#1a6b2e;--okbg:#e3f7e8;--warn:#7a4300;--warnbg:#fff3dc;--err:#b8000f;--errbg:#ffe9eb;--side:#ececf0;--sel:#dcdce2;--focus:#0062c4;--paper:#fff}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#000;--card:#1c1c1e;--fill:#2c2c2e;--fg:#f2f2f7;--mut:#a5a5aa;--line:#38383a;--acc:#4da3ff;--accfg:#000;--ok:#30d158;--okbg:#0f2e17;--warn:#ffb340;--warnbg:#3a2c00;--err:#ff6961;--errbg:#3b1210;--side:#161618;--sel:#3a3a3c;--focus:#4da3ff;--paper:#2c2c2e}}
+:root[data-theme="dark"]{--bg:#000;--card:#1c1c1e;--fill:#2c2c2e;--fg:#f2f2f7;--mut:#a5a5aa;--line:#38383a;--acc:#4da3ff;--accfg:#000;--ok:#30d158;--okbg:#0f2e17;--warn:#ffb340;--warnbg:#3a2c00;--err:#ff6961;--errbg:#3b1210;--side:#161618;--sel:#3a3a3c;--focus:#4da3ff;--paper:#2c2c2e}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.4 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header.top{padding:32px 16px 8px;max-width:1280px;margin:auto}
+header.top h1{margin:0;font-size:28px}header.top p{margin:8px 0 0;color:var(--mut);max-width:800px}
+.tools{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+h2.part{max-width:1280px;margin:48px auto 0;padding:0 16px;font-size:20px}
+p.partnote{max-width:1280px;margin:4px auto 0;padding:0 16px;color:var(--mut)}
+.wrap{max-width:1280px;margin:auto;padding:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(400px,100%),1fr));gap:24px;padding:16px;max-width:1280px;margin:auto}
+.state>h3{margin:0 0 4px;font-size:12px;letter-spacing:.06em;color:var(--mut);text-transform:uppercase}
+.state>.note{margin:0 0 8px;font-size:13px;color:var(--mut)}
+
+/* Ventana Mac / iPad */
+.win{display:grid;grid-template-columns:224px 1fr;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--bg);min-height:720px}
+@media(max-width:860px){.win{grid-template-columns:1fr}.side{display:none}}
+.side{background:var(--side);padding:16px 8px;font-size:13px}
+.side .sec{color:var(--mut);font-size:11px;font-weight:600;padding:16px 8px 4px}
+.side .it{display:flex;gap:8px;align-items:center;padding:8px;border-radius:8px}
+.side .it.on{background:var(--sel);font-weight:600}
+.main{padding:24px;min-width:0}
+.head{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+.head h4{margin:0;font-size:24px}
+.head .sub{color:var(--mut);margin-top:4px}
+.head .acts{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+.btn{min-height:44px;padding:0 20px;border-radius:12px;border:0;font:inherit;font-weight:600;cursor:pointer;background:var(--fill);color:var(--fg)}
+.btn.card{background:var(--card)}
+.btn.p{background:var(--acc);color:var(--accfg)}
+.btn.sm{min-height:36px;padding:0 12px;font-size:13px}
+.lnk{background:none;border:0;color:var(--acc);font:inherit;min-height:44px;padding:0 8px;cursor:pointer;border-radius:8px}
+.lnk.b{font-weight:600}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+/* Resumen */
+.summary{display:grid;grid-template-columns:minmax(220px,1fr) 2fr;gap:16px;background:var(--card);border-radius:16px;padding:24px;margin-bottom:24px}
+@media(max-width:700px){.summary{grid-template-columns:1fr}}
+.big{font-size:40px;font-weight:700;line-height:1}
+.big small{font-size:20px;font-weight:600;color:var(--mut)}
+.bigl{color:var(--mut);margin-top:8px}
+.dist{display:flex;flex-direction:column;gap:8px;justify-content:center}
+.bar{display:flex;height:16px;border-radius:8px;overflow:hidden;background:var(--fill)}
+.bar span{display:block;height:100%}
+.b0{background:var(--ok)}.b1{background:var(--warn)}.b3{background:var(--err)}
+.legend{display:flex;gap:24px;flex-wrap:wrap;font-size:13px}
+.legend b{font-size:17px;margin-right:4px}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:4px;margin-right:8px;vertical-align:middle}
+.mine{font-size:13px;color:var(--mut)}
+
+/* Filtros */
+.filters{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.seg{display:inline-flex;background:var(--line);border-radius:8px;padding:2px}
+.seg button{border:0;background:none;color:var(--fg);font:inherit;font-size:13px;padding:0 16px;border-radius:6px;min-height:44px;cursor:pointer}
+.seg button.on{background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.15);font-weight:600}
+.filters .count{margin-left:auto;color:var(--mut);font-size:13px}
+
+/* Tabla de alumnos */
+.tbl{background:var(--card);border-radius:16px;overflow:hidden}
+.tblscroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th,td{padding:8px 16px;border-bottom:1px solid var(--line);text-align:left;height:64px;vertical-align:middle}
+th{font-size:12px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.04em;height:40px}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.row{cursor:pointer}
+tr.row:focus-visible{outline:3px solid var(--focus);outline-offset:-3px}
+.subl{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;align-items:center}
+tr.row:hover td{background:var(--fill)}
+tr.row.sel td{background:var(--sel)}
+.name{font-weight:600}
+.fail{font-size:13px;color:var(--mut)}
+.chip{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;padding:4px 8px;border-radius:8px;background:var(--fill);color:var(--mut);white-space:nowrap}
+.chip.inc{background:var(--warnbg);color:var(--warn)}
+.step{display:inline-flex;align-items:center;gap:0;border:1px solid var(--mut);border-radius:8px;overflow:hidden}
+.step button{width:44px;height:44px;border:0;background:var(--fill);color:var(--fg);font:inherit;font-size:17px;cursor:pointer}
+.step output{min-width:32px;text-align:center;font-weight:600;font-variant-numeric:tabular-nums}
+.tot{display:inline-block;min-width:32px;text-align:center;font-weight:700;border-radius:8px;padding:4px 8px}
+.t0{background:var(--okbg);color:var(--ok)}.t1{background:var(--warnbg);color:var(--warn)}.t3{background:var(--errbg);color:var(--err)}
+.agr{color:var(--mut);font-size:13px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chk{width:24px;height:24px;border-radius:12px;border:2px solid var(--mut);display:inline-grid;place-items:center;background:none;cursor:pointer;color:var(--accfg);padding:0}
+.chk.on{background:var(--acc);border-color:var(--acc)}
+.chkwrap{display:inline-grid;place-items:center;width:44px;height:44px;border:0;background:none;cursor:pointer;padding:0}
+
+/* Acuerdos generales */
+.general{background:var(--card);border-radius:16px;padding:24px;margin-top:24px}
+.general h5{margin:0 0 8px;font-size:17px}
+textarea{width:100%;min-height:96px;border:1px solid var(--line);border-radius:12px;padding:12px 16px;font:inherit;background:var(--bg);color:var(--fg);resize:vertical}
+
+/* Panel de alumno */
+.split{display:grid;grid-template-columns:1fr 360px;gap:24px}
+@media(max-width:1100px){.split{grid-template-columns:1fr}}
+.panel{background:var(--card);border-radius:16px;padding:24px;align-self:start}
+.panel h5{margin:0;font-size:20px}
+.panel .sub{color:var(--mut);margin:4px 0 24px}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:24px}
+.fact{background:var(--fill);border-radius:12px;padding:16px}
+.fact .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.fact .l{font-size:12px;color:var(--mut)}
+.field{margin-bottom:24px}
+.field label{display:block;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;font-weight:600;margin:0 0 8px}
+.row2{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:44px}
+.hint{font-size:13px;color:var(--mut);margin:8px 0 0}
+
+/* Banners y estados */
+.banner{display:flex;gap:16px;align-items:center;padding:16px;border-radius:12px;margin-bottom:24px;background:var(--fill)}
+.banner .t{font-weight:600}.banner .s{font-size:13px;color:var(--mut)}
+.banner .btn{margin-left:auto}
+.banner.err{background:var(--errbg);color:var(--err)}
+.banner.err .s{color:var(--err)}
+.center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:64px 24px;gap:8px;min-height:480px}
+.center .ic{font-size:48px;line-height:1;margin-bottom:8px;color:var(--mut)}
+.center .t{font-size:22px;font-weight:600;margin:0}
+.center .s{color:var(--mut);max-width:400px;margin:0}
+.center .btn{margin-top:16px}
+.sk{background:var(--card);border-radius:12px;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.5}}
+@media(prefers-reduced-motion:reduce){.sk{animation:none}}
+.ro .step button{display:none}
+.ro .chkwrap{cursor:default}
+
+/* Hoja crear junta */
+.sheet{width:min(520px,100%);background:var(--card);border-radius:16px;border:1px solid var(--line);margin:auto}
+.bar2{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:16px 16px 8px}
+.bar2 .ttl{font-weight:600;text-align:center}
+.bar2 .rr{justify-self:end}
+.sbody{padding:8px 24px 24px}
+.group{background:var(--fill);border-radius:12px;overflow:hidden;margin-bottom:24px}
+.group .f{display:flex;align-items:center;gap:16px;padding:0 16px;min-height:48px}
+.group .f+.f{border-top:1px solid var(--line)}
+.group .f label{flex:none;min-width:112px}
+.group .f input,.group .f select{margin-left:auto;text-align:right;border:0;background:none;color:var(--fg);font:inherit;min-height:44px;width:100%}
+.glabel{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin:0 0 8px 16px;font-weight:600}
+
+/* Acta */
+.paper{background:var(--paper);color:var(--fg);max-width:640px;margin:auto;border-radius:8px;border:1px solid var(--line);padding:48px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.08)}
+.paper h6{font-size:20px;margin:0}
+.paper .meta{color:var(--mut);margin:8px 0 24px}
+.paper h7{display:block;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.04em;margin:24px 0 8px}
+.paper table{min-width:0;font-size:12px}
+.paper th,.paper td{height:auto;padding:6px 8px}
+.paper .sign{display:flex;justify-content:space-between;margin-top:48px;color:var(--mut)}
+
+/* iPhone */
+.phone{width:min(390px,100%);margin:auto;border-radius:32px;border:8px solid var(--fg);overflow:hidden;background:var(--bg);min-height:760px}
+.pnav{padding:16px 16px 8px;background:var(--bg)}
+.pnav .tt{font-size:28px;font-weight:700}
+.pnav .ss{color:var(--mut);font-size:13px}
+.pcard{background:var(--card);border-radius:12px;margin:0 16px 8px;padding:16px}
+.pcard .r1{display:flex;align-items:center;gap:8px}
+.pcard .r2{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;color:var(--mut);flex-wrap:wrap}
+.pcard .r2 .step{margin-left:auto}
+
+/* Notas */
+.spec ul{background:var(--card);border-radius:12px;padding:16px 16px 16px 40px;margin:0}
+.spec li{margin:8px 0}
+code{font:13px ui-monospace,Menlo,monospace}
+</style></head>
+<body>
+<header class="top">
+  <h1>Junta de evaluación</h1>
+  <p>Pantalla para preparar la junta de un grupo y salir con el acta hecha. Tus medias, faltas, inclusión e incidencias salen solas; las suspensas de otras materias se apuntan a mano. Nombres de prueba, ningún alumno real.</p>
+  <div class="tools"><button class="btn card" onclick="toggleTheme()">Cambiar claro / oscuro</button></div>
+</header>
+
+<!-- ============ A. JUNTA ABIERTA ============ -->
+<h2 class="part">A · Junta abierta (pantalla principal)</h2>
+<p class="partnote">Mac e iPad. Una sola acción principal: «Cerrar junta». Toca + / − en «Otras» y mira cómo cambia el resumen. Pulsa una fila para ver el panel del alumno (estado B).</p>
+<div class="wrap">
+  <div class="win" id="winA">
+    <nav class="side" aria-label="Barra lateral">
+      <div class="sec">HOY</div><div class="it">☀︎ Hoy</div>
+      <div class="sec">EVALUACIÓN</div>
+      <div class="it">▦ Cuaderno</div><div class="it">◎ Rúbricas</div><div class="it">✓ Asistencia</div>
+      <div class="it on">◫ Juntas</div>
+      <div class="it">♡ Inclusión</div>
+      <div class="sec">PLANIFICACIÓN</div><div class="it">▤ Planificación</div>
+    </nav>
+    <main class="main">
+      <div class="head">
+        <div><h4>1ª evaluación · 2º ESO B</h4><div class="sub">15 de diciembre · Educación Física · 8 alumnos</div></div>
+        <div class="acts"><button class="btn card">Acta</button><button class="btn p" onclick="closeJunta()">Cerrar junta</button></div>
+      </div>
+
+      <section class="summary" aria-label="Resumen del grupo">
+        <div><div class="big" id="sumBig">5 <small>de 8</small></div><div class="bigl">aprueban todo</div></div>
+        <div class="dist">
+          <div class="bar" id="sumBar" aria-hidden="true"></div>
+          <div class="legend" id="sumLegend"></div>
+          <div class="mine">En Educación Física aprueban 7 de 8.</div>
+        </div>
+      </section>
+
+      <div class="filters">
+        <div class="seg" role="group" aria-label="Filtro">
+          <button class="on" aria-pressed="true" onclick="setFilter('all',this)">Todos</button>
+          <button aria-pressed="false" onclick="setFilter('fail',this)">Con suspensas</button>
+          <button aria-pressed="false" onclick="setFilter('todo',this)">Sin revisar</button>
+        </div>
+        <span class="count" id="revCount"></span>
+      </div>
+
+      <div class="tbl"><div class="tblscroll">
+        <table aria-label="Alumnado">
+          <thead><tr><th>Alumno</th><th class="num">Mi media</th><th class="num">Faltas</th><th>Otras materias</th><th>Total</th><th>Revisado</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div></div>
+
+      <section class="general">
+        <h5>Acuerdos generales del grupo</h5>
+        <textarea aria-label="Acuerdos generales">Reforzar hábitos de estudio en la tutoría de enero. Revisar la ubicación en el aula.</textarea>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- ============ B. ALUMNO ABIERTO ============ -->
+<h2 class="part">B · Alumno abierto</h2>
+<p class="partnote">Panel a la derecha en Mac e iPad (en iPhone, hoja). Datos del alumno arriba, lo editable debajo. Flechas ↑ ↓ para pasar al siguiente sin cerrar.</p>
+<div class="wrap">
+  <div class="split">
+    <div class="tbl"><div class="tblscroll"><table><thead><tr><th>Alumno</th><th class="num">Mi media</th><th>Total</th><th>Revisado</th></tr></thead>
+      <tbody><tr class="row"><td class="name">Ana López</td><td class="num">6,8</td><td><span class="tot t0">0</span></td><td>✓</td></tr>
+      <tr class="row sel"><td class="name">Luis Gil</td><td class="num">4,2</td><td><span class="tot t3">3</span></td><td></td></tr>
+      <tr class="row"><td class="name">Lucía Mora</td><td class="num">7,5</td><td><span class="tot t1">1</span></td><td></td></tr></tbody></table></div></div>
+    <aside class="panel" aria-label="Luis Gil">
+      <h5>Luis Gil</h5>
+      <div class="sub">2 de 8 · Medida de nivel III</div>
+      <div class="facts">
+        <div class="fact"><div class="v">4,2</div><div class="l">Mi media · suspensa</div></div>
+        <div class="fact"><div class="v">12 %</div><div class="l">Faltas (9 sesiones)</div></div>
+        <div class="fact"><div class="v">2</div><div class="l">Incidencias</div></div>
+        <div class="fact"><div class="v">3</div><div class="l">Suspensas en total</div></div>
+      </div>
+      <div class="field">
+        <label>Otras materias</label>
+        <div class="row2"><span>Suspensas en otras materias</span><span class="step"><button aria-label="Quitar una">−</button><output>2</output><button aria-label="Añadir una">+</button></span></div>
+      </div>
+      <div class="field">
+        <label for="agrB">Acuerdo</label>
+        <textarea id="agrB">Plan de refuerzo en Matemáticas. Llamar a la familia antes de Navidad.</textarea>
+        <p class="hint">Sale en el acta. Escribe solo lo acordado, sin datos médicos.</p>
+      </div>
+      <div class="row2"><span>Revisado</span><button class="btn">Marcar y siguiente ↓</button></div>
+    </aside>
+  </div>
+</div>
+
+<!-- ============ C..H ESTADOS ============ -->
+<h2 class="part">C · Otros estados</h2>
+<div class="grid">
+
+  <div class="state">
+    <h3>C · Sin juntas</h3>
+    <p class="note">Primera vez en el grupo. Un mensaje y un botón.</p>
+    <div class="tbl"><div class="center">
+      <div class="ic" aria-hidden="true">◫</div>
+      <p class="t">Aún no hay juntas</p>
+      <p class="s">Crea la junta de este grupo. Tus medias, faltas e inclusión ya estarán dentro.</p>
+      <button class="btn p">Nueva junta</button>
+    </div></div>
+  </div>
+
+  <div class="state">
+    <h3>D · Nueva junta</h3>
+    <p class="note">Hoja corta. La evaluación sale de tu calendario si existe.</p>
+    <div class="sheet" role="dialog" aria-label="Nueva junta">
+      <div class="bar2"><button class="lnk">Cancelar</button><span class="ttl">Nueva junta</span><button class="lnk b rr">Crear</button></div>
+      <div class="sbody">
+        <div class="group">
+          <div class="f"><label>Grupo</label><select><option>2º ESO B</option></select></div>
+          <div class="f"><label>Evaluación</label><select><option>1ª evaluación</option><option>2ª evaluación</option><option>3ª evaluación</option><option>Final</option></select></div>
+          <div class="f"><label>Fecha</label><input type="date" value="2026-12-15"></div>
+        </div>
+        <div class="glabel">Asistentes</div>
+        <div class="group"><div class="f"><input style="text-align:left" placeholder="Equipo docente de 2º ESO B" aria-label="Asistentes"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="state">
+    <h3>E · Cargando</h3>
+    <p class="note">Solo si tarda más de medio segundo. Con la forma del resultado.</p>
+    <div class="tbl" style="padding:24px" aria-busy="true">
+      <p class="mine" role="status" style="margin:0 0 16px">Preparando la junta…</p>
+      <div class="sk" style="height:104px;margin-bottom:24px;background:var(--fill)"></div>
+      <div class="sk" style="height:40px;width:304px;margin-bottom:16px;background:var(--fill)"></div>
+      <div class="sk" style="height:56px;margin-bottom:8px;background:var(--fill)"></div>
+      <div class="sk" style="height:56px;margin-bottom:8px;background:var(--fill)"></div>
+      <div class="sk" style="height:56px;background:var(--fill)"></div>
+    </div>
+  </div>
+
+  <div class="state">
+    <h3>F · Error al cargar</h3>
+    <p class="note">Lo apuntado no se pierde. Una sola acción.</p>
+    <div class="tbl"><div class="center" role="alert">
+      <div class="ic" style="color:var(--err)" aria-hidden="true">!</div>
+      <p class="t">No se pudo abrir la junta</p>
+      <p class="s">Lo que ya apuntaste está guardado. Prueba otra vez.</p>
+      <button class="btn p">Reintentar</button>
+    </div></div>
+  </div>
+
+  <div class="state" id="stateG">
+    <h3>G · Cerrar junta</h3>
+    <p class="note">Confirmación antes de congelar. Dice qué pasa y avisa si falta revisar.</p>
+    <div class="sheet" role="alertdialog" aria-label="Cerrar junta" style="padding:24px;text-align:center">
+      <p style="font-weight:600;font-size:17px;margin:0 0 8px">¿Cerrar la junta?</p>
+      <p style="color:var(--mut);margin:0 0 8px">Se guardan las medias y las faltas de hoy. El acta usará esos datos aunque luego cambies notas.</p>
+      <p style="color:var(--warn);margin:0 0 24px;font-size:13px">Quedan 3 alumnos sin revisar.</p>
+      <div style="display:flex;gap:8px"><button class="btn" style="flex:1">Seguir revisando</button><button class="btn p" style="flex:1">Cerrar junta</button></div>
+    </div>
+  </div>
+
+  <div class="state">
+    <h3>Lista de juntas del grupo</h3>
+    <p class="note">Al entrar en «Juntas»: las del grupo, la abierta arriba.</p>
+    <div class="tbl">
+      <table style="min-width:0"><tbody>
+        <tr class="row"><td><div class="name">1ª evaluación</div><div class="fail">15 dic · abierta · 5 de 8 revisados</div></td><td class="num">›</td></tr>
+        <tr class="row"><td><div class="name">Evaluación inicial</div><div class="fail">14 oct · cerrada</div></td><td class="num">›</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- ============ H. CERRADA ============ -->
+<h2 class="part">H · Junta cerrada</h2>
+<p class="partnote">Solo lectura. Un aviso arriba y el acta como acción principal. «Reabrir» queda en el menú «Más».</p>
+<div class="wrap">
+  <div class="tbl ro" style="padding:24px">
+    <div class="banner"><span aria-hidden="true">🔒</span><div><div class="t">Cerrada el 15 de diciembre</div><div class="s">El acta usa las medias y faltas de ese día.</div></div><button class="btn p">Ver acta</button></div>
+    <div class="tblscroll"><table><thead><tr><th>Alumno</th><th class="num">Media (15 dic)</th><th class="num">Faltas</th><th>Otras</th><th>Total</th><th>Acuerdo</th></tr></thead>
+    <tbody>
+      <tr><td class="name">Ana López</td><td class="num">6,8</td><td class="num">3 %</td><td><output>0</output></td><td><span class="tot t0">0</span></td><td class="agr">Sin acuerdos</td></tr>
+      <tr><td class="name">Luis Gil</td><td class="num">4,2</td><td class="num">12 %</td><td><output>2</output></td><td><span class="tot t3">3</span></td><td class="agr">Plan de refuerzo en Matemáticas. Llamar a la familia…</td></tr>
+    </tbody></table></div>
+  </div>
+</div>
+
+<!-- ============ I. ACTA ============ -->
+<h2 class="part">I · Acta en PDF (vista previa)</h2>
+<p class="partnote">Lo que se comparte o imprime. Sin datos clínicos: solo el nivel de la medida.</p>
+<div class="wrap">
+  <article class="paper" aria-label="Acta">
+    <h6>Acta de la sesión de evaluación</h6>
+    <div class="meta">2º ESO B · 1ª evaluación · 15 de diciembre de 2026<br>Asistentes: Equipo docente de 2º ESO B</div>
+    <h7>Resumen</h7>
+    <p style="margin:0">Aprueban todo 5 de 8 alumnos. Con 1 o 2 suspensas: 2. Con 3 o más: 1.<br>Educación Física: aprueban 7 de 8.</p>
+    <h7>Acuerdos generales</h7>
+    <p style="margin:0">Reforzar hábitos de estudio en la tutoría de enero. Revisar la ubicación en el aula.</p>
+    <h7>Acuerdos por alumno</h7>
+    <table><thead><tr><th>Alumno</th><th class="num">Susp.</th><th>Medida</th><th>Acuerdo</th></tr></thead><tbody>
+      <tr><td>Luis Gil</td><td class="num">3</td><td>Nivel III</td><td>Plan de refuerzo en Matemáticas. Llamar a la familia antes de Navidad.</td></tr>
+      <tr><td>Lucía Mora</td><td class="num">1</td><td>–</td><td>Seguimiento en Lengua.</td></tr>
+    </tbody></table>
+    <div class="sign"><span>El/la tutor/a</span><span>Fecha y firma</span></div>
+  </article>
+</div>
+
+<!-- ============ J. IPHONE ============ -->
+<h2 class="part">J · iPhone</h2>
+<p class="partnote">Una tarjeta por alumno. Lo que más se toca, «Otras», a mano. Tocar la tarjeta abre el alumno como hoja.</p>
+<div class="grid">
+  <div class="state">
+    <div class="phone">
+      <div class="pnav"><div class="tt">1ª evaluación</div><div class="ss">2º ESO B · 5 de 8 aprueban todo</div></div>
+      <div class="pcard"><div class="r1"><span class="name">Luis Gil</span><span class="chip">Nivel III</span><span style="margin-left:auto" class="tot t3">3</span></div>
+        <div class="r2"><span>Mi media 4,2 · Faltas 12 %</span><span class="step"><button aria-label="Quitar una">−</button><output>2</output><button aria-label="Añadir una">+</button></span></div></div>
+      <div class="pcard"><div class="r1"><span class="name">Lucía Mora</span><span style="margin-left:auto" class="tot t1">1</span></div>
+        <div class="r2"><span>Mi media 7,5 · Faltas 4 %</span><span class="step"><button aria-label="Quitar una">−</button><output>1</output><button aria-label="Añadir una">+</button></span></div></div>
+      <div class="pcard"><div class="r1"><span class="name">Ana López</span><span style="margin-left:auto" class="tot t0">0</span></div>
+        <div class="r2"><span>Mi media 6,8 · Faltas 3 %</span><span class="step"><button aria-label="Quitar una">−</button><output>0</output><button aria-label="Añadir una">+</button></span></div></div>
+      <div style="padding:16px"><button class="btn p" style="width:100%">Cerrar junta</button></div>
+    </div>
+  </div>
+</div>
+
+<h2 class="part">Notas para SwiftUI</h2>
+<div class="wrap spec"><ul>
+  <li>Entrada «Juntas» en la sección Evaluación de la barra lateral (iPad y Mac) y en el registro de módulos de iPhone. Nuevo caso de <code>AppWorkspaceModule</code>: tocar los switches exhaustivos.</li>
+  <li>Mac/iPad: <code>Table</code> nativa con columnas ordenables; panel del alumno como inspector. iPhone: <code>List</code> de tarjetas y hoja con <code>presentationDetents([.medium,.large])</code>.</li>
+  <li>«Otras» con <code>Stepper</code> (0…15). El total y el resumen se recalculan al momento; guardado automático con espera corta, sin botón Guardar.</li>
+  <li>El color del total (0 verde, 1-2 ámbar, 3+ rojo) va siempre con el número: nunca solo color. «Mi media» sin color, como en el Cuaderno.</li>
+  <li>Resumen con <code>accessibilityElement(children: .combine)</code>: «5 de 8 aprueban todo. 2 con una o dos suspensas. 1 con tres o más».</li>
+  <li>Fila: etiqueta «Luis Gil, media 4,2, faltas 12 %, medida nivel III, 3 suspensas en total, sin revisar». Acciones de VoiceOver: «Añadir suspensa», «Quitar suspensa», «Marcar revisado».</li>
+  <li>Mac: ↑ ↓ cambian de alumno; ⌘↩ «Marcar y siguiente».</li>
+  <li>Cerrada: todo en solo lectura; «Reabrir junta» en el menú «Más» con confirmación.</li>
+  <li>La tabla no lleva columna de acuerdo: la fila solo marca «✎ Acuerdo» y el texto se escribe en el panel. Medida e incidencias van bajo el nombre.</li>
+  <li>Dynamic Type: estilos del sistema (mínimo 11 pt). En tamaños de accesibilidad la fila se apila en vertical y en iPhone el <code>Stepper</code> baja a su propia línea.</li>
+  <li>Bordes de controles (casilla, stepper) con gris de control (≥3:1); <code>--line</code> solo para separadores.</li>
+  <li>«Cerrar junta» es la única acción prominente. En la confirmación, foco inicial en «Seguir revisando». No es destructiva: existe «Reabrir junta».</li>
+  <li>Iconos con SF Symbols (<code>lock.fill</code>, <code>square.and.pencil</code>, barra lateral), no glifos de texto ni emojis.</li>
+  <li>Acta: PDF con el mismo motor que los informes del Planner; compartir con <code>ShareLink</code>.</li>
+</ul></div>
+
+<script>
+const S=[
+ {n:'Ana López',m:6.8,f:3,inc:0,lvl:'',o:0,a:'',r:true},
+ {n:'Luis Gil',m:4.2,f:12,inc:2,lvl:'Nivel III',o:2,a:'Plan de refuerzo en Matemáticas. Llamar a la familia antes de Navidad.',r:false},
+ {n:'Lucía Mora',m:7.5,f:4,inc:0,lvl:'',o:1,a:'Seguimiento en Lengua.',r:false},
+ {n:'Marta Sanz',m:9.1,f:0,inc:0,lvl:'',o:0,a:'',r:true},
+ {n:'Omar Ben',m:5.6,f:6,inc:1,lvl:'',o:2,a:'',r:false},
+ {n:'Pablo Ruiz',m:6.1,f:2,inc:0,lvl:'Nivel IV',o:0,a:'',r:true},
+ {n:'Jorge Vidal',m:7.0,f:1,inc:0,lvl:'',o:0,a:'',r:true},
+ {n:'Sara Núñez',m:8.2,f:5,inc:0,lvl:'',o:0,a:'',r:true}
+];
+let filter='all',closed=false;
+const fmt=x=>x.toFixed(1).replace('.',',');
+const total=s=>s.o+(s.m<5?1:0);
+const cls=t=>t===0?'t0':t<3?'t1':'t3';
+function render(){
+  const tb=document.getElementById('rows');tb.innerHTML='';
+  S.forEach((s,i)=>{
+    const t=total(s);
+    if(filter==='fail'&&t===0)return;
+    if(filter==='todo'&&s.r)return;
+    const tr=document.createElement('tr');tr.className='row';tr.tabIndex=0;tr.setAttribute('aria-selected','false');
+    const sig=[s.m<5?'<span class="fail">Suspensa en EF</span>':'',s.lvl?`<span class="chip">${s.lvl}</span>`:'',s.inc?`<span class="chip inc">${s.inc} incid.</span>`:'',s.a?'<span class="chip" title="Tiene acuerdo">✎ Acuerdo</span>':''].join('');
+    tr.innerHTML=`<td><div class="name">${s.n}</div>${sig?`<div class="subl">${sig}</div>`:''}</td>
+      <td class="num">${fmt(s.m)}</td><td class="num">${s.f} %</td>
+      <td><span class="step" role="group" aria-label="Suspensas en otras materias de ${s.n}"><button aria-label="Quitar una" data-d="-1">−</button><output aria-live="polite" aria-label="${s.o} suspensas en otras materias">${s.o}</output><button aria-label="Añadir una" data-d="1">+</button></span></td>
+      <td><span class="tot ${cls(t)}" aria-label="${t} suspensas en total">${t}</span></td>
+      <td><button class="chkwrap" aria-label="Revisado" aria-pressed="${s.r}"><span class="chk ${s.r?'on':''}" aria-hidden="true">${s.r?'✓':''}</span></button></td>`;
+    tr.querySelectorAll('.step button').forEach(b=>b.onclick=e=>{e.stopPropagation();if(closed)return;s.o=Math.max(0,Math.min(15,s.o+ +b.dataset.d));render();});
+    tr.querySelector('.chkwrap').onclick=e=>{e.stopPropagation();if(closed)return;s.r=!s.r;render();};
+    const open=()=>document.querySelector('.split').scrollIntoView({behavior:'smooth',block:'center'});
+    tr.onclick=open;tr.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}};
+    tb.appendChild(tr);
+  });
+  const c0=S.filter(s=>total(s)===0).length,c1=S.filter(s=>{const t=total(s);return t>0&&t<3}).length,c3=S.filter(s=>total(s)>=3).length,n=S.length;
+  document.getElementById('sumBig').innerHTML=`${c0} <small>de ${n}</small>`;
+  document.getElementById('sumBar').innerHTML=`<span class="b0" style="width:${c0/n*100}%"></span><span class="b1" style="width:${c1/n*100}%"></span><span class="b3" style="width:${c3/n*100}%"></span>`;
+  document.getElementById('sumLegend').innerHTML=`<span><i class="b0"></i><b>${c0}</b>sin suspensas</span><span><i class="b1"></i><b>${c1}</b>con 1 o 2</span><span><i class="b3"></i><b>${c3}</b>con 3 o más</span>`;
+  document.getElementById('revCount').textContent=`${S.filter(s=>s.r).length} de ${n} revisados`;
+}
+function setFilter(f,b){filter=f;b.parentNode.querySelectorAll('button').forEach(x=>(x.classList.toggle('on',x===b),x.setAttribute('aria-pressed',x===b)));render();}
+function closeJunta(){document.getElementById('stateG').scrollIntoView({behavior:'smooth',block:'center'});}
+function toggleTheme(){const r=document.documentElement;const dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;r.dataset.theme=dark?'light':'dark';}
+render();
+</script>
+</body></html>

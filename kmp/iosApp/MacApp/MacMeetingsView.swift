@@ -59,6 +59,7 @@ struct MacMeetingsView: View {
         }
         .padding(MacAppStyle.pagePadding)
         .task { await reload() }
+        .reloadOnLanSync(.meetings) { await reload() }
         .sheet(isPresented: $showMeetingSheet) {
             MeetingFormSheet(existingMeeting: nil) { newId in
                 Task {
@@ -66,13 +67,13 @@ struct MacMeetingsView: View {
                     store.selectedMeetingId = newId
                 }
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
         .sheet(item: $editingMeeting) { meeting in
             MeetingFormSheet(existingMeeting: meeting) { _ in
                 Task { await reload() }
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
         .confirmationDialog(
             "¿Borrar esta reunión?",
@@ -276,11 +277,11 @@ private struct MacMeetingDetailView: View {
         }
         .sheet(isPresented: $showAgreementSheet) {
             MeetingAgreementFormSheet(meetingId: meeting.id, existingAgreement: nil) { onChanged() }
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         }
         .sheet(item: $editingAgreement) { agreement in
             MeetingAgreementFormSheet(meetingId: meeting.id, existingAgreement: agreement) { onChanged() }
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         }
         .confirmationDialog(
             "¿Borrar este acuerdo?",

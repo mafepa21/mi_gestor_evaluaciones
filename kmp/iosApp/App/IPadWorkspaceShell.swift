@@ -16,6 +16,7 @@ final class WorkspaceLayoutState: ObservableObject {
     @Published var notebookAddColumnAvailable: Bool = false
     @Published var notebookOrganizationMenuAvailable: Bool = false
     @Published var notebookHiddenColumnsRequestID: UUID?
+    @Published var notebookClosingReviewRequestID: UUID?
     @Published var notebookSearchText: String = ""
     @Published var notebookSurfaceMode: String = "grid"
     @Published var notebookSelectedGroupId: Int64? = nil
@@ -176,6 +177,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookAddColumnAvailable = false
             self.notebookOrganizationMenuAvailable = false
             self.notebookHiddenColumnsRequestID = nil
+            self.notebookClosingReviewRequestID = nil
             self.notebookSearchText = ""
             self.notebookSurfaceMode = "grid"
             self.notebookSelectedGroupId = nil
@@ -252,6 +254,10 @@ final class WorkspaceLayoutState: ObservableObject {
 
     func openNotebookHiddenColumns() {
         notebookHiddenColumnsRequestID = UUID()
+    }
+
+    func openNotebookClosingReview() {
+        notebookClosingReviewRequestID = UUID()
     }
 
     func configureDashboardToolbar(
@@ -505,9 +511,11 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
     case planner
     case situations
     case diary
+    case libreta
     case meetings
     case inclusion
     case evaluationHub
+    case evaluationSessions
     case webSubmissions
     case rubrics
     case reports
@@ -534,9 +542,11 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .planner: return "Planner"
         case .situations: return "Situaciones"
         case .diary: return "Diario de aula"
+        case .libreta: return "Libreta"
         case .meetings: return "Reuniones"
         case .inclusion: return "Inclusión"
         case .evaluationHub: return "Evaluación"
+        case .evaluationSessions: return "Juntas"
         case .webSubmissions: return "Entregas web"
         case .rubrics: return "Rúbricas"
         case .reports: return "Informes"
@@ -563,9 +573,11 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .planner: return "Preparación lectiva"
         case .situations: return "Programación curricular"
         case .diary: return "Trazabilidad de sesión"
+        case .libreta: return "Notas a mano con Apple Pencil"
         case .meetings: return "Actas de centro y acuerdos"
         case .inclusion: return "Plazos del manual"
         case .evaluationHub: return "Instrumentos y calendario"
+        case .evaluationSessions: return "Junta de evaluación y acta"
         case .webSubmissions: return "Publicar e importar desde el Mac"
         case .rubrics: return "Banco de rúbricas"
         case .reports: return "Salida docente"
@@ -592,9 +604,11 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .planner: return "calendar.badge.clock"
         case .situations: return "doc.text.magnifyingglass"
         case .diary: return "doc.text.fill"
+        case .libreta: return "pencil.and.scribble"
         case .meetings: return "person.3.fill"
         case .inclusion: return "person.2.badge.gearshape"
         case .evaluationHub: return "chart.bar.doc.horizontal"
+        case .evaluationSessions: return "list.clipboard"
         case .webSubmissions: return "paperplane.circle.fill"
         case .rubrics: return "checklist"
         case .reports: return "doc.richtext.fill"
@@ -614,9 +628,9 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard, .courses, .students, .teacherRadar, .notebook:
             return .academic
-        case .attendance, .planner, .situations, .peTournaments, .diary, .meetings, .inclusion:
+        case .attendance, .planner, .situations, .peTournaments, .diary, .libreta, .meetings, .inclusion:
             return .operations
-        case .evaluationHub, .webSubmissions, .rubrics, .reports, .library:
+        case .evaluationHub, .evaluationSessions, .webSubmissions, .rubrics, .reports, .library:
             return .evaluation
         case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial:
             return .domainModules
@@ -669,12 +683,14 @@ enum ClassroomCaptureSheet: Identifiable {
     case quickNote
     case observation
     case injury
+    case courtVoice
 
     var id: String {
         switch self {
         case .quickNote: return "quickNote"
         case .observation: return "observation"
         case .injury: return "injury"
+        case .courtVoice: return "courtVoice"
         }
     }
 }
@@ -885,17 +901,17 @@ struct AppWorkspaceShell: View {
                     CreateCourseSheet {
                         activeWorkspaceSheet = nil
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 case .student:
                     CreateStudentSheet(defaultClassId: selectedClassId) {
                         activeWorkspaceSheet = nil
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 case .evaluation:
                     CreateEvaluationSheet(defaultClassId: selectedClassId) {
                         activeWorkspaceSheet = nil
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 }
             case .contextualAI(let state):
                 contextualAISheet(state)
@@ -912,7 +928,7 @@ struct AppWorkspaceShell: View {
         }
         .appFullScreenCover(isPresented: $showingRubricBuilder) {
             RubricsBuilderScreen()
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
 #if os(macOS)
                 .frame(minWidth: 1_120, idealWidth: 1_280, maxWidth: 1_600, minHeight: 720, idealHeight: 900)
 #endif
@@ -922,7 +938,7 @@ struct AppWorkspaceShell: View {
             shellStore.bind(to: bridge)
 
             let restoredModule = AppWorkspaceModule(rawValue: persistedActiveModule) ?? .dashboard
-            activeModule = restoredModule == .teacherRadar ? .dashboard : restoredModule
+            activeModule = (restoredModule == .teacherRadar || !restoredModule.isAvailableOnThisDevice) ? .dashboard : restoredModule
             
             await bridge.ensureClassesLoaded()
             try? await bridge.refreshStudentsDirectory()
@@ -1125,6 +1141,9 @@ struct AppWorkspaceShell: View {
                             },
                             onObservation: {
                                 presentClassroomCapture(.observation)
+                            },
+                            onCourtVoice: {
+                                presentClassroomCapture(.courtVoice)
                             }
                         )
                     }
@@ -1148,11 +1167,11 @@ struct AppWorkspaceShell: View {
     var workspaceToolbarTitle: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(activeModule.subtitle.uppercased())
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .scaledSystemFont(size: 11, weight: .bold, design: .rounded)
                 .tracking(0.8)
                 .foregroundStyle(.secondary)
             Text(activeModule == .dashboard ? "Hoy" : activeModule.title)
-                .font(.system(size: 30, weight: .black, design: .rounded))
+                .scaledSystemFont(size: 30, weight: .black, design: .rounded)
                 .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
@@ -1309,7 +1328,7 @@ struct AppWorkspaceShell: View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(activeModule.title)
-                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .scaledSystemFont(size: 20, weight: .black, design: .rounded)
                 Text(activeModule.subtitle)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -1635,7 +1654,8 @@ struct AppWorkspaceShell: View {
                 syncStatusMessage: dashboardStore.syncStatusMessage,
                 syncPendingChanges: dashboardStore.syncPendingChanges,
                 syncLastRunAt: dashboardStore.syncLastRunAt,
-                pairedSyncHost: dashboardStore.pairedSyncHost
+                pairedSyncHost: dashboardStore.pairedSyncHost,
+                hasSyncDivergence: dashboardStore.syncDivergence != nil
             )
         }
 
@@ -1848,6 +1868,13 @@ struct AppWorkspaceShell: View {
                 layoutState.openNotebookHiddenColumns()
             } label: {
                 Label("Mostrar columnas ocultas", systemImage: "eye.slash")
+            }
+            .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+            Button {
+                layoutState.openNotebookClosingReview()
+            } label: {
+                Label("Revisar cierre…", systemImage: "checklist")
             }
             .disabled(!layoutState.notebookOrganizationMenuAvailable)
 
@@ -2093,7 +2120,7 @@ struct WorkspaceInspectorHero: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 30, weight: .black, design: .rounded))
+                .scaledSystemFont(size: 30, weight: .black, design: .rounded)
             Text(subtitle)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -2151,12 +2178,20 @@ struct WorkspaceMetricCard: View {
             Label(title, systemImage: systemImage)
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
             Text(value)
-                .font(.system(size: 28, weight: .black, design: .rounded))
+                .scaledSystemFont(size: 28, weight: .black, design: .rounded)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        // Suelen ir de 3 o 4 en fila dentro de un inspector: con letra de
+        // accesibilidad partían palabras. Crecen hasta xxxLarge y, si aun así
+        // no caben, el texto se encoge un poco en vez de cortarse.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 }
 
@@ -2408,7 +2443,9 @@ struct WorkspaceEmptyState: View {
 
 
 struct EditPESessionOperationalSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) var dismiss
     let snapshot: KmpBridge.PESessionSnapshot
     let onDismiss: () -> Void
@@ -2567,24 +2604,24 @@ struct ContextualAIAssistantSheet: View {
         PremiumCard.glass {
             VStack(alignment: .leading, spacing: 12) {
                 Label(module.title, systemImage: module.systemImage)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .scaledSystemFont(size: 13, weight: .bold, design: .rounded)
                     .foregroundStyle(.secondary)
                 Text(context.title)
-                    .font(.system(size: 24, weight: .black, design: .rounded))
+                    .scaledSystemFont(size: 24, weight: .black, design: .rounded)
                 Text(context.subtitle)
-                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .scaledSystemFont(size: 15, weight: .medium, design: .rounded)
                     .foregroundStyle(.secondary)
                 Text(context.summary)
-                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .scaledSystemFont(size: 14, weight: .medium, design: .rounded)
                 if let riskTitle = teachingDraft?.riskLevel?.title {
                     Text(riskTitle)
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .scaledSystemFont(size: 12, weight: .bold, design: .rounded)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(NotebookStyle.primaryTint.opacity(0.12), in: Capsule(style: .continuous))
                 }
                 Text(aiAvailability.message)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .scaledSystemFont(size: 12, weight: .semibold, design: .rounded)
                     .foregroundStyle(aiAvailability.isAvailable ? NotebookStyle.successTint : NotebookStyle.warningTint)
 
                 if !context.metrics.isEmpty {
@@ -2592,10 +2629,10 @@ struct ContextualAIAssistantSheet: View {
                         ForEach(context.metrics) { metric in
                             VStack(alignment: .leading, spacing: 6) {
                                 Label(metric.title, systemImage: metric.systemImage)
-                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                    .scaledSystemFont(size: 12, weight: .bold, design: .rounded)
                                     .foregroundStyle(.secondary)
                                 Text(metric.value)
-                                    .font(.system(size: 18, weight: .black, design: .rounded))
+                                    .scaledSystemFont(size: 18, weight: .black, design: .rounded)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(12)
@@ -2611,11 +2648,11 @@ struct ContextualAIAssistantSheet: View {
         PremiumCard.glass {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Acciones sugeridas")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .scaledSystemFont(size: 18, weight: .bold, design: .rounded)
 
                 if context.suggestedActions.isEmpty {
                     Text(context.dataQualityNote ?? "Esta pantalla todavía no tiene acciones IA disponibles.")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .scaledSystemFont(size: 14, weight: .medium, design: .rounded)
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(context.suggestedActions) { action in
@@ -2629,10 +2666,10 @@ struct ContextualAIAssistantSheet: View {
                                     .foregroundStyle(selectedAction == action ? NotebookStyle.primaryTint : .secondary)
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(action.title)
-                                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                                        .scaledSystemFont(size: 15, weight: .bold, design: .rounded)
                                         .foregroundStyle(.primary)
                                     Text(action.subtitle)
-                                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                                        .scaledSystemFont(size: 13, weight: .medium, design: .rounded)
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
@@ -2672,7 +2709,7 @@ struct ContextualAIAssistantSheet: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Variación opcional")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .scaledSystemFont(size: 12, weight: .bold, design: .rounded)
                             .foregroundStyle(.secondary)
                         TextField("Ej. más breve, más orientado a familia, foco en próximos pasos…", text: $customPrompt, axis: .vertical)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -2680,7 +2717,7 @@ struct ContextualAIAssistantSheet: View {
 
                     if let feedbackMessage {
                         Text(feedbackMessage)
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .scaledSystemFont(size: 13, weight: .semibold, design: .rounded)
                             .foregroundStyle(NotebookStyle.warningTint)
                     }
 
@@ -2707,7 +2744,7 @@ struct ContextualAIAssistantSheet: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     Text("Resultado")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .scaledSystemFont(size: 18, weight: .bold, design: .rounded)
                     Spacer()
                     if !editableText.isEmpty {
                         ShareLink(item: editableText) {
@@ -2718,12 +2755,12 @@ struct ContextualAIAssistantSheet: View {
                 }
 
                 Text("Borrador generado por IA. Revisión docente obligatoria.")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .scaledSystemFont(size: 12, weight: .semibold, design: .rounded)
                     .foregroundStyle(.secondary)
 
                 if editableText.isEmpty {
                     Text("Selecciona una acción y genera un borrador contextual para esta pantalla.")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .scaledSystemFont(size: 14, weight: .medium, design: .rounded)
                         .foregroundStyle(.secondary)
                 } else {
                     if let result {
@@ -2783,7 +2820,7 @@ struct ContextualAIAssistantSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             if let confidenceNote {
                 Text(confidenceNote)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .scaledSystemFont(size: 12, weight: .semibold, design: .rounded)
                     .foregroundStyle(.secondary)
             }
 
@@ -2803,11 +2840,11 @@ struct ContextualAIAssistantSheet: View {
     func summarySection(title: String, items: [String]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .scaledSystemFont(size: 12, weight: .bold, design: .rounded)
                 .foregroundStyle(.secondary)
             ForEach(items, id: \.self) { item in
                 Text("• \(item)")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .scaledSystemFont(size: 13, weight: .medium, design: .rounded)
             }
         }
     }

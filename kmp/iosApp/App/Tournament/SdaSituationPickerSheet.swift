@@ -21,7 +21,9 @@ struct SdaSituationPickerSheet: View {
     let onPick: (SdaNewTournamentTarget) -> Void
     let onOpenSituations: () -> Void
 
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) private var dismiss
     @ScaledMetric(relativeTo: .body) private var tapSize: CGFloat = 44
 

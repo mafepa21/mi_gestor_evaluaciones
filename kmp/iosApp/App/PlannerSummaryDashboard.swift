@@ -40,6 +40,7 @@ struct PlannerSummaryDashboard: View {
             }
             .padding(EvaluationDesign.screenPadding)
         }
+        .reloadOnLanSync(.planner) { await reloadRangeData() }
         .task(id: rangeTaskKey) {
             await reloadRangeData()
         }
@@ -501,7 +502,7 @@ private struct PlannerUpcomingSessionRow: View {
             upcomingSessionLabel
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(session.teachingUnitName.trimmedOrFallback("Sesión sin título")), \(session.groupName)")
+        .accessibilityLabel("\(session.teachingUnitName.trimmedOrFallback("Sesión sin título")), \(vm.groupLabel(for: session))")
         .accessibilityHint("Abre la ficha de la sesión")
     }
 
@@ -525,7 +526,7 @@ private struct PlannerUpcomingSessionRow: View {
                 Text(session.teachingUnitName.trimmedOrFallback("Sesión sin título"))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                Text(session.groupName)
+                Text(vm.groupLabel(for: session))
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

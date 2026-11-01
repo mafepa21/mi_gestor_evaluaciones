@@ -11,8 +11,11 @@ final class MacCommandCenterCoordinator: ObservableObject {
 
     @Published private(set) var statusMessage: String = "La sincronización LAN no está activa en este Mac."
     @Published private(set) var serviceState: ApplePairingServiceState = .stopped
+    /// El iPad tiene abierto ahora mismo el canal de avisos con el helper.
+    @Published private(set) var isPairedDeviceOnline = false
 
-    private let defaultPort = 8765
+    private let defaultPort = MacCommandCenterCoordinator.helperPort
+    private static let helperPort = 8765
     private let invalidLanHosts = Set(["localhost", "127.0.0.1", ""])
 
     private var process: Process?
@@ -29,6 +32,9 @@ final class MacCommandCenterCoordinator: ObservableObject {
     private var lastFailureMessage: String?
     private var lastRunningSnapshot: RunningSnapshot?
     private var lastPublishedPairingPayload: String?
+    /// Dirección del helper ya anunciada al bridge. El PIN caduca cada 10 min y el
+    /// helper vuelve a publicar su estado: eso no es un helper nuevo.
+    private var lastAnnouncedEndpoint: String?
     private var stateUpdateGeneration = 0
     private var lastUnauthorizedRecoveryAt: Date = .distantPast
 
@@ -47,8 +53,10 @@ final class MacCommandCenterCoordinator: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
-                self?.stop()
+            // En el acto y no en una Task: tras `willTerminate` la app sale y una Task
+            // puede no llegar a correr nunca (el helper quedaba huérfano o no, al azar).
+            MainActor.assumeIsolated {
+                self?.handleAppTermination()
             }
         })
         observers.append(NotificationCenter.default.addObserver(
@@ -103,11 +111,12 @@ final class MacCommandCenterCoordinator: ObservableObject {
         lastFailureMessage = nil
         lastRunningSnapshot = nil
         lastPublishedPairingPayload = nil
+        lastAnnouncedEndpoint = nil
         lastLifecycleState = .starting
         clearHelperBuffers()
         updateState(.starting, message: "Arrancando servicio de enlace en este Mac.")
 
-        guard let executableURL = resolveHelperExecutableURL() else {
+        guard let executableURL = Self.resolveHelperExecutableURL() else {
             let message = "No se encontró el helper del centro de mando."
             print("[Pairing] failed: \(message)")
             lastFailureMessage = message
@@ -182,6 +191,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
                 guard let self, self.process === terminatedProcess else { return }
                 print("[Pairing] helper terminated: \(terminatedProcess.terminationStatus)")
                 self.isProcessRunning = false
+                self.isPairedDeviceOnline = false
                 self.stdoutPipe?.fileHandleForReading.readabilityHandler = nil
                 self.stderrPipe?.fileHandleForReading.readabilityHandler = nil
                 self.stdoutPipe = nil
@@ -237,8 +247,45 @@ final class MacCommandCenterCoordinator: ObservableObject {
         }
     }
 
+    /// Al cerrar la app: si hay un iPad enlazado, el helper sigue vivo y atendiéndolo
+    /// (ver `MacSyncBackgroundService`). Si no, se para como antes.
+    private func handleAppTermination() {
+        let keepsRunning = MacSyncBackgroundService.keepsHelperRunningAfterQuit(
+            isEnabled: MacSyncBackgroundService.isEnabled,
+            isHelperRunning: process?.isRunning == true,
+            hasPairedDevice: MacSyncBackgroundService.hasPairedDevice,
+            needsRestart: AppleBackupService.shared.needsRestart,
+            hasStagedAdoption: MacSyncBackgroundService.hasStagedAdoption
+        )
+        MacSyncBackgroundService.syncLoginItem(allowRegister: keepsRunning)
+        guard keepsRunning else {
+            stop()
+            return
+        }
+        print("[Pairing] la app se cierra; el helper sigue atendiendo al iPad")
+        // Se suelta sin terminarlo. Sus pipes se cierran al salir la app: el helper
+        // (JVM) ignora el SIGPIPE y sigue sirviendo.
+        stdoutPipe?.fileHandleForReading.readabilityHandler = nil
+        stderrPipe?.fileHandleForReading.readabilityHandler = nil
+        process?.terminationHandler = nil
+        process = nil
+        stdoutPipe = nil
+        stderrPipe = nil
+    }
+
+    /// Cierra el helper que haya quedado vivo con la app cerrada (o el que arrancó el
+    /// agente al iniciar sesión). Se llama al arrancar la app, antes de abrir la base:
+    /// el arranque puede sustituir el fichero (adopción de dataset) y el helper no puede
+    /// tenerlo abierto en ese momento.
+    static func terminateLeftoverHelpersBeforeOpeningDatabase() {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        guard let executableURL = resolveHelperExecutableURL() else { return }
+        terminateHelperProcesses(executableURL: executableURL, sparing: nil)
+    }
+
     func stop() {
         shouldRestartAfterStop = false
+        isPairedDeviceOnline = false
         isProcessRunning = false
         lastFailureMessage = nil
         lastLifecycleState = .stopped
@@ -311,6 +358,8 @@ final class MacCommandCenterCoordinator: ObservableObject {
     func unpairDevice() {
         print("[Pairing] unpair requested")
         purgeDesktopKeychainPairing()
+        // Sin iPad enlazado no tiene sentido arrancar el helper al iniciar sesión.
+        MacSyncBackgroundService.syncLoginItem(allowRegister: false)
         shouldResetPairingOnNextLaunch = true
         lastFailureMessage = nil
         lastRunningSnapshot = nil
@@ -376,8 +425,12 @@ final class MacCommandCenterCoordinator: ObservableObject {
     /// - Búsqueda directa de quién escucha en el puerto 8765 (vía `lsof`), como red de
     ///   seguridad para cualquier caso no cubierto por la coincidencia de ruta.
     private func terminateStaleHelperProcesses(executableURL: URL) {
+        Self.terminateHelperProcesses(executableURL: executableURL, sparing: process?.processIdentifier)
+    }
+
+    private static func terminateHelperProcesses(executableURL: URL, sparing activeChildPid: Int32?) {
         let currentPid = ProcessInfo.processInfo.processIdentifier
-        let activeChildPid = process?.processIdentifier
+        let defaultPort = helperPort
 
         var stalePids = Set<Int32>()
         stalePids.formUnion(pidsMatchingHelperExecutable(executableURL, currentPid: currentPid, activeChildPid: activeChildPid))
@@ -410,7 +463,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
     /// terminarlo. Sin esto, la búsqueda por puerto (que no filtra por identidad) o un
     /// `pgrep -f` con coincidencia accidental podrían matar un proceso ajeno al servicio
     /// de enlace.
-    private func isHelperProcess(pid: Int32) -> Bool {
+    private static func isHelperProcess(pid: Int32) -> Bool {
         let ps = Process()
         ps.executableURL = URL(fileURLWithPath: "/bin/ps")
         ps.arguments = ["-p", "\(pid)", "-o", "comm="]
@@ -443,12 +496,12 @@ final class MacCommandCenterCoordinator: ObservableObject {
 
     /// Últimos componentes de la ruta del ejecutable (bundle + binario), estables entre
     /// builds, usados como patrón de búsqueda en vez de la ruta absoluta completa.
-    private func helperExecutableMatchPattern(for executableURL: URL) -> String {
+    private static func helperExecutableMatchPattern(for executableURL: URL) -> String {
         let components = executableURL.pathComponents
         return components.suffix(min(4, components.count)).joined(separator: "/")
     }
 
-    private func pidsMatchingHelperExecutable(_ executableURL: URL, currentPid: Int32, activeChildPid: Int32?) -> [Int32] {
+    private static func pidsMatchingHelperExecutable(_ executableURL: URL, currentPid: Int32, activeChildPid: Int32?) -> [Int32] {
         let pgrep = Process()
         pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
         pgrep.arguments = ["-f", helperExecutableMatchPattern(for: executableURL)]
@@ -474,7 +527,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
         return parsePids(from: output, currentPid: currentPid, activeChildPid: activeChildPid)
     }
 
-    private func pidsListeningOnPort(_ port: Int, currentPid: Int32, activeChildPid: Int32?) -> [Int32] {
+    private static func pidsListeningOnPort(_ port: Int, currentPid: Int32, activeChildPid: Int32?) -> [Int32] {
         let lsof = Process()
         lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
         lsof.arguments = ["-nP", "-b", "-w", "-iTCP:\(port)", "-sTCP:LISTEN", "-t"]
@@ -499,14 +552,14 @@ final class MacCommandCenterCoordinator: ObservableObject {
         return parsePids(from: output, currentPid: currentPid, activeChildPid: activeChildPid)
     }
 
-    private func parsePids(from output: String, currentPid: Int32, activeChildPid: Int32?) -> [Int32] {
+    private static func parsePids(from output: String, currentPid: Int32, activeChildPid: Int32?) -> [Int32] {
         output
             .split(whereSeparator: \.isNewline)
             .compactMap { pidLine in Int32(pidLine.trimmingCharacters(in: .whitespacesAndNewlines)) }
             .filter { pid in pid > 0 && pid != currentPid && pid != activeChildPid }
     }
 
-    private func sendSignal(_ signal: String, to pid: Int32) {
+    private static func sendSignal(_ signal: String, to pid: Int32) {
         let killer = Process()
         killer.executableURL = URL(fileURLWithPath: "/bin/kill")
         killer.arguments = [signal, "\(pid)"]
@@ -521,7 +574,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
         }
     }
 
-    private func waitForPortToFree(_ port: Int, timeout: TimeInterval, currentPid: Int32, activeChildPid: Int32?) {
+    private static func waitForPortToFree(_ port: Int, timeout: TimeInterval, currentPid: Int32, activeChildPid: Int32?) {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if pidsListeningOnPort(port, currentPid: currentPid, activeChildPid: activeChildPid).isEmpty {
@@ -629,6 +682,11 @@ final class MacCommandCenterCoordinator: ObservableObject {
             // KmpBridge subscribes to this notification to start the SSE listener
             // and the periodic sync loop, ensuring no requests go out to 127.0.0.1
             // before the helper process is ready.
+            // Solo si cambia la dirección: antes, cada caducidad del PIN cortaba el
+            // canal de avisos y recargaba la base entera (~60 s) cada 10 minutos.
+            let endpoint = "\(snapshot.host):\(snapshot.port)"
+            guard endpoint != lastAnnouncedEndpoint else { return }
+            lastAnnouncedEndpoint = endpoint
             NotificationCenter.default.post(
                 name: .syncHelperBecameReady,
                 object: nil,
@@ -650,6 +708,11 @@ final class MacCommandCenterCoordinator: ObservableObject {
             lastFailureMessage = friendlyMessage
             print("[Pairing] failed: \(message)")
             updateState(.failed(message: friendlyMessage), message: friendlyMessage)
+
+        case let .peer(online):
+            if isPairedDeviceOnline != online {
+                isPairedDeviceOnline = online
+            }
 
         case let .adoptStaged(source, digest):
             print("[Pairing] adopt staged received: source=\(source ?? "unknown"), digest=\(digest ?? "none")")
@@ -682,7 +745,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
         )
     }
 
-    private func resolveHelperExecutableURL() -> URL? {
+    private static func resolveHelperExecutableURL() -> URL? {
         let fileManager = FileManager.default
 
         if let bundled = Bundle.main.resourceURL?
@@ -747,6 +810,7 @@ private enum HelperEvent {
     case connected(deviceName: String?)
     case failed(message: String)
     case adoptStaged(source: String?, digest: String?)
+    case peer(online: Bool)
 
     static func parse(from text: String) -> HelperEvent? {
         let prefix = "[command-center] State: "
@@ -794,6 +858,9 @@ private enum HelperEvent {
                 return (pair[0].lowercased(), pair[1])
             })
             return .connected(deviceName: values["device"])
+
+        case "peer":
+            return .peer(online: parts.dropFirst().contains("online=1"))
 
         case "adopt_staged":
             let values = Dictionary(uniqueKeysWithValues: parts.dropFirst().compactMap { segment -> (String, String)? in

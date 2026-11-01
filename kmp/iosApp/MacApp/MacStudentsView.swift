@@ -154,6 +154,10 @@ struct MacStudentsView: View {
                 guard reloadToken > 0 else { return }
                 await reloadRows()
             }
+            .reloadOnLanSync(.students) {
+                guard ownsStudentSideEffects else { return }
+                await reloadRows()
+            }
             .appOnChange(of: selectedClassId) { _, newClassId in
                 handleClassIdChange(newClassId)
             }
@@ -254,13 +258,13 @@ struct MacStudentsView: View {
             }
             .sheet(item: $studentImportPreview) { preview in
                 StudentImportSheet(preview: preview, initialClassId: selectedClassId)
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                     .frame(minWidth: 720, minHeight: 620)
                     .onDisappear(perform: reloadRowsAfterStudentImportPreview)
             }
             .sheet(item: $studentEmailImportPreview) { preview in
                 StudentEmailImportSheet(preview: preview)
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                     .frame(minWidth: 740, minHeight: 620)
                     .onDisappear(perform: reloadRowsAfterStudentImportPreview)
             }
@@ -282,7 +286,7 @@ struct MacStudentsView: View {
                     TutoringSessionFormSheet(studentId: studentId) {
                         loadProfileForSelection(studentId)
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 }
             }
             .sheet(
@@ -295,7 +299,7 @@ struct MacStudentsView: View {
                     TutoringSessionFormSheet(studentId: studentId, existingSession: editingTutoringSession) {
                         loadProfileForSelection(studentId)
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 }
             }
             .alert(
@@ -327,7 +331,7 @@ struct MacStudentsView: View {
                     SupportMeasureFormSheet(studentId: studentId) {
                         loadProfileForSelection(studentId)
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 }
             }
             .sheet(
@@ -340,7 +344,7 @@ struct MacStudentsView: View {
                     SupportMeasureFormSheet(studentId: studentId, existingMeasure: editingSupportMeasure) {
                         loadProfileForSelection(studentId)
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 }
             }
             .sheet(isPresented: $showBulkImportSheet) {
@@ -351,7 +355,7 @@ struct MacStudentsView: View {
                     ) {
                         loadProfileForSelection(store.localSelectedStudentId ?? selectedRow?.id)
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 }
             }
             .sheet(isPresented: $showGroupOverviewSheet) {
@@ -359,7 +363,7 @@ struct MacStudentsView: View {
                     className: studentsBridgeStore.classes.first(where: { $0.id == selectedClassId })?.name ?? "",
                     roster: studentsBridgeStore.studentsInClass
                 )
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
             .sheet(isPresented: $showSexInferenceSheet) {
                 StudentSexInferenceSheet(students: studentsBridgeStore.studentsInClass) { assignments in

@@ -53,19 +53,23 @@ struct NotebookCellActions {
     let saveColumnGradeDebounced: @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void
     let resolvePhysicalScore: (@MainActor (_ student: Student, _ classId: Int64, _ columnId: String, _ rawValue: Double) async -> Double?)?
     let saveAttendance: @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Bool
+    /// Aviso breve (toast de advertencia) que además se anuncia a VoiceOver.
+    let showWarning: @MainActor (_ message: String) -> Void
 
     init(
         flushPendingColumnGradeSave: @escaping @MainActor (_ studentId: Int64, _ columnId: String) -> Void,
         saveColumnGrade: @escaping @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void,
         saveColumnGradeDebounced: @escaping @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void,
         resolvePhysicalScore: (@MainActor (_ student: Student, _ classId: Int64, _ columnId: String, _ rawValue: Double) async -> Double?)? = nil,
-        saveAttendance: @escaping @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Bool
+        saveAttendance: @escaping @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Bool,
+        showWarning: @escaping @MainActor (_ message: String) -> Void = { _ in }
     ) {
         self.flushPendingColumnGradeSave = flushPendingColumnGradeSave
         self.saveColumnGrade = saveColumnGrade
         self.saveColumnGradeDebounced = saveColumnGradeDebounced
         self.resolvePhysicalScore = resolvePhysicalScore
         self.saveAttendance = saveAttendance
+        self.showWarning = showWarning
     }
 }
 
@@ -1724,6 +1728,19 @@ private struct NotebookStatefulEditableTableCell: View {
             onSelect()
         }
         if originalNumericDraft != numericDraft {
+            // Validar al confirmar (no a cada tecla): si no es nota, se conserva la anterior y se avisa.
+            if !NotebookViewModelKt.isValidNotebookNumericInput(inputKind: column.inputKind, value: numericDraft) {
+                let rejected = numericDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                // En iOS un prefijo válido («8,5») pudo salir ya por el guardado debounced: se repone la anterior.
+                if let sentPrefix = pendingNumericDraft, sentPrefix != originalNumericDraft {
+                    actions.flushPendingColumnGradeSave(item.student.id, column.id)
+                    actions.saveColumnGrade(item.student.id, column, originalNumericDraft)
+                }
+                numericDraft = originalNumericDraft
+                pendingNumericDraft = nil
+                actions.showWarning("\u{201C}\(rejected)\u{201D} no es una nota. Se mantiene la anterior.")
+                return
+            }
             onPrepareUndo(originalNumericDraft, originalNumericDraft)
             originalNumericDraft = numericDraft
             pendingNumericDraft = numericDraft

@@ -364,6 +364,17 @@ struct NotebookColumnStatisticsSheet: View {
     let classTitle: String
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// Con letra de accesibilidad las filas de tarjetas no caben a lo ancho:
+    /// pasan a columna para no partir palabras.
+    private var stacksVertically: Bool { dynamicTypeSize.isAccessibilitySize }
+
+    private func adaptiveRow(spacing: CGFloat? = nil) -> AnyLayout {
+        stacksVertically
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(spacing: spacing))
+    }
     @State private var selectedBandDetail: LomloeBandKind? = nil
     @State private var isCopied = false
 
@@ -419,7 +430,7 @@ struct NotebookColumnStatisticsSheet: View {
                     Button("Hecho") {
                         dismiss()
                     }
-                    .font(.system(size: 15, weight: .semibold))
+                    .notebookFont(size: 15, weight: .semibold)
                 }
 
                 ToolbarItem(placement: .primaryAction) {
@@ -430,7 +441,7 @@ struct NotebookColumnStatisticsSheet: View {
                             Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
                             Text(isCopied ? "Copiado" : "Copiar informe")
                         }
-                        .font(.system(size: 14, weight: .medium))
+                        .notebookFont(size: 14, weight: .medium)
                     }
                     .disabled(report.evaluatedCount == 0)
                 }
@@ -454,23 +465,23 @@ struct NotebookColumnStatisticsSheet: View {
                     .frame(width: 54, height: 54)
 
                 Image(systemName: columnSystemIcon(for: column))
-                    .font(.system(size: 24, weight: .bold))
+                    .notebookFont(size: 24, weight: .bold)
                     .foregroundStyle(columnColor)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(column.title)
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .notebookFont(size: 20, weight: .bold, design: .rounded)
                         .foregroundStyle(Color.primary)
                         .lineLimit(1)
 
                     if column.countsTowardAverage {
                         HStack(spacing: 3) {
                             Image(systemName: "percent")
-                                .font(.system(size: 9, weight: .bold))
+                                .notebookFont(size: 11, weight: .bold)
                             Text("\(String(format: "%.0f", column.weight))%")
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .notebookFont(size: 11, weight: .bold, design: .rounded)
                         }
                         .foregroundStyle(EvaluationDesign.accent)
                         .padding(.horizontal, 6)
@@ -481,34 +492,34 @@ struct NotebookColumnStatisticsSheet: View {
                         )
                     } else {
                         Text("No pondera")
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .notebookFont(size: 11, weight: .medium, design: .rounded)
                             .foregroundStyle(Color.secondary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(
                                 Capsule()
-                                    .fill(Color.primary.opacity(0.06))
+                                    .fill(NotebookGridStyle.chipFill)
                             )
                     }
                 }
 
                 HStack(spacing: 6) {
                     Text(classTitle)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .notebookFont(size: 13, weight: .semibold, design: .rounded)
                         .foregroundStyle(Color.secondary)
 
                     Text("·")
                         .foregroundStyle(Color.secondary.opacity(0.5))
 
                     Text(Self.columnTypeTitle(for: column))
-                        .font(.system(size: 13, weight: .regular))
+                        .notebookFont(size: 13, weight: .regular)
                         .foregroundStyle(Color.secondary)
                 }
 
                 // Barra de cobertura de evaluados
                 HStack(spacing: 6) {
                     Text("\(report.evaluatedCount) de \(report.totalStudents) evaluados (\(String(format: "%.0f", report.evaluatedPercentage))%)")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .notebookFont(size: 11, weight: .medium, design: .rounded)
                         .foregroundStyle(report.evaluatedPercentage >= 80 ? EvaluationDesign.success : Color.secondary)
 
                     Spacer(minLength: 0)
@@ -529,17 +540,18 @@ struct NotebookColumnStatisticsSheet: View {
     private func driftWarningCard(warning: (title: String, detail: String, severity: Color)) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 16, weight: .bold))
+                .notebookFont(size: 16, weight: .bold)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
                 .foregroundStyle(warning.severity)
                 .frame(width: 24, height: 24)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(warning.title)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .notebookFont(size: 14, weight: .bold, design: .rounded)
                         .foregroundStyle(warning.severity)
                     Text("Alerta Pedagógica")
-                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .notebookFont(size: 11, weight: .black, design: .rounded)
                         .foregroundStyle(warning.severity)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
@@ -547,7 +559,7 @@ struct NotebookColumnStatisticsSheet: View {
                 }
 
                 Text(warning.detail)
-                    .font(.system(size: 12, weight: .medium))
+                    .notebookFont(size: 12, weight: .medium)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -566,52 +578,49 @@ struct NotebookColumnStatisticsSheet: View {
 
     // MARK: - Tarjetas KPI
     private var kpisSection: some View {
-        VStack(spacing: 12) {
+        let meanRow = adaptiveRow(spacing: 20)
+        let metricsRow = adaptiveRow(spacing: 12)
+        return VStack(spacing: 12) {
             // Tarjeta grande de Media Aritmética
-            HStack(spacing: 20) {
+            meanRow {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("MEDIA DEL GRUPO")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .notebookFont(size: 11, weight: .bold, design: .rounded)
                         .foregroundStyle(Color.secondary)
 
                     if let mean = report.mean {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(String(format: "%.2f", mean))
-                                .font(.system(size: 38, weight: .black, design: .rounded))
-                                .foregroundStyle(RubricsStyle.gradeColor(forScoreOutOfTen: mean))
-
-                            Text(report.meanQualitativeLabel.uppercased())
-                                .font(.system(size: 12, weight: .black, design: .rounded))
-                                .foregroundStyle(RubricsStyle.gradeColor(forScoreOutOfTen: mean))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(
-                                    Capsule()
-                                        .fill(RubricsStyle.gradeColor(forScoreOutOfTen: mean).opacity(0.15))
-                                )
+                        ViewThatFits(in: .horizontal) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                meanValue(mean)
+                                meanBadge(mean)
+                            }
+                            VStack(alignment: .leading, spacing: 4) {
+                                meanValue(mean)
+                                meanBadge(mean)
+                            }
                         }
                     } else {
                         Text("—")
-                            .font(.system(size: 38, weight: .black, design: .rounded))
+                            .notebookFont(size: 38, weight: .black, design: .rounded)
                             .foregroundStyle(Color.secondary)
                     }
                 }
 
-                Spacer()
+                if !stacksVertically { Spacer() }
 
                 // Barra de aprobados vs suspensos
-                VStack(alignment: .trailing, spacing: 4) {
+                VStack(alignment: stacksVertically ? .leading : .trailing, spacing: 4) {
                     HStack(spacing: 6) {
                         Circle()
                             .fill(EvaluationDesign.success)
                             .frame(width: 8, height: 8)
                         Text("\(String(format: "%.0f", report.passedPercentage))% Aprobados")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .notebookFont(size: 13, weight: .bold, design: .rounded)
                             .foregroundStyle(Color.primary)
                     }
 
                     Text("\(report.passedCount) aptos · \(report.failedCount) no aptos")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .notebookFont(size: 11, weight: .medium, design: .rounded)
                         .foregroundStyle(Color.secondary)
 
                     // Barra visual biseccionada
@@ -631,6 +640,7 @@ struct NotebookColumnStatisticsSheet: View {
                     .padding(.top, 2)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(18)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -639,7 +649,7 @@ struct NotebookColumnStatisticsSheet: View {
             )
 
             // Sub-grid de 3 métricas estadísticas
-            HStack(spacing: 12) {
+            metricsRow {
                 metricSubCard(
                     title: "MEDIANA",
                     value: report.median.map { String(format: "%.2f", $0) } ?? "—",
@@ -661,18 +671,89 @@ struct NotebookColumnStatisticsSheet: View {
         }
     }
 
+    // MARK: - Fila de tramo
+
+    private func bandLabel(_ dist: LomloeBandDistribution) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: dist.band.icon)
+                .notebookFont(size: 11, weight: .bold)
+            Text(dist.band.title)
+                .notebookFont(size: 12, weight: .semibold, design: .rounded)
+        }
+        .foregroundStyle(dist.band.color)
+    }
+
+    private func bandBar(_ dist: LomloeBandDistribution, effectiveMax: Int) -> some View {
+        GeometryReader { geo in
+            let barWidth = geo.size.width * CGFloat(dist.count) / CGFloat(effectiveMax)
+
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(NotebookGridStyle.chipFill)
+                    .frame(height: 20)
+
+                if dist.count > 0 {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [dist.band.color, dist.band.color.opacity(0.85)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(16, barWidth), height: 20)
+                        .shadow(color: dist.band.color.opacity(0.3), radius: 3, x: 0, y: 1)
+                }
+            }
+        }
+        .frame(height: 20)
+    }
+
+    private func bandCount(_ dist: LomloeBandDistribution) -> some View {
+        HStack(spacing: 4) {
+            Text("\(dist.count)")
+                .notebookFont(size: 12, weight: .bold, design: .rounded)
+                .monospacedDigit()
+            Text("(\(String(format: "%.0f", dist.percentage))%)")
+                .notebookFont(size: 11, weight: .medium, design: .rounded)
+                .foregroundStyle(Color.secondary)
+        }
+        .lineLimit(1)
+        .fixedSize()
+    }
+
+    private func meanValue(_ mean: Double) -> some View {
+        Text(String(format: "%.2f", mean))
+            .notebookFont(size: 38, weight: .black, design: .rounded)
+            .foregroundStyle(RubricsStyle.gradeColor(forScoreOutOfTen: mean))
+    }
+
+    private func meanBadge(_ mean: Double) -> some View {
+        Text(report.meanQualitativeLabel.uppercased())
+            .notebookFont(size: 12, weight: .black, design: .rounded)
+            .foregroundStyle(RubricsStyle.gradeColor(forScoreOutOfTen: mean))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule()
+                    .fill(RubricsStyle.gradeColor(forScoreOutOfTen: mean).opacity(0.15))
+            )
+    }
+
     private func metricSubCard(title: String, value: String, icon: String) -> some View {
         VStack(spacing: 6) {
             HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 10, weight: .bold))
+                    .notebookFont(size: 11, weight: .bold)
                 Text(title)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .notebookFont(size: 11, weight: .bold, design: .rounded)
             }
             .foregroundStyle(Color.secondary)
 
             Text(value)
-                .font(.system(size: 20, weight: .heavy, design: .rounded))
+                .notebookFont(size: 20, weight: .heavy, design: .rounded)
                 .foregroundStyle(Color.primary)
                 .monospacedDigit()
         }
@@ -688,16 +769,17 @@ struct NotebookColumnStatisticsSheet: View {
 
     // MARK: - Gráfico de Distribución LOMLOE (Histograma)
     private var distributionSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
+        let headerRow = adaptiveRow()
+        return VStack(alignment: .leading, spacing: 14) {
+            headerRow {
                 Text("Distribución por Tramos LOMLOE")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .notebookFont(size: 15, weight: .bold, design: .rounded)
                     .foregroundStyle(Color.primary)
 
-                Spacer()
+                if !stacksVertically { Spacer() }
 
                 Text("Toca un tramo para ver alumnos")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .notebookFont(size: 11, weight: .medium, design: .rounded)
                     .foregroundStyle(Color.secondary)
             }
 
@@ -717,52 +799,25 @@ struct NotebookColumnStatisticsSheet: View {
                                 }
                             }
                         } label: {
-                            HStack(spacing: 10) {
-                                // Etiqueta del tramo con icono
-                                HStack(spacing: 5) {
-                                    Image(systemName: dist.band.icon)
-                                        .font(.system(size: 10, weight: .bold))
-                                    Text(dist.band.title)
-                                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                }
-                                .foregroundStyle(dist.band.color)
-                                .frame(width: 125, alignment: .leading)
-
-                                // Barra horizontal animada
-                                GeometryReader { geo in
-                                    let barWidth = geo.size.width * CGFloat(dist.count) / CGFloat(effectiveMax)
-
-                                    ZStack(alignment: .leading) {
-                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                            .fill(Color.primary.opacity(0.05))
-                                            .frame(height: 20)
-
-                                        if dist.count > 0 {
-                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                                .fill(
-                                                    LinearGradient(
-                                                        colors: [dist.band.color, dist.band.color.opacity(0.85)],
-                                                        startPoint: .leading,
-                                                        endPoint: .trailing
-                                                    )
-                                                )
-                                                .frame(width: max(16, barWidth), height: 20)
-                                                .shadow(color: dist.band.color.opacity(0.3), radius: 3, x: 0, y: 1)
+                            Group {
+                                if stacksVertically {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack(alignment: .firstTextBaseline) {
+                                            bandLabel(dist)
+                                            Spacer(minLength: 8)
+                                            bandCount(dist)
                                         }
+                                        bandBar(dist, effectiveMax: effectiveMax)
+                                    }
+                                } else {
+                                    HStack(spacing: 10) {
+                                        bandLabel(dist)
+                                            .frame(width: 125, alignment: .leading)
+                                        bandBar(dist, effectiveMax: effectiveMax)
+                                        bandCount(dist)
+                                            .frame(width: 75, alignment: .trailing)
                                     }
                                 }
-                                .frame(height: 20)
-
-                                // Recuento y porcentaje
-                                HStack(spacing: 4) {
-                                    Text("\(dist.count)")
-                                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                                        .monospacedDigit()
-                                    Text("(\(String(format: "%.0f", dist.percentage))%)")
-                                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                                        .foregroundStyle(Color.secondary)
-                                }
-                                .frame(width: 75, alignment: .trailing)
                             }
                             .padding(.vertical, 5)
                             .contentShape(Rectangle())
@@ -778,11 +833,11 @@ struct NotebookColumnStatisticsSheet: View {
                                             .fill(dist.band.color.opacity(0.2))
                                             .frame(width: 6, height: 6)
                                         Text(item.name)
-                                            .font(.system(size: 12, weight: .medium))
+                                            .notebookFont(size: 12, weight: .medium)
                                             .foregroundStyle(Color.primary)
                                         Spacer()
                                         Text(String(format: "%.2f", item.score))
-                                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                                            .notebookFont(size: 12, weight: .bold, design: .rounded)
                                             .foregroundStyle(dist.band.color)
                                             .monospacedDigit()
                                     }
@@ -794,7 +849,7 @@ struct NotebookColumnStatisticsSheet: View {
                                     )
                                 }
                             }
-                            .padding(.leading, 135)
+                            .padding(.leading, stacksVertically ? 0 : 135)
                             .padding(.vertical, 4)
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
@@ -817,27 +872,27 @@ struct NotebookColumnStatisticsSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 5) {
                     Image(systemName: "crown.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .notebookFont(size: 11, weight: .bold)
                         .foregroundStyle(Color(red: 0.90, green: 0.72, blue: 0.18)) // Dorado
                     Text("NOTA MÁXIMA")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .notebookFont(size: 11, weight: .bold, design: .rounded)
                         .foregroundStyle(Color.secondary)
                 }
 
                 if let maxVal = report.maxScore {
                     Text(String(format: "%.2f", maxVal))
-                        .font(.system(size: 24, weight: .heavy, design: .rounded))
+                        .notebookFont(size: 24, weight: .heavy, design: .rounded)
                         .foregroundStyle(EvaluationDesign.success)
                         .monospacedDigit()
 
                     let names = report.studentsWithMaxScore.map(\.name).joined(separator: ", ")
                     Text(names)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .notebookFont(size: 11, weight: .medium, design: .rounded)
                         .foregroundStyle(Color.secondary)
                         .lineLimit(2)
                 } else {
                     Text("—")
-                        .font(.system(size: 24, weight: .heavy, design: .rounded))
+                        .notebookFont(size: 24, weight: .heavy, design: .rounded)
                         .foregroundStyle(Color.secondary)
                 }
             }
@@ -853,27 +908,27 @@ struct NotebookColumnStatisticsSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 5) {
                     Image(systemName: "arrow.down.circle.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .notebookFont(size: 11, weight: .bold)
                         .foregroundStyle(EvaluationDesign.danger)
                     Text("NOTA MÍNIMA")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .notebookFont(size: 11, weight: .bold, design: .rounded)
                         .foregroundStyle(Color.secondary)
                 }
 
                 if let minVal = report.minScore {
                     Text(String(format: "%.2f", minVal))
-                        .font(.system(size: 24, weight: .heavy, design: .rounded))
+                        .notebookFont(size: 24, weight: .heavy, design: .rounded)
                         .foregroundStyle(minVal < 5.0 ? EvaluationDesign.danger : EvaluationDesign.accent)
                         .monospacedDigit()
 
                     let names = report.studentsWithMinScore.map(\.name).joined(separator: ", ")
                     Text(names)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .notebookFont(size: 11, weight: .medium, design: .rounded)
                         .foregroundStyle(Color.secondary)
                         .lineLimit(2)
                 } else {
                     Text("—")
-                        .font(.system(size: 24, weight: .heavy, design: .rounded))
+                        .notebookFont(size: 24, weight: .heavy, design: .rounded)
                         .foregroundStyle(Color.secondary)
                 }
             }
@@ -891,16 +946,16 @@ struct NotebookColumnStatisticsSheet: View {
     private var emptyStateCard: some View {
         VStack(spacing: 12) {
             Image(systemName: "chart.bar.xaxis")
-                .font(.system(size: 44, weight: .light))
+                .notebookFont(size: 44, weight: .light)
                 .foregroundStyle(Color.secondary.opacity(0.6))
                 .padding(.top, 10)
 
             Text("Sin calificaciones registradas")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .notebookFont(size: 16, weight: .bold, design: .rounded)
                 .foregroundStyle(Color.primary)
 
             Text("Introduce notas en esta columna o evalúa alumnos para ver la media, la desviación y la distribución LOMLOE.")
-                .font(.system(size: 13, weight: .regular))
+                .notebookFont(size: 13, weight: .regular)
                 .foregroundStyle(Color.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)

@@ -1,5 +1,26 @@
 import SwiftUI
 
+/// Textos de estado de la sync silenciosa que el badge sabe interpretar.
+enum SyncCatchUpCopy {
+    static let catchingUp = "Poniéndose al día…"
+    static let upToDate = "Al día"
+    #if os(macOS)
+    static let offline = "Sin conexión con el servicio de enlace: lo que edites se enviará al reconectar"
+    #else
+    static let offline = "Sin conexión con el Mac: lo que edites se enviará al reconectar"
+    #endif
+
+    /// Mensajes que deben desaparecer en cuanto una sync vuelve a salir bien.
+    static func isTransient(_ message: String) -> Bool {
+        message == catchingUp || isOffline(message)
+    }
+
+    static func isOffline(_ message: String) -> Bool {
+        let normalized = message.lowercased()
+        return normalized.contains("sin conexión") || normalized.contains("reconectando")
+    }
+}
+
 /// Estado derivado de sincronización para mostrar en la toolbar del workspace.
 ///
 /// No introduce estado nuevo: se calcula a partir de los valores ya publicados
@@ -8,6 +29,12 @@ import SwiftUI
 enum SyncStatusBadgeState: Equatable {
     /// No hay ningún host de sync LAN emparejado.
     case inactivo
+    /// Volviendo a primer plano: se está bajando lo del otro dispositivo.
+    case poniendoseAlDia
+    /// No se llega al otro dispositivo; lo editado queda en cola.
+    case sinConexion(pendientes: Int)
+    /// La huella de los dos dispositivos no coincide: hay que igualarlos.
+    case datosDistintos
     /// Hay cambios pendientes de sincronizar.
     case pendiente(count: Int)
     /// El último mensaje de estado indica un fallo de sincronización.
@@ -19,6 +46,12 @@ enum SyncStatusBadgeState: Equatable {
         switch self {
         case .inactivo:
             return "bolt.horizontal.circle"
+        case .poniendoseAlDia:
+            return "arrow.triangle.2.circlepath"
+        case .sinConexion:
+            return "wifi.exclamationmark"
+        case .datosDistintos:
+            return "exclamationmark.arrow.circlepath"
         case .pendiente:
             return "clock.badge"
         case .error:
@@ -32,6 +65,12 @@ enum SyncStatusBadgeState: Equatable {
         switch self {
         case .inactivo:
             return .secondary
+        case .poniendoseAlDia:
+            return .secondary
+        case .sinConexion:
+            return IOSAppStyle.warning
+        case .datosDistintos:
+            return IOSAppStyle.danger
         case .pendiente:
             return IOSAppStyle.warning
         case .error:
@@ -43,8 +82,10 @@ enum SyncStatusBadgeState: Equatable {
 
     var shortText: String? {
         switch self {
-        case .inactivo:
+        case .inactivo, .poniendoseAlDia, .datosDistintos:
             return nil
+        case .sinConexion(let pendientes):
+            return pendientes > 0 ? "\(pendientes)" : nil
         case .pendiente(let count):
             return "\(count)"
         case .error:
@@ -58,6 +99,13 @@ enum SyncStatusBadgeState: Equatable {
         switch self {
         case .inactivo:
             return "Sincronización: inactiva, sin equipo emparejado"
+        case .poniendoseAlDia:
+            return "Sincronización: poniéndose al día"
+        case .sinConexion(let pendientes):
+            let cola = pendientes > 0 ? ", \(pendientes) cambio\(pendientes == 1 ? "" : "s") en cola" : ""
+            return "Sincronización: sin conexión\(cola)"
+        case .datosDistintos:
+            return "Sincronización: los datos de los dos dispositivos no coinciden. Abre Sincronización e iguala los dispositivos"
         case .pendiente(let count):
             return "Sincronización: \(count) cambio\(count == 1 ? "" : "s") pendiente\(count == 1 ? "" : "s")"
         case .error(let mensaje):
@@ -74,10 +122,26 @@ enum SyncStatusBadgeState: Equatable {
 func resolvedSyncStatusBadgeState(
     syncStatusMessage: String,
     syncPendingChanges: Int,
-    pairedSyncHost: String?
+    pairedSyncHost: String?,
+    hasSyncDivergence: Bool = false
 ) -> SyncStatusBadgeState {
     guard pairedSyncHost != nil else {
         return .inactivo
+    }
+
+    // Sin conexión va antes que «pendiente»: lo importante es saber que la
+    // cola no está saliendo, no solo cuántos cambios hay en ella.
+    if SyncCatchUpCopy.isOffline(syncStatusMessage) {
+        return .sinConexion(pendientes: syncPendingChanges)
+    }
+
+    if syncStatusMessage == SyncCatchUpCopy.catchingUp {
+        return .poniendoseAlDia
+    }
+
+    // Antes de «pendiente»: una cola que sale no arregla lo que ya está distinto.
+    if hasSyncDivergence {
+        return .datosDistintos
     }
 
     if syncPendingChanges > 0 {
@@ -100,12 +164,14 @@ struct SyncStatusBadge: View {
     let syncPendingChanges: Int
     let syncLastRunAt: Date?
     let pairedSyncHost: String?
+    var hasSyncDivergence: Bool = false
 
     private var state: SyncStatusBadgeState {
         resolvedSyncStatusBadgeState(
             syncStatusMessage: syncStatusMessage,
             syncPendingChanges: syncPendingChanges,
-            pairedSyncHost: pairedSyncHost
+            pairedSyncHost: pairedSyncHost,
+            hasSyncDivergence: hasSyncDivergence
         )
     }
 

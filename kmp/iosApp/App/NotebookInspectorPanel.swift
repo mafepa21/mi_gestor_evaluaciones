@@ -46,6 +46,9 @@ struct NotebookInspectorPanel: View {
                 )
             }
         }
+        // Columna estrecha junto al grid: con letra de accesibilidad las
+        // palabras se partían. Crece hasta xxxLarge, como el grid hasta AX2.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 
     private func inspector(

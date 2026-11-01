@@ -287,6 +287,8 @@ enum SyncLanHeroCopy {
         case error
         case syncing
         case cancelled
+        /// Enlazado, pero ahora no se llega al otro dispositivo.
+        case offline
         case pending
         case synced
     }
@@ -298,7 +300,7 @@ enum SyncLanHeroCopy {
 
         var isAttention: Bool {
             switch kind {
-            case .error, .pending, .cancelled:
+            case .error, .pending, .cancelled, .offline:
                 return true
             case .unpaired, .syncing, .synced:
                 return false
@@ -355,6 +357,14 @@ enum SyncLanHeroCopy {
             )
         }
 
+        // Antes salía «Sincronizado» en verde con el aviso «Sin conexión» debajo.
+        if SyncCatchUpCopy.isOffline(trimmed) {
+            let queued = pendingChanges == 0
+                ? "Se reconectará solo en cuanto los dos estéis en la misma Wi-Fi."
+                : "\(pendingChanges) cambio\(pendingChanges == 1 ? "" : "s") se enviará\(pendingChanges == 1 ? "" : "n") al reconectar. Se reconectará solo en cuanto los dos estéis en la misma Wi-Fi."
+            return Snapshot(title: "Sin conexión", detail: queued, kind: .offline)
+        }
+
         if pendingChanges > 0 {
             let countLabel = pendingChanges == 1
                 ? "1 cambio espera confirmación del Mac."
@@ -387,7 +397,13 @@ enum SyncLanHeroCopy {
 // MARK: - SyncLanView (nueva vista rediseñada por secciones)
 
 struct SyncLanView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (discoveredSyncHosts, pairedSyncHost, syncDivergence, syncPendingChanges, syncStatusMessage),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.discoveredSyncHosts), .init($0.pairedSyncHost), .init($0.syncDivergence), .init($0.syncPendingChanges), .init($0.syncStatusMessage)] }
+    }
     @ObservedObject var settings: AppSettingsStore
 
     @State private var selectedHost: String = ""
@@ -854,6 +870,8 @@ struct SyncLanView: View {
             return "arrow.triangle.2.circlepath"
         case .cancelled:
             return "xmark.circle"
+        case .offline:
+            return "wifi.exclamationmark"
         case .pending:
             return "arrow.triangle.2.circlepath"
         case .synced:
@@ -867,7 +885,7 @@ struct SyncLanView: View {
             return .secondary
         case .error, .cancelled:
             return IOSAppStyle.danger
-        case .syncing, .pending:
+        case .syncing, .pending, .offline:
             return IOSAppStyle.warning
         case .synced:
             return IOSAppStyle.success
@@ -994,7 +1012,13 @@ private struct SyncActivityRow: View {
 // MARK: - SyncLanCard (legacy — conservado para compatibilidad)
 
 struct SyncLanCard: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (discoveredSyncHosts, pairedSyncHost, syncDivergence, syncPendingChanges, syncStatusMessage),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.discoveredSyncHosts), .init($0.pairedSyncHost), .init($0.syncDivergence), .init($0.syncPendingChanges), .init($0.syncStatusMessage)] }
+    }
     @State private var selectedHost: String = ""
     @State private var selectedPort: String = "8765"
     @State private var pin: String = ""

@@ -38,6 +38,10 @@ struct PlannerMonthCalendarView: View {
                 .padding(.horizontal, EvaluationDesign.screenPadding)
                 .padding(.bottom, EvaluationDesign.screenPadding)
         }
+        .reloadOnLanSync(.planner) {
+            vm.invalidateReadCaches()
+            await vm.reloadMonthData()
+        }
         .task(id: monthReloadKey) {
             await vm.reloadMonthData()
         }
@@ -138,7 +142,7 @@ struct PlannerMonthCalendarView: View {
                 )) {
                     Text("Todos los grupos").tag(Optional<Int64>.none)
                     ForEach(vm.groups, id: \.id) { group in
-                        Text(group.name).tag(Optional(group.id))
+                        Text(vm.groupLabel(for: group)).tag(Optional(group.id))
                     }
                 }
                 .pickerStyle(.menu)
@@ -334,6 +338,7 @@ private struct PlannerMonthDayCell: View {
                 PlannerMonthSessionPill(
                     session: session,
                     classColorHex: vm.classColorHex(for: session.groupId),
+                    groupLabel: vm.groupLabel(for: session),
                     onTap: { onOpenSession?(session) }
                 )
             }
@@ -387,6 +392,7 @@ private struct PlannerMonthDayCell: View {
 private struct PlannerMonthSessionPill: View {
     let session: PlanningSession
     let classColorHex: String
+    let groupLabel: String
     let onTap: () -> Void
 
     private var tint: Color {
@@ -403,7 +409,7 @@ private struct PlannerMonthSessionPill: View {
                     .frame(width: 3)
 
                 // Solo hora de clase y grupo: el título se cortaba siempre («Bádm…»).
-                Text(session.period > 0 ? "\(session.period)ª · \(session.groupName)" : session.groupName)
+                Text(session.period > 0 ? "\(session.period)ª · \(groupLabel)" : groupLabel)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -525,7 +531,7 @@ struct PlannerMonthDaySessionsSheet: View {
 
                                                 Spacer()
 
-                                                Text(session.groupName)
+                                                Text(vm.groupLabel(for: session))
                                                     .font(.caption.weight(.bold))
                                                     .padding(.horizontal, 6)
                                                     .padding(.vertical, 2)

@@ -2,6 +2,9 @@ import Foundation
 import MiGestorKit
 import Security
 import CryptoKit
+#if os(iOS)
+import UIKit
+#endif
 
 enum PlanningSessionSyncMerge {
     static func placement(previous: Int32, incoming: Int64?, keyPresent: Bool) -> Int32 {
@@ -556,14 +559,6 @@ extension KmpBridge {
         }
     }
 
-    func createLocalBackup(fileName: String = "mi_gestor_backup.sqlite") async throws -> BackupResult {
-        try await container.backupService.createBackup(fileName: fileName)
-    }
-
-    func restoreLocalBackup(from path: String) async throws -> Bool {
-        try await container.backupService.restoreBackup(backupPath: path).boolValue
-    }
-
     func runLanPushSync() async throws {
         try await performPushSync(silent: false)
     }
@@ -593,6 +588,9 @@ extension KmpBridge {
     }
 
     static let divergenceCheckInterval: TimeInterval = 15 * 60
+    /// Al volver a la app la huella se adelanta, pero no más de una vez cada 5 min:
+    /// en el Mac la app «vuelve» cada vez que la ventana recupera el foco.
+    static let foregroundDivergenceCheckInterval: TimeInterval = 5 * 60
 
     func checkSyncDivergence(force: Bool = false) async {
         guard pairedSyncHost != nil, syncToken != nil else { return }
@@ -764,6 +762,10 @@ extension KmpBridge {
             )
         } catch {
             guard recoverHostAfterNetworkChange(previousHost: host), let reboundHost = pairedSyncHost else {
+                #if os(iOS)
+                // El Mac no responde en la dirección guardada: buscarlo otra vez.
+                restartDiscoveryIfDisconnected()
+                #endif
                 throw error
             }
             pull = try await lanSyncClient.pull(
@@ -840,6 +842,18 @@ extension KmpBridge {
 
         guard refreshAfterApply else { return }
 
+        // Las pantallas que cargan sus propios datos (Planner, Asistencia,
+        // Reuniones, SdA, EF…) no observan el bridge: sin este aviso seguían
+        // enseñando lo de antes y el docente editaba sobre datos viejos.
+        let remoteEntities = Set(changes.filter { $0.deviceId != localDeviceId }.map(\.entity))
+        if !remoteEntities.isEmpty {
+            NotificationCenter.default.post(
+                name: .lanSyncRemoteChangesApplied,
+                object: nil,
+                userInfo: [LanSyncRefreshPlan.entitiesUserInfoKey: remoteEntities]
+            )
+        }
+
         // Ejecutamos los refreshes en una Task de utilidad para no bloquear el
         // MainActor run loop durante las queries encadenadas. Esto evita que la UI
         // se congele cuando el servidor LAN tarda o no está disponible.
@@ -859,6 +873,10 @@ extension KmpBridge {
                 }
                 if plan.students {
                     try await self.refreshStudentsDirectory()
+                    guard !Task.isCancelled else { return }
+                }
+                if entities.contains(SchoolRecordsSync.companion.SUBJECT) {
+                    try await self.refreshSubjects()
                     guard !Task.isCancelled else { return }
                 }
                 if plan.rubrics {
@@ -997,6 +1015,16 @@ extension KmpBridge {
                 UserDefaults.standard.set(encoded, forKey: "sync.pending.changes.v2")
             }.value
         }
+    }
+
+    /// Guarda la cola en el acto. Al pasar a segundo plano no se puede esperar
+    /// a la tanda de `persistPendingChanges()`: iOS puede congelar la app antes
+    /// y los cambios aún no enviados se perderían si el sistema la cierra.
+    func persistPendingChangesNow() {
+        pendingChangesPersistenceTask?.cancel()
+        pendingChangesPersistenceTask = nil
+        guard let encoded = try? JSONEncoder().encode(pendingOutboundChanges) else { return }
+        UserDefaults.standard.set(encoded, forKey: "sync.pending.changes.v2")
     }
 
     func invalidateNotebookCellValueIndexCache() {
@@ -1539,9 +1567,34 @@ extension KmpBridge {
     }
 
     private func applyPulledChanges(_ changes: [LanSyncChange]) async throws {
-        let orderedChanges = orderedPulledChanges(changes)
-        let applyTotal = orderedChanges.count
+        // Reuniones, acuerdos, medidas de apoyo, tutorías y asignaturas las aplica el
+        // mismo código Kotlin que el Mac (`SchoolRecordsSync`). Antes caían en el
+        // `default: continue` de abajo y nunca llegaban a este dispositivo.
+        let schoolRecordChanges = changes.filter {
+            SchoolRecordsSync.companion.handles(entity: $0.entity) && $0.deviceId != localDeviceId
+        }
+        // Plan semanal, Manual de Inclusión y pruebas físicas: igual, con `ModuleRecordsSync`.
+        let moduleRecordChanges = changes.filter {
+            ModuleRecordsSync.companion.handles(entity: $0.entity) && $0.deviceId != localDeviceId
+        }
         var failedCount = 0
+        if !schoolRecordChanges.isEmpty {
+            let ack = try await SchoolRecordsSync(container: container, localDeviceId: localDeviceId)
+                .applyAll(changes: schoolRecordChanges.map(\.kotlinSyncChange))
+            failedCount += Int(ack.failed)
+        }
+        if !moduleRecordChanges.isEmpty {
+            let ack = try await ModuleRecordsSync(container: container, localDeviceId: localDeviceId)
+                .applyAll(changes: moduleRecordChanges.map(\.kotlinSyncChange))
+            failedCount += Int(ack.failed)
+        }
+        let orderedChanges = orderedPulledChanges(
+            changes.filter {
+                !SchoolRecordsSync.companion.handles(entity: $0.entity)
+                    && !ModuleRecordsSync.companion.handles(entity: $0.entity)
+            }
+        )
+        let applyTotal = orderedChanges.count + schoolRecordChanges.count + moduleRecordChanges.count
         // Parseo JSON fuera de MainActor; las suspend de KMP siguen en MainActor.
         let payloadStrings = orderedChanges.map(\.payload)
         let parsedPayloads = await Task.detached(priority: .utility) {
@@ -4093,6 +4146,9 @@ extension KmpBridge {
                     try await Task.sleep(nanoseconds: self.nextAutoSyncIntervalNanoseconds())
                     guard self.isAppInForeground else { continue }
                     guard self.pairedSyncHost != nil, self.syncToken != nil else { continue }
+                    #if os(iOS)
+                    self.restartDiscoveryIfDisconnected()
+                    #endif
                     guard !AppleBackupService.shared.needsRestart else { continue }
                     #if os(macOS)
                     await self.checkLocalDbFileModification()
@@ -4167,7 +4223,8 @@ extension KmpBridge {
         startAutoSyncLoop()
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.syncNow(reason: "helper_ready", forceFullPull: true, silent: true)
+            // Sin descarga completa: la app y el helper comparten la misma base.
+            await self.syncNow(reason: "helper_ready", forceFullPull: false, silent: true)
         }
         #endif
     }
@@ -4293,9 +4350,12 @@ extension KmpBridge {
             do {
                 try await Task.sleep(nanoseconds: delayNanoseconds)
                 await self.syncNow(reason: "debounced_local_change", forceFullPull: false, silent: true)
+            } catch is CancellationError {
+                // Otra edición reprogramó el envío: no es un fallo de red.
+                return
             } catch {
                 self.publishSyncState {
-                    $0.syncStatusMessage = "Auto-sync pendiente (reconectando...)"
+                    $0.syncStatusMessage = SyncCatchUpCopy.offline
                 }
             }
         }
@@ -4303,13 +4363,148 @@ extension KmpBridge {
 
     func onAppDidBecomeActive() {
         isAppInForeground = true
+        #if os(iOS)
+        // Al volver de segundo plano el navegador Bonjour puede tener resultados viejos.
+        lanSyncDiscovery.restart()
+        startNetworkMonitoring()
+        #endif
         restartAutoSyncLoopIfPaired()
         reconcileAppleCalendarIfEnabled()
+        let isPaired = pairedSyncHost != nil && syncToken != nil
+        if isPaired {
+            // Al volver, lo primero es ponerse al día: si el docente edita antes,
+            // lo hace sobre datos que el otro dispositivo ya cambió.
+            setSyncStatusMessage(SyncCatchUpCopy.catchingUp)
+        }
         Task { @MainActor [weak self] in
             guard let self else { return }
+            let startedAt = Date()
             // Al abrir la app, `bootstrap()` ya está sincronizando: no encadenar otro pase.
-            guard !self.isSyncInFlight else { return }
-            await self.syncNow(reason: "foreground", forceFullPull: false, silent: true)
+            if !self.isSyncInFlight {
+                await self.syncNow(reason: "foreground", forceFullPull: false, silent: true)
+            }
+            guard isPaired else { return }
+            await self.waitForSyncToFinish(timeoutSeconds: 30)
+            let caughtUp = self.lastSuccessfulSyncAt >= startedAt.addingTimeInterval(-1.5)
+            // Al volver se mira ya si los dos dispositivos coinciden: antes solo cada
+            // 15 min y el aviso solo se veía dentro de la pantalla de Sincronización.
+            if caughtUp, self.pendingOutboundChanges.isEmpty,
+               Date().timeIntervalSince(self.lastDivergenceCheckAt) > Self.foregroundDivergenceCheckInterval {
+                Task { await self.checkSyncDivergence(force: true) }
+            }
+            // `syncNow` tiene varias salidas tempranas que no publican nada; el
+            // aviso «Poniéndose al día…» no puede quedarse colgado.
+            guard self.syncStatusMessage == SyncCatchUpCopy.catchingUp else { return }
+            self.setSyncStatusMessage(caughtUp ? SyncCatchUpCopy.upToDate : SyncCatchUpCopy.offline)
+        }
+    }
+
+    /// Despertar en segundo plano del iPad (`LanSyncBackgroundRefresh`): un envío y una
+    /// descarga, sin listener ni bucle. iOS da unos 30 s; se deja margen.
+    func runBackgroundRefreshSync() async {
+        guard pairedSyncHost != nil, syncToken != nil else { return }
+        guard !AppleBackupService.shared.needsRestart else { return }
+        if !isSyncInFlight {
+            await syncNow(reason: "background_refresh", forceFullPull: false, silent: true)
+        }
+        await waitForSyncToFinish(timeoutSeconds: 20)
+        persistPendingChangesNow()
+    }
+
+    #if os(iOS)
+    /// Plan semanal, Manual de Inclusión y pruebas físicas de EF. En el iPad casi
+    /// ninguna de estas escrituras pasa por `enqueueLocalChange` (las tareas del manual
+    /// las genera Kotlin solo), así que se recogen de la base antes de cada envío, como
+    /// hace el helper en el Mac. Los borrados de planes y tareas se detectan por
+    /// diferencia con las claves de la vez anterior.
+    private func enqueueModuleRecordChanges(force: Bool) async {
+        let now = Date()
+        // Recorre varias tablas: no más de una vez cada 3 s salvo al irse o al despertar.
+        guard force || now.timeIntervalSince(ModuleRecordsOutbound.lastScanAt) >= 3 else {
+            triggerAutoSyncSoon(delayNanoseconds: 3_000_000_000)
+            return
+        }
+        ModuleRecordsOutbound.lastScanAt = now
+        let defaults = UserDefaults.standard
+        let since = (defaults.object(forKey: ModuleRecordsOutbound.cursorKey) as? NSNumber)?.int64Value ?? 0
+        let startedAtMs = Int64(now.timeIntervalSince1970 * 1000)
+        let sync = ModuleRecordsSync(container: container, localDeviceId: localDeviceId)
+        guard let collected = try? await sync.collect(sinceEpochMs: since) else { return }
+
+        // Lo que llegó del otro dispositivo trae su deviceId: no se devuelve.
+        for change in collected.changes where change.deviceId == localDeviceId {
+            let payload = LanSyncPayloadParser.dictionary(from: change.payload)
+            guard !payload.isEmpty else { continue }
+            enqueueLocalChange(
+                entity: change.entity,
+                id: change.id,
+                updatedAtEpochMs: change.updatedAtEpochMs,
+                payload: payload,
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
+            )
+        }
+
+        var previousKeys = defaults.dictionary(forKey: ModuleRecordsOutbound.liveKeysKey) as? [String: [String]] ?? [:]
+        for (entity, keys) in collected.liveKeysByEntity {
+            let current = Set(keys)
+            if let previous = previousKeys[entity] {
+                for removedKey in Set(previous).subtracting(current) {
+                    enqueueLocalChange(
+                        entity: entity,
+                        id: removedKey,
+                        updatedAtEpochMs: startedAtMs,
+                        payload: ["id": removedKey],
+                        op: "delete",
+                        shouldPersist: false,
+                        shouldScheduleAutoSync: false
+                    )
+                }
+            }
+            previousKeys[entity] = Array(current)
+        }
+        defaults.set(previousKeys, forKey: ModuleRecordsOutbound.liveKeysKey)
+        // Margen de 2 s: lo escrito mientras se recorría la base sale en la próxima vuelta.
+        defaults.set(NSNumber(value: startedAtMs - 2_000), forKey: ModuleRecordsOutbound.cursorKey)
+        persistPendingChanges()
+    }
+    #endif
+
+    #if os(iOS)
+    /// El iPad siempre es quien se conecta al Mac: por esa conexión viajan los cambios
+    /// en los dos sentidos. Al cambiar de red, se reencuentra al Mac (Bonjour), se
+    /// reabre el canal de avisos y se sincroniza ya, en vez de esperar a los reintentos.
+    private func startNetworkMonitoring() {
+        LanNetworkMonitor.shared.start { [weak self] in
+            self?.handleNetworkChange()
+        }
+    }
+
+    private func handleNetworkChange() {
+        print("[Sync] cambio de red: se busca al Mac y se reabre el canal")
+        lanSyncDiscovery.restart()
+        guard pairedSyncHost != nil, syncToken != nil, isAppInForeground else { return }
+        syncEventListener.stop()
+        startSyncEventListenerIfPaired()
+        // Un momento para que Bonjour encuentre al Mac si cambió de IP.
+        triggerAutoSyncSoon(delayNanoseconds: 1_500_000_000)
+    }
+
+    /// Mientras no hay canal con el Mac, la búsqueda Bonjour se reinicia cada 30 s.
+    private func restartDiscoveryIfDisconnected() {
+        guard !syncEventListener.isConnected,
+              Date().timeIntervalSince(lanSyncDiscovery.lastRestartAt) >= 30 else { return }
+        lanSyncDiscovery.restart()
+    }
+    #endif
+
+    /// Espera a que termine la sync en curso (si la hay). `syncNow` vuelve al
+    /// instante cuando ya hay una en vuelo, y quien necesita saber el resultado
+    /// (volver a primer plano, el último envío al irse) tiene que esperarla.
+    private func waitForSyncToFinish(timeoutSeconds: TimeInterval) async {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while isSyncInFlight, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 100_000_000)
         }
     }
 
@@ -4331,9 +4526,35 @@ extension KmpBridge {
         // fondo: `syncNow` toca repositorios Kotlin no declarados `@Throws`
         // sobre un fichero de base de datos que acaba de desaparecer.
         guard !AppleBackupService.shared.needsRestart else { return }
+        persistPendingChangesNow()
+        // Sin pedir tiempo a iOS, el último envío se cortaba al congelar la app:
+        // lo editado justo antes de bloquear el iPad no llegaba al Mac.
+        #if os(iOS)
+        var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "Envío Sync LAN") {
+            UIApplication.shared.endBackgroundTask(backgroundTaskID)
+            backgroundTaskID = .invalid
+        }
+        #endif
         Task { @MainActor [weak self] in
+            defer {
+                #if os(iOS)
+                if backgroundTaskID != .invalid {
+                    UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                    backgroundTaskID = .invalid
+                }
+                #endif
+            }
             guard let self else { return }
             await self.syncNow(reason: "background_flush", forceFullPull: false, silent: true)
+            await self.waitForSyncToFinish(timeoutSeconds: 20)
+            // Guardar una nota al salir encola su cambio un instante después;
+            // ese también tiene que salir antes de que iOS congele la app.
+            if !self.pendingOutboundChanges.isEmpty {
+                await self.syncNow(reason: "background_flush", forceFullPull: false, silent: true)
+                await self.waitForSyncToFinish(timeoutSeconds: 10)
+            }
+            self.persistPendingChangesNow()
         }
     }
 
@@ -4358,7 +4579,8 @@ extension KmpBridge {
         guard pairedSyncHost != nil, syncToken != nil else { return }
         guard !isPairingInFlight else { return }
         let now = Date()
-        let latencyCriticalReason = reason == "sse_event" || reason == "debounced_local_change" || reason == "background_flush"
+        let latencyCriticalReason = reason == "sse_event" || reason == "debounced_local_change"
+            || reason == "background_flush" || reason == "background_refresh"
 
         if silent,
            !forceFullPull,
@@ -4385,6 +4607,9 @@ extension KmpBridge {
         repeat {
             syncNeedsAnotherPass = false
             do {
+                #if os(iOS)
+                await enqueueModuleRecordChanges(force: reason == "background_flush" || reason == "background_refresh")
+                #endif
                 if !pendingOutboundChanges.isEmpty {
                     try await performPushSync(silent: true)
                 }
@@ -4394,8 +4619,14 @@ extension KmpBridge {
                 // recordada entre arranques). Antes se repetía cada 3 minutos,
                 // al volver a primer plano y dos veces al abrir: cada vez se
                 // reaplicaba toda la base y se recargaban todas las pantallas.
+                // En el Mac nunca: el helper escribe en la misma base que la app, así
+                // que bajarla entera solo era reaplicarla sobre sí misma (~60 s).
+                #if os(macOS)
+                let shouldForceFullPull = false
+                #else
                 let shouldForceFullPull = forceFullPull
                     || now.timeIntervalSince(persistedLastFullPullAt) > Self.fullPullSafetyInterval
+                #endif
                 try await performPullSync(
                     silent: true,
                     sinceEpochMsOverride: shouldForceFullPull ? 0 : nil
@@ -4415,6 +4646,12 @@ extension KmpBridge {
                     publishSyncState {
                         $0.syncStatusMessage = "Sincronizado (\(reason))"
                     }
+                } else if SyncCatchUpCopy.isTransient(syncStatusMessage) {
+                    // Sin esto, «reconectando» o «poniéndose al día» se quedaban
+                    // fijos aunque la sync ya hubiera vuelto a funcionar.
+                    publishSyncState {
+                        $0.syncStatusMessage = SyncCatchUpCopy.upToDate
+                    }
                 }
             } catch {
                 if !silent {
@@ -4424,7 +4661,7 @@ extension KmpBridge {
                     }
                 } else {
                     publishSyncState {
-                        $0.syncStatusMessage = "Auto-sync pendiente (reconectando...)"
+                        $0.syncStatusMessage = SyncCatchUpCopy.offline
                     }
                 }
             }
@@ -4522,6 +4759,97 @@ enum LanSyncRefreshPlan {
             notebookEntities: notebookEntities
         )
     }
+
+    /// Clave del `userInfo` de `.lanSyncRemoteChangesApplied` (un `Set<String>`).
+    static let entitiesUserInfoKey = "entities"
+
+    /// Pantallas que cargan sus datos por su cuenta y deben recargarse cuando
+    /// llegan cambios del otro dispositivo.
+    enum Screen: CaseIterable {
+        case planner
+        case attendance
+        case meetings
+        case inclusion
+        case learningSituations
+        case physicalEducation
+        case students
+        case rubrics
+        /// Notas, evaluaciones e informes (Centro de evaluación, Informes).
+        case evaluation
+        /// Resumen de todo: cualquier cambio le afecta.
+        case dashboard
+    }
+
+    static func affects(_ screen: Screen, entities: Set<String>) -> Bool {
+        switch screen {
+        case .planner:
+            return steps(entities: entities).planning
+                || entities.contains("planner_week_plan")
+                || entities.contains { $0.hasPrefix("learning_situation") }
+        case .attendance:
+            return !entities.isDisjoint(with: ["attendance", "incident", "class_roster", "student", "class"])
+        case .meetings:
+            return !entities.isDisjoint(with: ["meetings", "meeting_agreements"])
+        case .inclusion:
+            return !entities.isDisjoint(with: [
+                "student_support_measures", "student_tutoring_sessions", "incident", "student", "class_roster",
+                "inclusion_task", "inclusion_group_setting"
+            ])
+        case .learningSituations:
+            return entities.contains { $0.hasPrefix("learning_situation") }
+                || !entities.isDisjoint(with: ["teaching_unit", "planning_session"])
+        case .physicalEducation:
+            return !entities.isDisjoint(with: [
+                "incident", "planning_session", "session_journal", "evaluation", "grade", "attendance",
+                "notebook_instrument_template", "notebook_instrument_item", "notebook_instrument_response"
+            ]) || entities.contains { $0.hasPrefix("physical_test_") }
+        case .students:
+            return !entities.isDisjoint(with: [
+                "student", "student_deleted", "class_roster", "class", "student_support_measures", "student_tutoring_sessions"
+            ])
+        case .rubrics:
+            return !entities.isDisjoint(with: ["rubric_bundle", "rubric_assessment", "evaluation", "teaching_unit"])
+        case .evaluation:
+            return !entities.isDisjoint(with: [
+                "grade", "evaluation", "rubric_assessment", "rubric_bundle", "notebook_cell", "notebook_column",
+                "notebook_tab", "notebook_column_category", "notebook_instrument_response", "attendance",
+                "class_roster", "student"
+            ])
+        case .dashboard:
+            return !entities.isEmpty
+        }
+    }
+}
+
+#if os(iOS)
+@MainActor
+private enum ModuleRecordsOutbound {
+    static let cursorKey = "sync.module-records.outbound-cursor"
+    static let liveKeysKey = "sync.module-records.live-keys"
+    static var lastScanAt: Date = .distantPast
+}
+#endif
+
+extension LanSyncChange {
+    /// El mismo cambio en el tipo de Kotlin, para pasárselo a `SchoolRecordsSync`.
+    var kotlinSyncChange: SyncChange {
+        SyncChange(
+            entity: entity,
+            id: id,
+            updatedAtEpochMs: updatedAtEpochMs,
+            deviceId: deviceId,
+            payload: payload,
+            op: op,
+            schemaVersion: Int32(schemaVersion)
+        )
+    }
+}
+
+extension Notification.Name {
+    /// Se publica en el hilo principal tras aplicar cambios llegados del otro
+    /// dispositivo. `userInfo[LanSyncRefreshPlan.entitiesUserInfoKey]` lleva las
+    /// entidades. Las vistas se apuntan con `.reloadOnLanSync(_:perform:)`.
+    static let lanSyncRemoteChangesApplied = Notification.Name("lanSyncRemoteChangesApplied")
 }
 
 fileprivate extension Array {

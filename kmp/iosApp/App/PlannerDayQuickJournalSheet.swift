@@ -124,7 +124,7 @@ private struct PlannerDayQuickJournalRow: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(timeRange) · \(session.groupName)")
+                    Text("\(timeRange) · \(vm.groupLabel(for: session))")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(tint)
                     Text(title)

@@ -23,7 +23,9 @@ struct SdaTournamentDetailView: View {
     let onLiveModeChange: (Bool) -> Void
     let deleteRequest: SdaTournamentDeleteRequest?
 
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) private var dismiss
     @State private var rosterPhase: RosterPhase = .loading
     @State private var students: [(id: String, name: String)] = []
@@ -35,6 +37,7 @@ struct SdaTournamentDetailView: View {
     @State private var actionError: String?
     @State private var isLive = false
     @State private var contentWidth: CGFloat = 0
+    @State private var showingRegistration = false
 
     /// Ancho a partir del cual la clasificación de una liga se muestra al lado del calendario.
     private static let wideLayoutWidth: CGFloat = 820
@@ -106,9 +109,15 @@ struct SdaTournamentDetailView: View {
         }
     }
 
+    /// Torneo creado desde cero para inscribirse por formulario: sin situación ni equipos todavía.
+    private var isFromScratch: Bool {
+        store.record.learningSituationId == nil && plan.teams.isEmpty
+    }
+
     private var groupsChanged: Bool {
-        // Los torneos migrados (sin SdA) no tienen grupos de trabajo que releer.
-        guard store.record.learningSituationId != nil else { return false }
+        // Los torneos migrados (sin SdA) no tienen grupos de trabajo que releer, y los de
+        // inscripción por formulario forman sus equipos con las respuestas, no con los grupos.
+        guard store.record.learningSituationId != nil, plan.registration == nil else { return false }
         return SdaTournamentTeams.hasChanged(
             snapshot: plan.teams,
             current: currentTeams.filter { $0.classId == store.record.classId }
@@ -132,6 +141,9 @@ struct SdaTournamentDetailView: View {
         }
         .sheet(item: $scoreTarget) { target in
             scoreSheet(for: target)
+        }
+        .sheet(isPresented: $showingRegistration) {
+            SdaTournamentRegistrationSheet(store: store, className: className)
         }
         .confirmationDialog(
             "¿Borrar «\(plan.name)»?",
@@ -176,7 +188,11 @@ struct SdaTournamentDetailView: View {
             if isLive { onLiveModeChange(false) }
         }
         .modifier(SdaSheetChrome(isSheet: !isEmbedded))
-        .task { await loadRoster() }
+        .task {
+            // Recién creado desde cero: lo primero es la inscripción.
+            if isFromScratch, plan.registration == nil { showingRegistration = true }
+            await loadRoster()
+        }
         .onChange(of: tabs) { _, newTabs in
             if !newTabs.contains(selectedTab) { selectedTab = .calendar }
         }
@@ -189,14 +205,24 @@ struct SdaTournamentDetailView: View {
                 summaryCard
                 notices
                 if plan.savedSchedule.isEmpty {
-                    LearningSituationInlineNotice(
-                        kind: .warning,
-                        message: store.record.learningSituationId == nil
-                            ? "Este torneo no tiene calendario."
-                            : "Este torneo no tiene calendario. Actualiza los equipos para generarlo.",
-                        actionTitle: groupsChanged ? "Actualizar equipos" : nil
-                    ) {
-                        isConfirmingRefresh = true
+                    if plan.registration != nil || isFromScratch {
+                        LearningSituationInlineNotice(
+                            kind: .info,
+                            message: "Este torneo no tiene calendario. Forma las parejas desde la inscripción.",
+                            actionTitle: "Abrir inscripción"
+                        ) {
+                            showingRegistration = true
+                        }
+                    } else {
+                        LearningSituationInlineNotice(
+                            kind: .warning,
+                            message: store.record.learningSituationId == nil
+                                ? "Este torneo no tiene calendario."
+                                : "Este torneo no tiene calendario. Actualiza los equipos para generarlo.",
+                            actionTitle: groupsChanged ? "Actualizar equipos" : nil
+                        ) {
+                            isConfirmingRefresh = true
+                        }
                     }
                 } else {
                     if tabs.count > 1 {
@@ -333,6 +359,11 @@ struct SdaTournamentDetailView: View {
 
     private var moreActionsMenu: some View {
         Menu {
+            Button {
+                showingRegistration = true
+            } label: {
+                Label(plan.registration == nil ? "Inscripción por formulario…" : "Inscripción…", systemImage: "person.crop.circle.badge.plus")
+            }
             Button(role: .destructive) {
                 isConfirmingDelete = true
             } label: {
@@ -736,7 +767,9 @@ struct SdaTournamentSheetHost: View {
     let deleteRequest: SdaTournamentDeleteRequest?
     private let recordId: String?
     private let recordName: String
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) private var dismiss
     @State private var loaded: Loaded?
     @State private var isConfirmingUnreadableDelete = false

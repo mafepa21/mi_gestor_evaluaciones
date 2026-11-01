@@ -101,6 +101,11 @@ struct NotebookModuleView: View {
     @State var deletionConfirmationText = ""
     @State var isOrganizationMenuPresented = false
     @State var isHiddenColumnsSheetPresented = false
+    @State var isClosingReviewPresented = false
+    /// Datos del Cuaderno congelados al abrir «Revisar cierre»: una recarga o sync con la
+    /// hoja abierta no debe pasarla a «Sin datos».
+    @State var closingReviewData: NotebookUiStateData? = nil
+    @State var pendingClosingTarget: NotebookClosingTarget? = nil
     @State var toast: NotebookToast? = nil
     @State var isAttendanceQuickMode = false
     @State var isMarkAllPresentDialogPresented = false
@@ -141,6 +146,10 @@ struct NotebookModuleView: View {
     @State var isPrecomputingRiskLevels = false
     @AppStorage("notebook.fixedZoneWidth") var fixedZoneWidthStored = 240.0
     @State var isDraggingFixedZoneDivider = false
+    /// La tabla se monta en la vuelta siguiente a la del resto del Cuaderno: así la
+    /// primera apertura no bloquea la pantalla de un tirón (y las filas, otra vuelta
+    /// después, ver `NotebookScrollSyncCoordinator.install`).
+    @State var isGridMounted = false
     @State var fixedZoneDragStartWidth: CGFloat = 0
     @State var fixedZoneLiveWidth: CGFloat? = nil
     @State var formulaEditRequest: NotebookFormulaEditRequest? = nil
@@ -501,7 +510,18 @@ struct NotebookModuleView: View {
                         }
                     )
                 }
-                spreadsheetContent(data: data, rows: rows)
+                Group {
+                    if isGridMounted {
+                        spreadsheetContent(data: data, rows: rows)
+                    } else {
+                        Color.clear
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .onAppear {
+                                // `.task` arrancaría en la misma vuelta: hace falta la cola principal.
+                                DispatchQueue.main.async { isGridMounted = true }
+                            }
+                    }
+                }
                     // Tarjeta elevada: el grid flota como superficie redondeada
                     // sobre el lienzo neutro del módulo (margen a los lados y
                     // abajo), en vez de ir a sangre completa. Es lo que da el aire
@@ -1166,8 +1186,13 @@ struct NotebookModuleView: View {
         }
 
         let pastedValues = notebookClipboardColumnValues(from: rawClipboard)
+        let isNumericTarget = selected.column.type == .numeric
         guard pastedValues.count > 1 else {
             let value = pastedValues.first ?? rawClipboard.trimmingCharacters(in: .whitespacesAndNewlines)
+            if isNumericTarget, !NotebookViewModelKt.isValidNotebookNumericInput(inputKind: selected.column.inputKind, value: value) {
+                showToast("\u{201C}\(value)\u{201D} no es una nota. Se mantiene la anterior.", style: .warning)
+                return
+            }
             recordCellUndo(
                 studentId: selected.selection.studentId,
                 column: selected.column,
@@ -1185,7 +1210,12 @@ struct NotebookModuleView: View {
         let targetRows = rows[startIndex...]
 
         var changes: [NotebookCellUndoChange] = []
+        var invalidCount = 0
         for (row, value) in zip(targetRows, pastedValues) {
+            if isNumericTarget, !NotebookViewModelKt.isValidNotebookNumericInput(inputKind: selected.column.inputKind, value: value) {
+                invalidCount += 1
+                continue
+            }
             let previousValue = displayValue(for: row, column: selected.column)
             guard previousValue != value else { continue }
             changes.append(
@@ -1201,7 +1231,15 @@ struct NotebookModuleView: View {
         }
         recordCellUndoBatch(changes)
         let skippedCount = max(0, pastedValues.count - targetRows.count)
-        if skippedCount > 0 {
+        if invalidCount > 0 {
+            let total = min(pastedValues.count, targetRows.count)
+            if invalidCount == total {
+                showToast("Ningún valor era una nota", style: .warning)
+            } else {
+                let noun = invalidCount == 1 ? "valor no era una nota" : "valores no eran notas"
+                showToast("Pegadas \(changes.count) celdas. \(invalidCount) \(noun).", style: .warning)
+            }
+        } else if skippedCount > 0 {
             showToast("Pegadas \(changes.count) celdas (\(skippedCount) valores no cupieron en las filas visibles)", style: .warning)
         } else {
             showToast(changes.isEmpty ? "Sin cambios: los valores ya coincidían" : "Pegadas \(changes.count) celdas")
@@ -1488,7 +1526,8 @@ struct NotebookModuleView: View {
                     NotebookAverageEditorSheet(
                         classTitle: activeClassLabel,
                         columns: data.sheet.columns,
-                        rows: data.sheet.rows
+                        rows: data.sheet.rows,
+                        visibleColumnIds: Set(visibleNotebookSourceColumns(data: data).map(\.id))
                     ) { updates in
                         saveAverageConfiguration(updates)
                     }
@@ -1569,7 +1608,7 @@ struct NotebookModuleView: View {
                     }
                 )) {
                     RubricEvaluationView()
-                        .environmentObject(bridge)
+                        .kmpBridgeEnvironment(bridge)
                         #if os(macOS)
                         .frame(minWidth: 1180, minHeight: 700)
                         #endif
@@ -1607,6 +1646,12 @@ struct NotebookModuleView: View {
                     guard requestID != nil else { return }
                     isOrganizationMenuPresented = false
                     isHiddenColumnsSheetPresented = true
+                }
+                .appOnChange(of: layoutState.notebookClosingReviewRequestID) { requestID in
+                    guard requestID != nil else { return }
+                    isOrganizationMenuPresented = false
+                    closingReviewData = data
+                    isClosingReviewPresented = true
                 }
 
                 .appOnChange(of: notebookTabsStateKey(data: data)) { _ in

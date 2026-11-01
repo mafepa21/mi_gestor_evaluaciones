@@ -84,7 +84,7 @@ extension PlannerWorkspaceViewModel {
             let allSessionPlans = try await plannerSessionPlansAll()
             try Task.checkCancellation()
 
-            let groupNames = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.name) })
+            let groupNames = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, groupLabel(for: $0)) })
             let allowedGroupIds = Set(groupNames.keys.filter { classId in
                 requestedGroupId.map { classId == $0 } ?? true
             })

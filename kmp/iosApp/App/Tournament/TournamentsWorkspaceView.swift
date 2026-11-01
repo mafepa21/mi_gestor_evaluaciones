@@ -12,7 +12,13 @@ import SwiftUI
 import MiGestorKit
 
 struct TournamentsWorkspaceView: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (classes),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    private var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.classes)] }
+    }
     @Binding var selectedClassId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
 
@@ -31,6 +37,8 @@ struct TournamentsWorkspaceView: View {
     @State private var deleteTargetId: String?
     @State private var detailDeleteRequest: SdaTournamentDeleteRequest?
     @State private var deleteError: String?
+    @State private var isChoosingNewKind = false
+    @State private var isCreatingWithRegistration = false
 
     /// Por debajo de este ancho se usa la pila lista -> detalle.
     private static let compactLayoutThreshold: CGFloat = 700
@@ -134,7 +142,22 @@ struct TournamentsWorkspaceView: View {
                     onPick: { pendingTarget = $0 },
                     onOpenSituations: { onOpenModule(.situations, classId, nil) }
                 )
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
+            }
+        }
+        .confirmationDialog("Nuevo torneo", isPresented: $isChoosingNewKind, titleVisibility: .visible) {
+            Button("Con inscripción por formulario") { isCreatingWithRegistration = true }
+            Button("Con los grupos de una situación") { isPickingSituation = true }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Con inscripción, el alumnado se apunta y elige pareja desde un enlace.")
+        }
+        .sheet(isPresented: $isCreatingWithRegistration) {
+            if let classId = selectedClassId {
+                SdaNewRegistrationTournamentSheet(classId: classId, className: className ?? "este curso") { created in
+                    handleCreated(created)
+                }
+                .kmpBridgeEnvironment(bridge)
             }
         }
         .sheet(item: $newTournament) { target in
@@ -146,7 +169,7 @@ struct TournamentsWorkspaceView: View {
             ) { created in
                 handleCreated(created)
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
     }
 
@@ -386,7 +409,7 @@ struct TournamentsWorkspaceView: View {
     private var emptyState: some View {
         WorkspaceEmptyState(
             title: "Sin torneos en \(className ?? "este curso")",
-            subtitle: "Crea uno a partir de los grupos de una situación.",
+            subtitle: "Crea uno con inscripción por formulario o con los grupos de una situación.",
             systemImage: "trophy",
             actionTitle: "Crear torneo",
             action: startNewTournament
@@ -435,7 +458,7 @@ struct TournamentsWorkspaceView: View {
                     deleteRequest: detailDeleteRequest
                 )
                 .id(record.id)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             } else if selectedClassId != nil, model.phase == .ready, model.records.isEmpty {
                 emptyState
             } else if selectedClassId == nil {
@@ -489,7 +512,7 @@ struct TournamentsWorkspaceView: View {
 
     private func startNewTournament() {
         guard selectedClassId != nil else { return }
-        isPickingSituation = true
+        isChoosingNewKind = true
     }
 
     private func suggestedName(for situationId: Int64) -> String {

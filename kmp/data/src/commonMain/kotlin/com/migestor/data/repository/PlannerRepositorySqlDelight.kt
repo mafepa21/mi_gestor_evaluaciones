@@ -238,7 +238,8 @@ class PlannerRepositorySqlDelight(
         val sessionsToApply = when (resolution) {
             CollisionResolution.SKIP -> plan.relocations.filter { conflictBySource[it.source.id] == null }
             CollisionResolution.OVERWRITE -> plan.relocations
-            CollisionResolution.CANCEL -> emptyList()
+            // Con choques ya se salió arriba: aquí CANCEL significa "sin choques, aplicar todo".
+            CollisionResolution.CANCEL -> plan.relocations
         }
         if (sessionsToApply.isEmpty()) {
             return@withContext SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
@@ -280,7 +281,8 @@ class PlannerRepositorySqlDelight(
         val sessionsToApply = when (resolution) {
             CollisionResolution.SKIP -> plan.relocations.filter { conflictBySource[it.source.id] == null }
             CollisionResolution.OVERWRITE -> plan.relocations
-            CollisionResolution.CANCEL -> emptyList()
+            // Con choques ya se salió arriba: aquí CANCEL significa "sin choques, aplicar todo".
+            CollisionResolution.CANCEL -> plan.relocations
         }
         if (sessionsToApply.isEmpty()) {
             return@withContext SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)

@@ -51,7 +51,7 @@ public enum BackupFrequency: String, Codable, CaseIterable, Identifiable {
     
     public var title: String {
         switch self {
-        case .daily: return "Diaria (Al cerrar la app)"
+        case .daily: return "Diaria"
         case .weekly: return "Semanal"
         case .manual: return "Solo manual"
         }

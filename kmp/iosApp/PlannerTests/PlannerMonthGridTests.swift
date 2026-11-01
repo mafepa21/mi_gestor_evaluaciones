@@ -307,6 +307,186 @@ final class PlannerMonthGridTests: XCTestCase {
         XCTAssertFalse(planner.students)
     }
 
+    func testRemoteChangesReloadTheScreensThatShowThem() {
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.planner, entities: ["session_journal"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.planner, entities: ["learning_situation_session_plan"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.attendance, entities: ["attendance"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.meetings, entities: ["meeting_agreements"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.inclusion, entities: ["student_support_measures"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.learningSituations, entities: ["learning_situation_tournament"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.physicalEducation, entities: ["incident"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.physicalEducation, entities: ["physical_test_result"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.inclusion, entities: ["inclusion_task"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.planner, entities: ["planner_week_plan"]))
+    }
+
+    func testSseLinesAreHandledWithoutWaitingForABlankLine() {
+        // `AsyncBytes.lines` no entrega las líneas vacías que cierran cada aviso SSE.
+        XCTAssertEqual(SyncEventLineParser.eventData(from: "data: {\"a\":1}"), "{\"a\":1}")
+        XCTAssertEqual(SyncEventLineParser.eventData(from: "data:{\"a\":1}"), "{\"a\":1}")
+        XCTAssertNil(SyncEventLineParser.eventData(from: ": keep-alive"))
+        XCTAssertNil(SyncEventLineParser.eventData(from: ": ok"))
+        XCTAssertNil(SyncEventLineParser.eventData(from: ""))
+        XCTAssertNil(SyncEventLineParser.eventData(from: "data: "))
+        XCTAssertNil(SyncEventLineParser.eventData(from: "event: sync"))
+    }
+
+    func testAppleLineReaderDeliversEverySseEvent() async throws {
+        // Mismo lector que usa el listener (`AsyncLineSequence`), con el flujo tal
+        // cual lo escribe el helper: aviso, comentario de vida y otro aviso.
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("sse-\(UUID().uuidString).txt")
+        try Data("data: {\"a\":1}\n\n: keep-alive\n\ndata: {\"b\":2}\n\n".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var events: [String] = []
+        for try await line in url.lines {
+            if let data = SyncEventLineParser.eventData(from: line) { events.append(data) }
+        }
+        XCTAssertEqual(events, ["{\"a\":1}", "{\"b\":2}"])
+    }
+
+    func testNetworkChangeReconnectsOnlyWhenTheNetworkComesBackDifferent() {
+        let wifiA = LanNetworkChange.signature(isSatisfied: true, interfaces: ["en0"], gateways: ["192.168.86.1:0"])
+        let wifiB = LanNetworkChange.signature(isSatisfied: true, interfaces: ["en0"], gateways: ["10.12.0.1:0"])
+        let down = LanNetworkChange.signature(isSatisfied: false, interfaces: [], gateways: [])
+        // Primera lectura al arrancar: el arranque ya sincroniza.
+        XCTAssertFalse(LanNetworkChange.shouldReconnect(previous: nil, current: wifiA, isSatisfied: true))
+        XCTAssertFalse(LanNetworkChange.shouldReconnect(previous: wifiA, current: wifiA, isSatisfied: true))
+        // Sin red no hay a quién conectarse.
+        XCTAssertFalse(LanNetworkChange.shouldReconnect(previous: wifiA, current: down, isSatisfied: false))
+        // Vuelve el Wi-Fi, o la misma interfaz en otra red.
+        XCTAssertTrue(LanNetworkChange.shouldReconnect(previous: down, current: wifiA, isSatisfied: true))
+        XCTAssertTrue(LanNetworkChange.shouldReconnect(previous: wifiA, current: wifiB, isSatisfied: true))
+    }
+
+    func testSyncHeroSaysOfflineInsteadOfSynced() {
+        let hero = SyncLanHeroCopy.snapshot(isPaired: true, pendingChanges: 2, statusMessage: SyncCatchUpCopy.offline)
+        XCTAssertEqual(hero.kind, .offline)
+        XCTAssertEqual(hero.title, "Sin conexión")
+        XCTAssertTrue(hero.isAttention)
+        XCTAssertTrue(hero.detail.contains("2 cambios"))
+    }
+
+    func testDeadSyncChannelIsDetectedBeforeAMinute() {
+        // El helper manda «sigo vivo» cada 15 s.
+        XCTAssertGreaterThan(SyncEventListener.idleTimeout, 2 * 15)
+        XCTAssertLessThan(SyncEventListener.idleTimeout, 60)
+    }
+
+    func testEvaluationScreensReloadWithGradesButNotWithThePlanner() {
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.evaluation, entities: ["grade"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.evaluation, entities: ["rubric_assessment"]))
+        XCTAssertFalse(LanSyncRefreshPlan.affects(.evaluation, entities: ["planning_session"]))
+        // El diario de sesiones vive en el Planner.
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.planner, entities: ["session_journal"]))
+    }
+
+    func testMacScreensReloadWithRemoteChanges() {
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.students, entities: ["student_support_measures"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.rubrics, entities: ["rubric_assessment"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.dashboard, entities: ["grade"]))
+        XCTAssertFalse(LanSyncRefreshPlan.affects(.students, entities: ["planning_session"]))
+    }
+
+    func testRemoteChangesDoNotReloadUnrelatedScreens() {
+        XCTAssertFalse(LanSyncRefreshPlan.affects(.meetings, entities: ["attendance", "grade"]))
+        XCTAssertFalse(LanSyncRefreshPlan.affects(.planner, entities: ["attendance"]))
+        XCTAssertFalse(LanSyncRefreshPlan.affects(.attendance, entities: ["planning_session"]))
+        for screen in LanSyncRefreshPlan.Screen.allCases {
+            XCTAssertFalse(LanSyncRefreshPlan.affects(screen, entities: []))
+        }
+    }
+
+    func testSyncBadgeSaysWhenItCannotReachTheOtherDevice() {
+        XCTAssertEqual(
+            resolvedSyncStatusBadgeState(
+                syncStatusMessage: SyncCatchUpCopy.offline,
+                syncPendingChanges: 3,
+                pairedSyncHost: "127.0.0.1"
+            ),
+            .sinConexion(pendientes: 3)
+        )
+        // El mensaje antiguo también cuenta como «sin conexión», no como «al día».
+        XCTAssertEqual(
+            resolvedSyncStatusBadgeState(
+                syncStatusMessage: "Auto-sync pendiente (reconectando...)",
+                syncPendingChanges: 0,
+                pairedSyncHost: "127.0.0.1"
+            ),
+            .sinConexion(pendientes: 0)
+        )
+        XCTAssertEqual(
+            resolvedSyncStatusBadgeState(
+                syncStatusMessage: SyncCatchUpCopy.catchingUp,
+                syncPendingChanges: 0,
+                pairedSyncHost: "127.0.0.1"
+            ),
+            .poniendoseAlDia
+        )
+        XCTAssertEqual(
+            resolvedSyncStatusBadgeState(
+                syncStatusMessage: SyncCatchUpCopy.upToDate,
+                syncPendingChanges: 0,
+                pairedSyncHost: "127.0.0.1"
+            ),
+            .sincronizado
+        )
+    }
+
+    func testSyncBadgeWarnsWhenBothDevicesHaveDifferentData() {
+        XCTAssertEqual(
+            resolvedSyncStatusBadgeState(
+                syncStatusMessage: SyncCatchUpCopy.upToDate,
+                syncPendingChanges: 2,
+                pairedSyncHost: "127.0.0.1",
+                hasSyncDivergence: true
+            ),
+            .datosDistintos
+        )
+        // Sin conexión manda: la huella guardada puede estar vieja.
+        XCTAssertEqual(
+            resolvedSyncStatusBadgeState(
+                syncStatusMessage: SyncCatchUpCopy.offline,
+                syncPendingChanges: 0,
+                pairedSyncHost: "127.0.0.1",
+                hasSyncDivergence: true
+            ),
+            .sinConexion(pendientes: 0)
+        )
+    }
+
+    func testMacHelperKeepsServingTheIPadAfterQuittingOnlyWhenItIsSafe() {
+        func keeps(
+            enabled: Bool = true,
+            running: Bool = true,
+            paired: Bool = true,
+            needsRestart: Bool = false,
+            staged: Bool = false
+        ) -> Bool {
+            MacSyncBackgroundService.keepsHelperRunningAfterQuit(
+                isEnabled: enabled,
+                isHelperRunning: running,
+                hasPairedDevice: paired,
+                needsRestart: needsRestart,
+                hasStagedAdoption: staged
+            )
+        }
+        XCTAssertTrue(keeps())
+        XCTAssertFalse(keeps(enabled: false))
+        XCTAssertFalse(keeps(running: false))
+        XCTAssertFalse(keeps(paired: false))
+        // Restauración o borrado pendiente: la base va a cambiar al reiniciar.
+        XCTAssertFalse(keeps(needsRestart: true))
+        // Con una adopción preparada, lo que llegue del iPad se perdería al sustituir la base.
+        XCTAssertFalse(keeps(staged: true))
+    }
+
+    func testOnlyTransientSyncMessagesAreClearedAfterASuccessfulSync() {
+        XCTAssertTrue(SyncCatchUpCopy.isTransient(SyncCatchUpCopy.catchingUp))
+        XCTAssertTrue(SyncCatchUpCopy.isTransient(SyncCatchUpCopy.offline))
+        XCTAssertFalse(SyncCatchUpCopy.isTransient("Error al refrescar datos tras sincronizar: x"))
+        XCTAssertFalse(SyncCatchUpCopy.isTransient(SyncCatchUpCopy.upToDate))
+    }
+
     func testFailedReloadKeepsThePreviousList() {
         let previous = ["diario-a"]
         XCTAssertEqual(

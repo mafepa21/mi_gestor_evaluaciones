@@ -11,7 +11,13 @@ import AppKit
 /// conservan las correspondencias privadas y se importan lotes. La pantalla ya
 /// no depende de un único grupo ni del formulario más reciente.
 struct WebSubmissionsWorkspaceView: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (allStudents, classes, selectedStudentsClassId),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    private var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.allStudents), .init($0.classes), .init($0.selectedStudentsClassId)] }
+    }
 
     @AppStorage("webSubmissions.baseURL") private var baseURL = "https://projectosef.alwaysdata.net"
     @AppStorage("webSubmissions.deliveryEmail") private var deliveryEmail = ""
@@ -28,6 +34,7 @@ struct WebSubmissionsWorkspaceView: View {
     @State private var errorMessage: String?
     @State private var importSummary: String?
     @State private var importing = false
+    @State private var collecting = false
     @State private var revoking = false
 
     @State private var selectedGroupFilter = "all"
@@ -40,6 +47,7 @@ struct WebSubmissionsWorkspaceView: View {
     @State private var publishing = false
     @State private var publishResult: WebPublishResult?
     @State private var emailTask: WebSubmissionTaskInfo?
+    @State private var passportTask: WebSubmissionTaskInfo?
     @State private var taskToRevoke: WebSubmissionTaskInfo?
     @State private var selectionMode = false
     @State private var selectedTaskIDs: Set<String> = []
@@ -69,6 +77,7 @@ struct WebSubmissionsWorkspaceView: View {
                 creationClassId = bridge.selectedStudentsClassId ?? bridge.classes.first?.id
             }
             await reload()
+            await collectFromInbox()
         }
         // Revisar las columnas publicables es una consulta por columna: solo se hace
         // al abrir la hoja de publicar, no al entrar en la pantalla.
@@ -84,14 +93,15 @@ struct WebSubmissionsWorkspaceView: View {
                 baseURL: $baseURL,
                 deliveryEmail: $deliveryEmail,
                 isPublishing: publishing,
-                onPublish: { columnId, url, correo, caducidad, modo in
+                onPublish: { columnId, url, correo, caducidad, modo, idioma in
                     Task {
                         await publish(
                             columnId: columnId,
                             baseURL: url,
                             deliveryEmail: correo,
                             expiresAt: caducidad,
-                            mode: modo
+                            mode: modo,
+                            locale: idioma
                         )
                     }
                 },
@@ -105,6 +115,21 @@ struct WebSubmissionsWorkspaceView: View {
             WebSubmissionLinkEmailSheet(
                 task: task,
                 links: linksByFormInstanceId[task.formInstanceId] ?? []
+            )
+        }
+        .sheet(item: $passportTask) { task in
+            WebPassportProgressSheet(
+                task: task,
+                load: { await bridge.loadWebPassportProgress(formInstanceId: task.formInstanceId) },
+                collect: { await collectFromInbox(reportErrors: false) },
+                copyLinks: {
+                    #if os(macOS)
+                    copyLinks(for: task)
+                    #endif
+                },
+                markSeen: { studentId in
+                    bridge.markWebPassportSeen(formInstanceId: task.formInstanceId, studentId: studentId)
+                }
             )
         }
         .alert(
@@ -230,6 +255,16 @@ struct WebSubmissionsWorkspaceView: View {
                 )
                 .buttonStyle(.bordered)
                 .disabled(importing || detailsLoading || manifests.isEmpty)
+            }
+
+            if hasInboxTasks {
+                Button {
+                    Task { await collectFromInbox() }
+                } label: {
+                    Label(collecting ? "Comprobando…" : "Comprobar respuestas nuevas", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .disabled(collecting || importing || detailsLoading)
             }
 
             Button {
@@ -433,11 +468,31 @@ struct WebSubmissionsWorkspaceView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(task.title)
-                        .font(.headline)
+                    HStack(spacing: 8) {
+                        Text(task.title)
+                            .font(.headline)
+                        if task.isPassport {
+                            Text("Pasaporte")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.indigo)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(.indigo.opacity(0.12), in: Capsule())
+                        }
+                    }
                     Text("\(task.groupName) · \(task.columnTitle)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                    if task.instrumentOutdated {
+                        Label("Sin instrumento: vuelve a publicar", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(.orange.opacity(0.12), in: Capsule())
+                            .help(WebSubmissionTaskInfo.outdatedInstrumentMessage)
+                            .accessibilityLabel(WebSubmissionTaskInfo.outdatedInstrumentMessage)
+                    }
                 }
 
                 Spacer(minLength: 8)
@@ -478,6 +533,16 @@ struct WebSubmissionsWorkspaceView: View {
     private func taskActions(_ task: WebSubmissionTaskInfo) -> some View {
         #if os(macOS)
         HStack(spacing: 8) {
+            if task.isPassport {
+                Button {
+                    passportTask = task
+                } label: {
+                    Label("Ver pasaporte", systemImage: "book.closed")
+                }
+                .buttonStyle(.borderless)
+                .disabled(revoking || bulkProcessing)
+            }
+
             if task.status == .active && !task.isArchived {
                 Button {
                     Task {
@@ -628,7 +693,8 @@ struct WebSubmissionsWorkspaceView: View {
         baseURL url: String,
         deliveryEmail correo: String,
         expiresAt: Date,
-        mode: String = "self"
+        mode: String = "self",
+        locale: String = "es"
     ) async {
         guard let classId = creationClassId else { return }
         publishing = true
@@ -640,7 +706,8 @@ struct WebSubmissionsWorkspaceView: View {
                 baseURL: url,
                 deliveryEmail: cleanEmail(correo),
                 expiresAt: expiresAt,
-                mode: mode
+                mode: mode,
+                locale: locale
             )
             await reload()
             await reloadCreationInstruments()
@@ -656,6 +723,80 @@ struct WebSubmissionsWorkspaceView: View {
         let result = await bridge.importWebSubmissions(decisions)
         importSummary = result.summary
         await reload()
+    }
+
+    /// Tareas activas publicadas con buzón en este dispositivo.
+    private var inboxTasks: [(task: WebSubmissionTaskInfo, readToken: String)] {
+        tasks.compactMap { task in
+            guard task.status == .active,
+                  let token = WebSubmissionInbox.readToken(formInstanceId: task.formInstanceId) else { return nil }
+            return (task, token)
+        }
+    }
+
+    private var hasInboxTasks: Bool { !inboxTasks.isEmpty }
+
+    /// Recoge del buzón, importa lo que tiene dueño claro y borra del servidor lo importado.
+    /// Devuelve el motivo si no se pudo; con `reportErrors` también lo enseña en un aviso.
+    @discardableResult
+    private func collectFromInbox(reportErrors: Bool = true) async -> String? {
+        let pendientes = inboxTasks
+        guard !collecting, !pendientes.isEmpty, !baseURL.isEmpty else { return nil }
+        collecting = true
+        defer { collecting = false }
+        let client = WebSubmissionInboxClient(url: WebSubmissionInbox.url(baseURL: baseURL))
+        var importadas = 0
+        var porRevisar = 0
+        var motivos: [String] = []
+        var fallo: String?
+        for (task, token) in pendientes {
+            guard manifests[task.formInstanceId] != nil else { continue }
+            do {
+                let recogidas = try await client.collect(formInstanceId: task.formInstanceId, readToken: token)
+                guard !recogidas.isEmpty else { continue }
+                let vista = WebSubmissionImportService(resolver: WebSubmissionSnapshotResolver(snapshots: snapshots))
+                    .preview(
+                        files: recogidas.map { (name: "buzón \($0.alias.prefix(6))", data: $0.data) },
+                        manifests: manifests,
+                        manifestJSONByFormInstanceId: manifestJSONByFormInstanceId
+                    )
+                let reparto = WebSubmissionInboxTriage.triage(vista)
+                if !reparto.decisions.isEmpty {
+                    let resultado = await bridge.importWebSubmissions(reparto.decisions)
+                    importadas += resultado.imported
+                    // Si alguna celda no se pudo guardar, no se borra nada de esta tarea.
+                    guard resultado.failures.isEmpty else {
+                        porRevisar += recogidas.count
+                        motivos.append(contentsOf: resultado.failures.map(\.reason))
+                        continue
+                    }
+                }
+                porRevisar += reparto.pending
+                try await client.delete(
+                    formInstanceId: task.formInstanceId,
+                    readToken: token,
+                    entries: recogidas.filter { reparto.deletable.contains($0.submissionId) }.map { ($0.alias, $0.submissionId) }
+                )
+            } catch {
+                fallo = (error as? LocalizedError)?.errorDescription ?? "No se pudo comprobar el buzón."
+            }
+        }
+        if let fallo, importadas == 0 {
+            if reportErrors { errorMessage = fallo }
+            return fallo
+        }
+        guard importadas > 0 || porRevisar > 0 else { return nil }
+        var partes: [String] = []
+        if importadas > 0 { partes.append("\(importadas) \(importadas == 1 ? "entrega recibida" : "entregas recibidas") del buzón") }
+        if porRevisar > 0 {
+            // Con un motivo concreto (columna sin instrumento, fallo al guardar) se dice
+            // ese; si no, lo más habitual es un alumno que ya no está en el grupo.
+            let motivo = motivos.first ?? "revisa que el alumno siga en el grupo"
+            partes.append("\(porRevisar) sin importar (siguen en el buzón): \(motivo)")
+        }
+        importSummary = partes.joined(separator: " · ")
+        if importadas > 0 || !motivos.isEmpty { await reload() }
+        return nil
     }
 
     private func revoke(_ task: WebSubmissionTaskInfo) async {

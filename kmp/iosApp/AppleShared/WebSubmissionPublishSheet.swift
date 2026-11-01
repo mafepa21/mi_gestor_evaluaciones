@@ -22,7 +22,7 @@ struct WebSubmissionPublishSheet: View {
     /// Correo al que el alumnado enviará su entrega.
     @Binding var deliveryEmail: String
     let isPublishing: Bool
-    let onPublish: (_ columnId: String, _ baseURL: String, _ deliveryEmail: String, _ expiresAt: Date, _ mode: String) -> Void
+    let onPublish: (_ columnId: String, _ baseURL: String, _ deliveryEmail: String, _ expiresAt: Date, _ mode: String, _ locale: String) -> Void
     var onDetectPeerGroups: ((_ columnId: String) async -> KmpBridge.WebPeerDetectionResult)? = nil
     let result: WebPublishResult?
 
@@ -30,6 +30,8 @@ struct WebSubmissionPublishSheet: View {
     @State private var expiresAt: Date = Calendar.current.date(byAdding: .month, value: 10, to: Date()) ?? Date()
     @State private var copiedLinks = false
     @State private var selectedMode: String = "self"
+    /// Idioma de lo que ve el alumnado en la web: botones, avisos y portada.
+    @State private var selectedLocale: String = "es"
     @State private var peerDetection: KmpBridge.WebPeerDetectionResult?
     @State private var isDetectingPeers: Bool = false
 
@@ -143,20 +145,32 @@ struct WebSubmissionPublishSheet: View {
             Picker("Modo", selection: $selectedMode) {
                 Text("Autoevaluación").tag("self")
                 Text("Auto + Coevaluación").tag("peer")
+                Text("Pasaporte").tag("passport")
             }
             .pickerStyle(.segmented)
             .onChange(of: selectedMode) { _, newMode in
                 if newMode == "peer", let colId = selectedColumnId {
                     runPeerDetection(for: colId)
                 }
+                // Los pasaportes van en inglés (CLIL); se propone, pero se puede cambiar.
+                selectedLocale = newMode == "passport" ? "en" : "es"
             }
 
-            if selectedMode == "self" {
+            Picker("Idioma del formulario", selection: $selectedLocale) {
+                Text("Español").tag("es")
+                Text("English").tag("en")
+            }
+            .help("Idioma de los botones y avisos que ve el alumnado. Las preguntas salen tal cual están en el instrumento.")
+
+            switch selectedMode {
+            case "peer":
+                coevaluationDetailsView
+            case "passport":
+                passportDetailsView
+            default:
                 Text("Cada alumno/a evaluará únicamente su propio trabajo.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else {
-                coevaluationDetailsView
             }
         }
         .padding(16)
@@ -242,6 +256,44 @@ struct WebSubmissionPublishSheet: View {
             Text("Selecciona una columna para detectar automáticamente los grupos de la Situación de Aprendizaje.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Pasaporte: se rellena por partes. Enseña las paradas que saldrán del
+    /// instrumento elegido para que no haya sorpresas al publicar.
+    @ViewBuilder
+    private var passportDetailsView: some View {
+        let paradas = instruments.first(where: { $0.columnId == selectedColumnId })?.passportStops ?? []
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Se rellena por partes. Todas las paradas abiertas desde el primer día; cada una se envía cuando quieran.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if paradas.count > 1 {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(paradas, id: \.self) { parada in
+                        Label(parada, systemImage: "seal")
+                            .font(.caption)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else if selectedColumnId != nil {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Saldrá una sola parada", systemImage: "info.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                    Text("Para separar paradas, empieza el título de cada apartado con su parada: «Parada 1 · Mi mejor reto».")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
         }
     }
 
@@ -549,7 +601,7 @@ struct WebSubmissionPublishSheet: View {
 
                 Button {
                     if let columnId = selectedColumnId {
-                        onPublish(columnId, baseURL, deliveryEmail, expiresAt, selectedMode)
+                        onPublish(columnId, baseURL, deliveryEmail, expiresAt, selectedMode, selectedLocale)
                     }
                 } label: {
                     if isPublishing {
@@ -619,7 +671,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 baseURL: .constant("https://projectosef.alwaysdata.net"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _, _, _ in },
+                onPublish: { _, _, _, _, _, _ in },
                 result: nil
             )
             .previewDisplayName("Antes de publicar")
@@ -631,7 +683,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 baseURL: .constant("https://projectosef.alwaysdata.net"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _, _, _ in },
+                onPublish: { _, _, _, _, _, _ in },
                 result: WebPublishResult(
                     formInstanceId: "11111111-1111-4111-8111-111111111111",
                     title: "Rúbrica de portafolio técnico",
@@ -654,7 +706,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 baseURL: .constant("https://projectosef.alwaysdata.net"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _, _, _ in },
+                onPublish: { _, _, _, _, _, _ in },
                 result: nil
             )
             .previewDisplayName("Sin instrumentos")

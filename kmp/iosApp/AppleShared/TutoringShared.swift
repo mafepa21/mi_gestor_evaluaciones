@@ -119,7 +119,9 @@ extension KmpBridge.TutoringSessionSnapshot {
 
 /// Alta y edición del acta de una entrevista con la familia.
 struct TutoringSessionFormSheet: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) private var dismiss
 
     let studentId: Int64

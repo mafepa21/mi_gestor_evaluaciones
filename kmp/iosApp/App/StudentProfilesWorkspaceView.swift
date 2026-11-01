@@ -119,6 +119,7 @@ struct StudentProfilesWorkspaceView: View {
 
     var body: some View {
         studentWorkspaceContent
+            .reloadOnLanSync(.dashboard) { await reloadProfile() }
             .task {
                 await bridge.ensureClassesLoaded()
                 await bridge.selectStudentsClass(classId: selectedClassId)
@@ -146,7 +147,7 @@ struct StudentProfilesWorkspaceView: View {
                     TutoringSessionFormSheet(studentId: studentId) {
                         Task { await reloadProfile() }
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 }
             }
             .sheet(
@@ -159,7 +160,7 @@ struct StudentProfilesWorkspaceView: View {
                     TutoringSessionFormSheet(studentId: studentId, existingSession: editingTutoringSession) {
                         Task { await reloadProfile() }
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 }
             }
             .sheet(isPresented: $showSupportMeasureSheet) {
@@ -167,7 +168,7 @@ struct StudentProfilesWorkspaceView: View {
                     SupportMeasureFormSheet(studentId: studentId) {
                         Task { await reloadProfile() }
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 }
             }
             .sheet(
@@ -180,7 +181,7 @@ struct StudentProfilesWorkspaceView: View {
                     SupportMeasureFormSheet(studentId: studentId, existingMeasure: editingSupportMeasure) {
                         Task { await reloadProfile() }
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 }
             }
             .sheet(item: $assigningStudent) { student in
@@ -632,7 +633,7 @@ struct StudentProfilesWorkspaceView: View {
         }
         .sheet(item: $studentEmailImportPreview) { preview in
             StudentEmailImportSheet(preview: preview)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
                 .onDisappear {
                     Task {
                         try? await bridge.refreshStudentsDirectory()
@@ -656,7 +657,7 @@ struct StudentProfilesWorkspaceView: View {
                 ) {
                     Task { await reloadProfile() }
                 }
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
         }
         .sheet(isPresented: $showGroupOverviewSheet) {
@@ -664,11 +665,11 @@ struct StudentProfilesWorkspaceView: View {
                 className: studentsBridgeStore.classes.first(where: { $0.id == selectedClassId })?.name ?? "",
                 roster: studentsBridgeStore.studentsInClass
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
         .sheet(isPresented: $showWeeklyEmailSheet) {
             WeeklyStudentEmailWorkspaceView(classId: selectedClassId)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         }
         .sheet(isPresented: $showSexInferenceSheet) {
             StudentSexInferenceSheet(students: studentsBridgeStore.studentsInClass) { assignments in

@@ -59,6 +59,7 @@ struct PlannerTermBoardView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .reloadOnLanSync(.planner) { await reloadData() }
         .task(id: vm.selectedGroupId) {
             await reloadData()
         }
@@ -111,7 +112,7 @@ struct PlannerTermBoardView: View {
                     }
                 )) {
                     ForEach(vm.groups, id: \.id) { group in
-                        Text(group.name).tag(Optional(group.id))
+                        Text(vm.groupLabel(for: group)).tag(Optional(group.id))
                     }
                 }
                 .pickerStyle(.menu)

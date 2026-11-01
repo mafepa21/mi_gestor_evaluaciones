@@ -1,5 +1,68 @@
 import SwiftUI
 import MiGestorKit
+#if os(macOS)
+import AppKit
+#else
+import GameController
+#endif
+
+/// Lee si la tecla de copiar (⌘, o ⌥ como en el Finder) está pulsada al soltar.
+/// En iPad solo funciona con teclado físico: GameController expone su estado
+/// (el drop de SwiftUI no), pero no publica `GCKeyboard.coalesced` hasta que
+/// alguien escucha `GCKeyboardDidConnect`. Por eso hay que llamar a
+/// `startMonitoring()` antes del primer arrastre; sin eso, ⌘ nunca se ve
+/// y la sesión se mueve en vez de copiarse.
+@MainActor
+enum PlannerDragModifiers {
+    #if !os(macOS)
+    private static var isMonitoring = false
+    private static var pressedCopyKeys: Set<GCKeyCode> = []
+    private static let copyKeyCodes: Set<GCKeyCode> = [.leftGUI, .rightGUI, .leftAlt, .rightAlt]
+    #endif
+
+    static func startMonitoring() {
+        #if !os(macOS)
+        guard !isMonitoring else { return }
+        isMonitoring = true
+        NotificationCenter.default.addObserver(
+            forName: .GCKeyboardDidConnect,
+            object: nil,
+            queue: .main
+        ) { notification in
+            let keyboard = notification.object as? GCKeyboard
+            MainActor.assumeIsolated { attach(keyboard ?? GCKeyboard.coalesced) }
+        }
+        attach(GCKeyboard.coalesced)
+        #endif
+    }
+
+    static var isCopyModifierPressed: Bool {
+        #if os(macOS)
+        let flags = NSEvent.modifierFlags.union(NSApp.currentEvent?.modifierFlags ?? [])
+        return flags.contains(.command) || flags.contains(.option)
+        #else
+        if !pressedCopyKeys.isEmpty { return true }
+        guard let input = GCKeyboard.coalesced?.keyboardInput else { return false }
+        return copyKeyCodes.contains { input.button(forKeyCode: $0)?.isPressed == true }
+        #endif
+    }
+
+    #if !os(macOS)
+    private static func attach(_ keyboard: GCKeyboard?) {
+        guard let input = keyboard?.keyboardInput else { return }
+        input.keyChangedHandler = { _, _, keyCode, pressed in
+            guard copyKeyCodes.contains(keyCode) else { return }
+            Task { @MainActor in
+                if pressed {
+                    pressedCopyKeys.insert(keyCode)
+                } else {
+                    pressedCopyKeys.remove(keyCode)
+                }
+            }
+        }
+    }
+    #endif
+}
 
 enum CascadeUndoCopy {
     static func failure(_ detail: String) -> String {
@@ -9,11 +72,12 @@ enum CascadeUndoCopy {
 
 struct PlannerInlineBanner: View {
     let message: String
+    var isError = false
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(EvaluationDesign.success)
+            Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(isError ? Color.orange : EvaluationDesign.success)
             Text(message)
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.primary)
@@ -40,10 +104,36 @@ final class PlannerCascadeDropCoordinator: ObservableObject {
         var id: Int64 { sessionId }
     }
 
+    /// Destino de una copia: una celda de la semana visible (⌘/⌥ + arrastrar)
+    /// o el grupo, la fecha y la franja elegidos en «Copiar a…».
+    enum CopyDestination: Equatable {
+        case cell(day: Int, period: Int)
+        case chosen(groupId: Int64, date: Date, period: Int)
+    }
+
+    /// Copia a una franja ocupada, a la espera de confirmar.
+    struct PendingCopy: Identifiable {
+        let sessionId: Int64
+        let destination: CopyDestination
+
+        var id: Int64 { sessionId }
+    }
+
     @Published var pendingConfirmation: PendingDrop?
+    @Published var pendingCopy: PendingCopy?
     @Published var transientMessage: String?
+    /// El aviso actual es un error (icono y color de aviso, no el visto verde).
+    @Published var transientIsError = false
+
+    init() {
+        PlannerDragModifiers.startMonitoring()
+    }
 
     func handleDrop(sessionId: Int64, day: Int, period: Int, vm: PlannerWorkspaceViewModel) {
+        if PlannerDragModifiers.isCopyModifierPressed {
+            handleCopy(sessionId: sessionId, day: day, period: period, vm: vm)
+            return
+        }
         Task {
             do {
                 let preview = try await vm.previewCascadeMove(sessionId: sessionId, day: day, period: period)
@@ -59,7 +149,7 @@ final class PlannerCascadeDropCoordinator: ObservableObject {
                     await commit(sessionId: sessionId, day: day, period: period, forceTerminalSessions: false, vm: vm)
                 }
             } catch {
-                transientMessage = "No se puede mover la sesión: \(error.localizedDescription)"
+                showMessage("No se puede mover la sesión: \(error.localizedDescription)", isError: true)
                 AppleInteractionFeedback.play(.error)
             }
         }
@@ -82,13 +172,74 @@ final class PlannerCascadeDropCoordinator: ObservableObject {
         Task {
             do {
                 try await vm.restoreLastCascadeMove()
-                transientMessage = "Movimiento deshecho."
+                showMessage("Movimiento deshecho.")
                 AppleInteractionFeedback.play(.success)
             } catch {
-                transientMessage = CascadeUndoCopy.failure(error.localizedDescription)
+                showMessage(CascadeUndoCopy.failure(error.localizedDescription), isError: true)
                 AppleInteractionFeedback.play(.error)
             }
         }
+    }
+
+    func confirmPendingCopy(vm: PlannerWorkspaceViewModel) {
+        guard let pending = pendingCopy else { return }
+        pendingCopy = nil
+        Task {
+            await copy(sessionId: pending.sessionId, to: pending.destination, overwrite: true, vm: vm)
+        }
+    }
+
+    func cancelPendingCopy() {
+        pendingCopy = nil
+        AppleInteractionFeedback.play(.warning)
+    }
+
+    /// Copia desde la hoja «Copiar a…»; si el destino está ocupado, pide confirmar.
+    func copyChosen(sessionId: Int64, groupId: Int64, date: Date, period: Int, vm: PlannerWorkspaceViewModel) {
+        Task {
+            await copy(sessionId: sessionId, to: .chosen(groupId: groupId, date: date, period: period), overwrite: false, vm: vm)
+        }
+    }
+
+    private func handleCopy(sessionId: Int64, day: Int, period: Int, vm: PlannerWorkspaceViewModel) {
+        Task {
+            await copy(sessionId: sessionId, to: .cell(day: day, period: period), overwrite: false, vm: vm)
+        }
+    }
+
+    private func copy(sessionId: Int64, to destination: CopyDestination, overwrite: Bool, vm: PlannerWorkspaceViewModel) async {
+        do {
+            let outcome: PlannerSessionCopyOutcome
+            switch destination {
+            case .cell(let day, let period):
+                outcome = try await vm.copySession(sessionId: sessionId, day: day, period: period, overwrite: overwrite)
+            case .chosen(let groupId, let date, let period):
+                outcome = try await vm.copySession(sessionId: sessionId, toGroupId: groupId, date: date, period: period, overwrite: overwrite)
+            }
+            switch outcome {
+            case .copied(let summary):
+                showMessage(summary)
+                AppleInteractionFeedback.play(.success)
+            case .occupied:
+                pendingCopy = PendingCopy(sessionId: sessionId, destination: destination)
+            case .sameSlot:
+                // Soltar sobre sí misma no es un error; elegirlo en la hoja, sí.
+                if case .chosen = destination {
+                    showMessage("La sesión ya está en ese grupo, día y franja.", isError: true)
+                }
+            case .failed:
+                showMessage("No se pudo copiar la sesión.", isError: true)
+                AppleInteractionFeedback.play(.error)
+            }
+        } catch {
+            showMessage("No se pudo copiar la sesión: \(error.localizedDescription)", isError: true)
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    private func showMessage(_ message: String, isError: Bool = false) {
+        transientIsError = isError
+        transientMessage = message
     }
 
     private func commit(sessionId: Int64, day: Int, period: Int, forceTerminalSessions: Bool, vm: PlannerWorkspaceViewModel) async {
@@ -100,10 +251,10 @@ final class PlannerCascadeDropCoordinator: ObservableObject {
                 forceTerminalSessions: forceTerminalSessions
             )
             let suffix = result.crossesWeekBoundary ? " Se ha continuado en la semana siguiente." : ""
-            transientMessage = "Sesión movida; \(result.movedCount) sesión(es) recolocadas.\(suffix)"
+            showMessage("Sesión movida; \(result.movedCount) sesión(es) recolocadas.\(suffix)")
             AppleInteractionFeedback.play(.success)
         } catch {
-            transientMessage = "No se pudo completar el movimiento: \(error.localizedDescription)"
+            showMessage("No se pudo completar el movimiento: \(error.localizedDescription)", isError: true)
             AppleInteractionFeedback.play(.error)
         }
     }

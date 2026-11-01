@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import MiGestorKit
+@preconcurrency import MiGestorKit
 
 /// Estado de emparejamiento de un correo de la hoja de cálculo con un alumno en el sistema.
 public enum StudentEmailMatchStatus: String, CaseIterable, Sendable {

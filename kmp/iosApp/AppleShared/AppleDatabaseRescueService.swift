@@ -113,10 +113,34 @@ final class AppleDatabaseRescueService: ObservableObject {
                 }
             }
             clearMarker()
+            // La copia ya vuelve a ser la base activa: no hay datos apartados de los que avisar.
+            Self.acknowledgeQuarantine(upTo: Date(timeIntervalSince1970: TimeInterval(marker.timestampEpochSeconds)))
             AppleBackupService.shared.needsRestart = true
         } catch {
             updateReasonAndRepresent("No se pudo restaurar la base rescatada: \(error.localizedDescription)")
         }
+    }
+
+    /// Fecha hasta la que la docente ya sabe de las bases apartadas. Una fecha y no un id:
+    /// cada fallo deja su propia copia `.backup_<epoch>` y un id solo apagaba una, así
+    /// que el aviso «Se encontraron datos apartados» volvía una vez por copia.
+    static let quarantineAcknowledgedUntilKey = "diagnostics.quarantine.acknowledgedUntil"
+
+    static func isQuarantineAcknowledged(_ item: AppleQuarantinedDatabase) -> Bool {
+        let until = UserDefaults.standard.double(forKey: quarantineAcknowledgedUntilKey)
+        return item.quarantinedAt.timeIntervalSince1970 <= until
+    }
+
+    static func acknowledgeQuarantine(upTo date: Date) {
+        let defaults = UserDefaults.standard
+        let current = defaults.double(forKey: quarantineAcknowledgedUntilKey)
+        defaults.set(max(current, date.timeIntervalSince1970), forKey: quarantineAcknowledgedUntilKey)
+    }
+
+    /// Apaga el aviso de todas las copias apartadas que existen ahora mismo.
+    static func acknowledgeAllQuarantined(_ items: [AppleQuarantinedDatabase]) {
+        guard let newest = items.map(\.quarantinedAt).max() else { return }
+        acknowledgeQuarantine(upTo: newest)
     }
 
     /// La docente decide seguir con la base nueva (vacía) y descarta el aviso.

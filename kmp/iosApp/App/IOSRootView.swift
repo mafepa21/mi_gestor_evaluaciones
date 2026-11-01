@@ -62,9 +62,12 @@ struct IOSRootView: View {
                 onSelectModule: selectModule(_:)
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 280)
+            // Columna estrecha (máx. 280): con letra de accesibilidad partía
+            // los nombres de módulo ("Cuader-no"). Crece hasta xxxLarge.
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         } detail: {
             VStack(spacing: 0) {
-                if activeModule != .notebook && activeModule != .planner && !(activeModule == .attendance && horizontalSizeClass == .regular) {
+                if activeModule != .notebook && activeModule != .planner && activeModule != .libreta && !(activeModule == .attendance && horizontalSizeClass == .regular) {
                     IOSGlobalContextRow(
                         activeModule: activeModule,
                         layoutState: layoutState,
@@ -94,7 +97,8 @@ struct IOSRootView: View {
                     notebookToolbarItems
                 } else if activeModule == .attendance && horizontalSizeClass == .regular {
                     attendanceToolbarItems
-                } else {
+                } else if activeModule != .libreta {
+                    // La Libreta pone su propia barra (vista, buscar, Nueva libreta).
                     IOSContextualToolbar(
                         activeModule: activeModule,
                         layoutState: layoutState,
@@ -120,7 +124,7 @@ struct IOSRootView: View {
         }
         .appFullScreenCover(isPresented: $showingRubricBuilder) {
             RubricsBuilderScreen()
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
 #if os(macOS)
                 .frame(minWidth: 1_120, idealWidth: 1_280, maxWidth: 1_600, minHeight: 720, idealHeight: 900)
 #endif
@@ -217,6 +221,7 @@ struct IOSRootView: View {
         // Un módulo `.courses` restaurado de una versión anterior dejaría la
         // barra lateral sin nada marcado: ahora vive dentro de Ajustes.
         if module == .courses { return .settings }
+        if !module.isAvailableOnThisDevice { return .dashboard }
         if module.requiresPhysicalEducationProfile {
             let enabledProfiles = TeacherSubjectProfile.decodeSet(enabledSubjectProfilesRaw)
             if !enabledProfiles.contains(.physicalEducation) { return .dashboard }
@@ -299,13 +304,13 @@ struct IOSRootView: View {
             switch kind {
             case .course:
                 CreateCourseSheet { activeSheet = nil }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
             case .student:
                 CreateStudentSheet(defaultClassId: selectionStore.selectedClassId) { activeSheet = nil }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
             case .evaluation:
                 CreateEvaluationSheet(defaultClassId: selectionStore.selectedClassId) { activeSheet = nil }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
             }
         case .contextualAI(let state):
             ContextualAIAssistantSheet(
@@ -551,6 +556,13 @@ struct IOSRootView: View {
                     layoutState.openNotebookHiddenColumns()
                 } label: {
                     Label("Columnas ocultas", systemImage: "eye.slash")
+                }
+                .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+                Button {
+                    layoutState.openNotebookClosingReview()
+                } label: {
+                    Label("Revisar cierre…", systemImage: "checklist")
                 }
                 .disabled(!layoutState.notebookOrganizationMenuAvailable)
 
@@ -990,9 +1002,9 @@ private enum IOSWorkspaceSidebarSection: String, CaseIterable, Identifiable {
         case .today:
             return [.dashboard]
         case .evaluation:
-            return [.notebook, .attendance, .evaluationHub, .rubrics, .webSubmissions, .peTests, .peRubrics]
+            return [.notebook, .attendance, .evaluationHub, .evaluationSessions, .rubrics, .webSubmissions, .peTests, .peRubrics]
         case .planning:
-            return [.planner, .diary, .situations, .peTournaments, .meetings, .inclusion, .students, .peSessions]
+            return [.planner, .diary, .libreta, .situations, .peTournaments, .meetings, .inclusion, .students, .peSessions]
         case .system:
             return [.reports, .library, .peIncidents, .peMaterial, .settings, .backups]
         }
@@ -1007,6 +1019,7 @@ struct IOSWorkspaceContent: View {
     private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    @EnvironmentObject private var shellStore: ShellBridgeStore
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -1037,11 +1050,26 @@ struct IOSWorkspaceContent: View {
             .environmentObject(layoutState)
     }
 
+    /// Solo iPad: abre la libreta de una clase desde el Diario o el Planner.
+    private var libretaOpener: ((Int64) -> Void)? {
+        #if os(iOS)
+        guard AppWorkspaceModule.libreta.isAvailableOnThisDevice else { return nil }
+        return { classId in
+            let name = shellStore.classes.first { $0.id == classId }?.name ?? "Clase"
+            LibretaStore.shared.openForClass(id: classId, name: name)
+            // Sin clase: abrir la libreta no debe cambiar la clase activa del resto de la app.
+            onOpenModule(.libreta, nil, nil)
+        }
+        #else
+        return nil
+        #endif
+    }
+
     @ViewBuilder
     private var moduleContent: some View {
         switch activeModule {
         case .dashboard, .courses, .students, .teacherRadar, .notebook,
-             .attendance, .planner, .situations, .diary, .meetings, .inclusion, .evaluationHub:
+             .attendance, .planner, .situations, .diary, .libreta, .meetings, .inclusion, .evaluationHub, .evaluationSessions:
             academicContent
         default:
             evaluationAndPEContent
@@ -1067,7 +1095,7 @@ struct IOSWorkspaceContent: View {
                     activeSheet = .create(.student)
                 }
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .students:
             StudentProfilesWorkspaceView(
                 bridge: bridge,
@@ -1106,15 +1134,16 @@ struct IOSWorkspaceContent: View {
                 viewModel: plannerViewModel,
                 context: resolvedPlannerContext,
                 onOpenDiary: { ctx in onOpenModule(.diary, ctx.groupId, nil); onUpdatePlannerContext(ctx) },
-                onNavigationContextChange: onUpdatePlannerContext
+                onNavigationContextChange: onUpdatePlannerContext,
+                onOpenLibreta: libretaOpener
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .situations:
             LearningSituationsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .diary:
             DiaryWorkspaceView(
                 vm: plannerViewModel,
@@ -1122,21 +1151,31 @@ struct IOSWorkspaceContent: View {
                 navigationContext: resolvedPlannerContext,
                 onOpenModule: onOpenModule,
                 onOpenPlanner: { ctx in onOpenModule(.planner, ctx.groupId, nil); onUpdatePlannerContext(ctx) },
-                onNavigationContextChange: onUpdatePlannerContext
+                onNavigationContextChange: onUpdatePlannerContext,
+                onOpenLibreta: libretaOpener
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .evaluationHub:
             EvaluationHubView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule,
                 onCreateEvaluation: { activeSheet = .create(.evaluation) }
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
+        case .libreta:
+            #if os(iOS)
+            LibretaModuleView()
+                .environment(\.libretaClasses, shellStore.classes.map { LibretaClassOption(id: $0.id, name: $0.name) })
+            #else
+            EmptyView()
+            #endif
         case .meetings:
             MeetingsWorkspaceView(bridge: bridge)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         case .inclusion:
             InclusionTrackerView(bridge: bridge, selectedClassId: $selectionStore.selectedClassId)
+        case .evaluationSessions:
+            EvaluationSessionView(bridge: bridge, selectedClassId: $selectionStore.selectedClassId)
         default:
             EmptyView()
         }
@@ -1152,13 +1191,13 @@ struct IOSWorkspaceContent: View {
                 onOpenBuilder: { bridge.resetRubricBuilder(); showingRubricBuilder = true },
                 onEditRubric: { rubric in bridge.loadRubricForEditing(rubric); showingRubricBuilder = true }
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .reports:
             ReportsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 selectedStudentId: $selectionStore.selectedStudentId
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .webSubmissions:
             WebSubmissionsIPadInfoView()
         case .library:
@@ -1166,19 +1205,19 @@ struct IOSWorkspaceContent: View {
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peSessions:
             PESessionsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peTests:
             PhysicalTestsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peRubrics:
             RubricsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
@@ -1187,31 +1226,31 @@ struct IOSWorkspaceContent: View {
                 onEditRubric: { rubric in bridge.loadRubricForEditing(rubric); showingRubricBuilder = true },
                 peMode: true
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peIncidents:
             EFIncidentsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peMaterial:
             PEMaterialWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peTournaments:
             TournamentsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .settings:
             SettingsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .backups:
             BackupsWorkspaceView(selectedClassId: $selectionStore.selectedClassId)
         default:

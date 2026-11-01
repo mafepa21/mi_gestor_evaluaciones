@@ -6,8 +6,19 @@ struct ScheduleImportPreviewSheet: View {
     let preview: ScheduleImportPreview
     let plan: ScheduleImportCatalogPlan
     let knownGroupNames: [String: String]
+    var groupChoices: [String: ScheduleGroupChoice] = [:]
+    var choiceConflicts: [String] = []
+    var onChooseGroup: (String, ScheduleGroupChoice) -> Void = { _, _ in }
     let isImporting: Bool
     let onConfirm: (ScheduleEmptySlotImportMode, Bool) -> Void
+
+    private var hasPendingGroupChoices: Bool {
+        plan.groupChoicePrompts.contains { groupChoices[$0.id] == nil }
+    }
+
+    private var allConflicts: [String] {
+        Array(Set(preview.conflicts + choiceConflicts)).sorted()
+    }
 
     @State private var emptySlotMode: ScheduleEmptySlotImportMode = .skip
     @State private var createSubjects = true
@@ -39,6 +50,7 @@ struct ScheduleImportPreviewSheet: View {
             HStack(alignment: .top, spacing: 24) {
                 VStack(alignment: .leading, spacing: 16) {
                     summary
+                    groupChoiceCard
                     catalogPlanCard
                     emptySlotControl
                     diagnostics
@@ -52,6 +64,7 @@ struct ScheduleImportPreviewSheet: View {
 
             VStack(alignment: .leading, spacing: 18) {
                 summary
+                groupChoiceCard
                 catalogPlanCard
                 emptySlotControl
                 diagnostics
@@ -126,6 +139,51 @@ struct ScheduleImportPreviewSheet: View {
         }
     }
 
+    /// Un código del Excel encaja con varios grupos (dos "4º ESO A" de
+    /// centros distintos): el docente elige a cuál van sus franjas.
+    @ViewBuilder
+    private var groupChoiceCard: some View {
+        if !plan.groupChoicePrompts.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Grupos con el mismo nombre", systemImage: "person.2.badge.gearshape")
+                    .font(.headline)
+                    .foregroundStyle(hasPendingGroupChoices ? .orange : .primary)
+                Text("Elige a qué grupo van las horas de este horario.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                ForEach(plan.groupChoicePrompts) { prompt in
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(prompt.title)
+                            .font(.callout.weight(.semibold))
+                        Spacer(minLength: 8)
+                        Picker(prompt.title, selection: choiceBinding(for: prompt.id)) {
+                            Text("Elegir…").tag(Optional<ScheduleGroupChoice>.none)
+                            ForEach(prompt.candidates) { candidate in
+                                Text(candidate.title).tag(Optional(ScheduleGroupChoice.existing(candidate.id)))
+                            }
+                            Text("Crear grupo nuevo").tag(Optional(ScheduleGroupChoice.createNew))
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .accessibilityLabel("Grupo para \(prompt.title)")
+                    }
+                }
+            }
+            .padding(16)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    private func choiceBinding(for code: String) -> Binding<ScheduleGroupChoice?> {
+        Binding(
+            get: { groupChoices[code] },
+            set: { newValue in
+                if let newValue { onChooseGroup(code, newValue) }
+            }
+        )
+    }
+
     @ViewBuilder
     private var catalogPlanCard: some View {
         if !plan.groupsToCreate.isEmpty || !plan.subjectsToCreate.isEmpty || plan.groupsReusedCount > 0 || plan.subjectsReusedCount > 0 {
@@ -197,13 +255,13 @@ struct ScheduleImportPreviewSheet: View {
 
     @ViewBuilder
     private var diagnostics: some View {
-        if !preview.conflicts.isEmpty || !preview.warnings.isEmpty {
+        if !allConflicts.isEmpty || !preview.warnings.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                if !preview.conflicts.isEmpty {
+                if !allConflicts.isEmpty {
                     Label("Conflictos", systemImage: "exclamationmark.triangle.fill")
                         .font(.headline)
                         .foregroundStyle(.orange)
-                    ForEach(preview.conflicts, id: \.self) { conflict in
+                    ForEach(allConflicts, id: \.self) { conflict in
                         Text(conflict)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
@@ -275,7 +333,9 @@ struct ScheduleImportPreviewSheet: View {
 
     private var footer: some View {
         HStack(spacing: 16) {
-            Text("\(preview.persistableSlots.count) bloque(s) lectivos listos para guardar.")
+            Text(hasPendingGroupChoices
+                 ? "Elige el grupo de los nombres repetidos para poder importar."
+                 : "\(preview.persistableSlots.count) bloque(s) lectivos listos para guardar.")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
@@ -292,7 +352,7 @@ struct ScheduleImportPreviewSheet: View {
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
-            .disabled(isImporting || preview.persistableSlots.isEmpty || !preview.conflicts.isEmpty)
+            .disabled(isImporting || preview.persistableSlots.isEmpty || !allConflicts.isEmpty || hasPendingGroupChoices)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)

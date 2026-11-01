@@ -27,19 +27,23 @@ struct PlannerWorkspaceIOS: View {
     private let context: PlannerNavigationContext
     private let onOpenDiary: ((PlannerNavigationContext) -> Void)?
     private let onNavigationContextChange: ((PlannerNavigationContext) -> Void)?
+    /// Solo iPad: abre la libreta de una clase (por su número).
+    private let onOpenLibreta: ((Int64) -> Void)?
 
     init(
         viewModel: PlannerWorkspaceViewModel,
         initialSection: PlannerWorkspaceSection = .week,
         context: PlannerNavigationContext = PlannerNavigationContext(),
         onOpenDiary: ((PlannerNavigationContext) -> Void)? = nil,
-        onNavigationContextChange: ((PlannerNavigationContext) -> Void)? = nil
+        onNavigationContextChange: ((PlannerNavigationContext) -> Void)? = nil,
+        onOpenLibreta: ((Int64) -> Void)? = nil
     ) {
         self.vm = viewModel
         self.initialSection = initialSection
         self.context = context
         self.onOpenDiary = onOpenDiary
         self.onNavigationContextChange = onNavigationContextChange
+        self.onOpenLibreta = onOpenLibreta
     }
 
     var body: some View {
@@ -60,6 +64,7 @@ struct PlannerWorkspaceIOS: View {
             configurePlannerToolbar()
             Task { await vm.refreshOnReappear() }
         }
+        .reloadOnLanSync(.planner) { await vm.refreshOnReappear() }
 
         .appOnChange(of: context) { newValue in
             Task {
@@ -135,9 +140,15 @@ struct PlannerWorkspaceIOS: View {
                     onCopyToNextWeek: {
                         selectedDetailSession = nil
                         Task { await vm.copySessionToNextWeek(session) }
+                    },
+                    onOpenLibreta: onOpenLibreta.map { open in
+                        {
+                            selectedDetailSession = nil
+                            open(session.groupId)
+                        }
                     }
                 )
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
         }
         .onDisappear {
@@ -170,6 +181,41 @@ struct PlannerWorkspaceIOS: View {
             }
         } message: {
             Text("La cascada incluye sesiones ya impartidas o canceladas. Si pulsas Mover, también se recolocan. Si cancelas, se quedan donde están.")
+        }
+        .alert(
+            "La franja ya tiene una sesión",
+            isPresented: Binding(
+                get: { cascadeCoordinator.pendingCopy != nil },
+                set: { if !$0 { cascadeCoordinator.pendingCopy = nil } }
+            )
+        ) {
+            Button("Cancelar", role: .cancel) {
+                cascadeCoordinator.cancelPendingCopy()
+            }
+            Button("Sustituir", role: .destructive) {
+                cascadeCoordinator.confirmPendingCopy(vm: vm)
+            }
+        } message: {
+            Text("Si pulsas Sustituir, la sesión que hay ahora se borra y se pone la copia en su lugar.")
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { vm.copyDialogSessionId != nil },
+                set: { if !$0 { vm.copyDialogSessionId = nil } }
+            )
+        ) {
+            if let sessionId = vm.copyDialogSessionId,
+               let session = vm.sessions.first(where: { $0.id == sessionId }) {
+                PlannerCopySessionSheet(
+                    vm: vm,
+                    session: session,
+                    onCopy: { groupId, date, period in
+                        vm.copyDialogSessionId = nil
+                        cascadeCoordinator.copyChosen(sessionId: sessionId, groupId: groupId, date: date, period: period, vm: vm)
+                    },
+                    onCancel: { vm.copyDialogSessionId = nil }
+                )
+            }
         }
         .appOnChange(of: cascadeCoordinator.transientMessage) { message in
             guard message != nil else { return }
@@ -225,7 +271,7 @@ struct PlannerWorkspaceIOS: View {
                 )
                 .safeAreaInset(edge: .top) {
                     if let message = cascadeCoordinator.transientMessage {
-                        PlannerInlineBanner(message: message)
+                        PlannerInlineBanner(message: message, isError: cascadeCoordinator.transientIsError)
                             .padding(.horizontal, EvaluationDesign.screenPadding)
                             .padding(.top, 8)
                             .transition(uiFeatureFlags.bannerTransition)
@@ -364,7 +410,7 @@ struct PlannerToolbar: View {
             )) {
                 Text("Todos los grupos").tag(Optional<Int64>.none)
                 ForEach(vm.groups, id: \.id) { group in
-                    Text(group.name).tag(Optional(group.id))
+                    Text(vm.groupLabel(for: group)).tag(Optional(group.id))
                 }
             }
             .pickerStyle(.menu)
@@ -687,7 +733,7 @@ struct PlannerToolbar: View {
 
     private var toolbarSubtitle: String {
         if let session = vm.selectedSession {
-            return "\(vm.weekLabel) · \(vm.dateRangeLabel) · \(session.groupName)"
+            return "\(vm.weekLabel) · \(vm.dateRangeLabel) · \(vm.groupLabel(for: session))"
         }
         return vm.dateRangeLabel
     }
@@ -1023,7 +1069,7 @@ private struct PlannerAgendaSessionRow: View {
                         .labelStyle(.titleAndIcon)
                 }
 
-                Text(session.groupName)
+                Text(vm.groupLabel(for: session))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
 

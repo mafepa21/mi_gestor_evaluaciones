@@ -315,7 +315,7 @@ struct NotebookGroupManagementSheet: View {
     private var groupsList: some View {
         let summaries = memberSummaries()
         let situationsById = Dictionary(classSituations.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return List {
+        List {
             if currentGroups.isEmpty {
                 Section {
                     VStack(spacing: 16) {

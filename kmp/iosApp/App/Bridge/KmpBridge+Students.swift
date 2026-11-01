@@ -63,6 +63,23 @@ extension KmpBridge {
         }
     }
 
+    /// Nombre visible de cada grupo que distingue los que se llaman igual
+    /// (p. ej. dos "4º ESO A" de centros distintos). Solo para pantalla: el
+    /// nombre guardado no cambia.
+    func classDisplayNames(for groups: [SchoolClass]? = nil) -> [Int64: String] {
+        let yearNameById = Dictionary(academicYears.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        let subjectNameById = Dictionary(subjects.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        return SchoolClassDisplayNames.labels(for: (groups ?? classes).map { schoolClass in
+            SchoolClassDisplayNames.Group(
+                id: schoolClass.id,
+                name: schoolClass.name,
+                description: schoolClass.description_,
+                academicYearName: schoolClass.academicYearId.flatMap { yearNameById[$0.int64Value] },
+                subjectName: schoolClass.subjectId.flatMap { subjectNameById[$0.int64Value] }
+            )
+        })
+    }
+
     func refreshStudentsDirectory() async throws {
         if classes.isEmpty {
             try await refreshClasses()

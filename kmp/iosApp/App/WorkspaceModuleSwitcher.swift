@@ -23,7 +23,7 @@ extension AppWorkspaceShell {
                     createSheet = .student
                 }
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .students:
             StudentProfilesWorkspaceView(
                 bridge: bridge,
@@ -68,13 +68,13 @@ extension AppWorkspaceShell {
                     plannerContext = context
                 }
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .situations:
             LearningSituationsWorkspaceView(
                 selectedClassId: $selectedClassId,
                 onOpenModule: open(module:classId:studentId:)
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .diary:
             DiaryWorkspaceView(
                 vm: workspaceStores.planner,
@@ -88,19 +88,27 @@ extension AppWorkspaceShell {
                     plannerContext = context
                 }
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
+        case .libreta:
+            #if os(iOS)
+            LibretaModuleView()
+            #else
+            EmptyView()
+            #endif
         case .meetings:
             MeetingsWorkspaceView(bridge: bridge)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         case .inclusion:
             InclusionTrackerView(bridge: bridge, selectedClassId: $selectedClassId)
+        case .evaluationSessions:
+            EvaluationSessionView(bridge: bridge, selectedClassId: $selectedClassId)
         case .evaluationHub:
             EvaluationHubView(
                 selectedClassId: $selectedClassId,
                 onOpenModule: open(module:classId:studentId:),
                 onCreateEvaluation: { createSheet = .evaluation }
             )
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         case .webSubmissions:
             WebSubmissionsIPadInfoView()
         case .rubrics:
@@ -116,31 +124,31 @@ extension AppWorkspaceShell {
                     showingRubricBuilder = true
                 }
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .reports:
             ReportsWorkspaceView(
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId
             )
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         case .library:
             LibraryWorkspaceView(
                 selectedClassId: $selectedClassId,
                 onOpenModule: open(module:classId:studentId:)
             )
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         case .peSessions:
             PESessionsWorkspaceView(
                 selectedClassId: $selectedClassId,
                 onOpenModule: open(module:classId:studentId:)
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peTests:
             PhysicalTestsWorkspaceView(
                 selectedClassId: $selectedClassId,
                 onOpenModule: open(module:classId:studentId:)
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peRubrics:
             RubricsWorkspaceView(
                 selectedClassId: $selectedClassId,
@@ -155,31 +163,31 @@ extension AppWorkspaceShell {
                 },
                 peMode: true
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peIncidents:
             EFIncidentsWorkspaceView(
                 selectedClassId: $selectedClassId,
                 onOpenModule: open(module:classId:studentId:)
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peMaterial:
             PEMaterialWorkspaceView(
                 selectedClassId: $selectedClassId,
                 onOpenModule: open(module:classId:studentId:)
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peTournaments:
             TournamentsWorkspaceView(
                 selectedClassId: $selectedClassId,
                 onOpenModule: open(module:classId:studentId:)
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .settings:
             SettingsWorkspaceView(
                 selectedClassId: $selectedClassId,
                 onOpenModule: open(module:classId:studentId:)
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .backups:
             BackupsWorkspaceView(selectedClassId: $selectedClassId)
         }

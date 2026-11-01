@@ -69,7 +69,9 @@ enum PlannerSessionDetailSessionType {
 
 struct PlannerSessionDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.colorScheme) private var colorScheme
 
     let session: PlanningSession
@@ -77,6 +79,8 @@ struct PlannerSessionDetailSheet: View {
     let onEdit: () -> Void
     var onDelete: (() -> Void)? = nil
     var onCopyToNextWeek: (() -> Void)? = nil
+    /// Solo iPad: abre la libreta de la clase de la sesión. `nil` = no se muestra.
+    var onOpenLibreta: (() -> Void)? = nil
     var presentation: PlannerSessionDetailPresentation = .sheet
     var onClose: (() -> Void)? = nil
 
@@ -88,6 +92,7 @@ struct PlannerSessionDetailSheet: View {
         onEdit: @escaping () -> Void,
         onDelete: (() -> Void)? = nil,
         onCopyToNextWeek: (() -> Void)? = nil,
+        onOpenLibreta: (() -> Void)? = nil,
         presentation: PlannerSessionDetailPresentation = .sheet,
         onClose: (() -> Void)? = nil
     ) {
@@ -96,6 +101,7 @@ struct PlannerSessionDetailSheet: View {
         self.onEdit = onEdit
         self.onDelete = onDelete
         self.onCopyToNextWeek = onCopyToNextWeek
+        self.onOpenLibreta = onOpenLibreta
         self.presentation = presentation
         self.onClose = onClose
         _attachmentStore = StateObject(wrappedValue: PlannerSessionAttachmentStore(sessionId: session.id))
@@ -110,7 +116,10 @@ struct PlannerSessionDetailSheet: View {
     @State private var renderedDocument: PlannerDocxRenderResult?
     @State private var renderedActivityVisuals: [String: String] = [:]
     @State private var isLoadingRenderedDocument = false
+    /// Vista elegida por el docente: el trozo del Word original o el guion editable.
+    @AppStorage("planner.sessionDetail.viewMode") private var viewModeRaw = PlannerSessionViewMode.document.rawValue
     @State private var isDeleteConfirmationPresented = false
+    @State private var isClassKitPresented = false
     @State private var enlargedVisual: PlannerEnlargedVisual?
     @State private var isAnnexesExpanded = false
     /// Proyección de repaso rápido: se calcula una sola vez al cargar el plan.
@@ -167,6 +176,7 @@ struct PlannerSessionDetailSheet: View {
                 try? await Task.sleep(for: .seconds(30))
             }
         }
+        .reloadOnLanSync(.planner) { await loadDetailedPlan() }
         .task(id: session.id) {
             isAnnexesExpanded = false
             didScrollToCurrentStep = false
@@ -174,6 +184,15 @@ struct PlannerSessionDetailSheet: View {
             await loadLinkedInstruments()
         }
         .quickLookPreview($sourceDocumentURL)
+        .sheet(isPresented: $isClassKitPresented) {
+            if let reviewProjection {
+                PlannerSessionClassKitSheet(input: PlannerClassKitInput(
+                    projection: reviewProjection,
+                    title: classKitTitle,
+                    meta: headerMetaLine
+                ))
+            }
+        }
         .confirmationDialog(
             "Eliminar sesión",
             isPresented: $isDeleteConfirmationPresented,
@@ -207,7 +226,12 @@ struct PlannerSessionDetailSheet: View {
     private func sheetContent(layout: PlannerSessionDetailLayout, width: CGFloat) -> some View {
         VStack(spacing: 0) {
             sessionHeader(layout: layout)
-            if presentation == .sheet,
+            if hasSessionDocument {
+                viewModePicker
+            }
+            if showsDocumentMode {
+                documentModeContent
+            } else if presentation == .sheet,
                PlannerSessionDetailLayoutPolicy.usesWideReview(for: width),
                loadState == .loaded,
                let projection = reviewProjection {
@@ -220,6 +244,50 @@ struct PlannerSessionDetailSheet: View {
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
         .sheet(item: $enlargedVisual) { visual in
             PlannerEnlargedVisualSheet(visual: visual)
+        }
+    }
+
+    // MARK: Documento original
+
+    /// Hay Word de sesiones (cargándose o ya recortado a esta sesión).
+    private var hasSessionDocument: Bool {
+        isLoadingRenderedDocument || renderedDocument != nil
+    }
+
+    private var showsDocumentMode: Bool {
+        hasSessionDocument && PlannerSessionViewMode(rawValue: viewModeRaw) != .guide
+    }
+
+    private var viewModePicker: some View {
+        Picker("Vista de la sesión", selection: $viewModeRaw) {
+            ForEach(PlannerSessionViewMode.allCases) { mode in
+                Text(mode.title).tag(mode.rawValue)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: 320)
+        .padding(.horizontal, presentation == .inspector ? 16 : 24)
+        .padding(.top, 12)
+    }
+
+    /// El trozo del Word de esta sesión, tal cual: tablas e imágenes del original.
+    @ViewBuilder
+    private var documentModeContent: some View {
+        if let renderedDocument {
+            PlannerDocxWebView(html: renderedDocument.html, minHeight: 320, idealHeight: 900, maxHeight: .infinity)
+                .frame(maxWidth: 900, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, presentation == .inspector ? 8 : 24)
+                .padding(.vertical, 12)
+        } else {
+            VStack(spacing: 12) {
+                ProgressView()
+                Text("Preparando el documento de sesión")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -490,6 +558,13 @@ struct PlannerSessionDetailSheet: View {
         return parts.filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
+    private var classKitTitle: String {
+        let planTitle = detailedPlan?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !planTitle.isEmpty { return planTitle }
+        let unit = session.teachingUnitName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return unit.isEmpty ? "Sesión" : unit
+    }
+
     private var sessionAccessibilityMetadata: String {
         var values = [session.groupName, dateAndTimeLabel]
         if let badge = sessionStatusBadge { values.insert(badge.label, at: 1) }
@@ -532,9 +607,15 @@ struct PlannerSessionDetailSheet: View {
 
     private var sessionActionsMenu: some View {
         Menu {
+            if reviewProjection != nil {
+                Button { isClassKitPresented = true } label: { Label("Kit de clase", systemImage: "list.clipboard") }
+            }
             Button(action: onEdit) { Label("Editar", systemImage: "pencil") }
             if onCopyToNextWeek != nil {
                 Button { onCopyToNextWeek?() } label: { Label("Duplicar", systemImage: "doc.on.doc") }
+            }
+            if let onOpenLibreta {
+                Button(action: onOpenLibreta) { Label("Abrir libreta de la clase", systemImage: "pencil.and.scribble") }
             }
             if sourceDocumentFileURL != nil {
                 Button { openSourceDocumentPreview() } label: { Label("Ver DOCX", systemImage: "doc.text.magnifyingglass") }
@@ -940,6 +1021,21 @@ struct PlannerSessionDetailSheet: View {
             linkedInstruments = allInstruments.filter { linkedIds.contains($0.id) }
         } catch {
             print("Error loading linked instruments: \(error)")
+        }
+    }
+}
+
+/// Vista del visor de sesión. Se guarda en preferencias: no cambiar los `rawValue`.
+enum PlannerSessionViewMode: String, CaseIterable, Identifiable {
+    case document
+    case guide
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .document: return "Documento"
+        case .guide: return "Guion"
         }
     }
 }

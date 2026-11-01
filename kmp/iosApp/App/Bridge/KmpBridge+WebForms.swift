@@ -1,12 +1,18 @@
 import Foundation
 import MiGestorKit
 import CryptoKit
+import os
 
 enum WebPeerPublishGuard {
     static let groupsFailure = "No se pudieron leer los grupos. No se ha publicado la coevaluación para no dejarla sin equipos."
 }
 
 extension KmpBridge {
+    /// Registro de diagnóstico de Entregas web: solo cuentas, estados y los 8
+    /// primeros caracteres del formulario. Nunca nombres ni respuestas.
+    /// Se lee con `log show --predicate 'subsystem == "com.migestor.entregas-web"'`.
+    static let registroEntregas = Logger(subsystem: "com.migestor.entregas-web", category: "importar")
+
     // MARK: - Publicación de formularios web
 
     /// Columnas del grupo que tienen una plantilla de instrumento y por tanto se
@@ -33,6 +39,10 @@ extension KmpBridge {
             let problema = sinOpciones.map {
                 "«\($0.title)» es de elección y no tiene opciones. Edita el instrumento y añádelas."
             }
+            let paradas = WebPassportSections.split(
+                titles: detalle.items.sorted { $0.order < $1.order }.map(\.title),
+                fallbackTitle: detalle.template_.title
+            ).stops.map { "\($0.title) · \($0.itemIndexes.count) \($0.itemIndexes.count == 1 ? "pregunta" : "preguntas")" }
 
             salida.append(
                 WebPublishableInstrument(
@@ -43,7 +53,8 @@ extension KmpBridge {
                     alreadyPublished: publicados.contains {
                         $0.columnId == columna.id && !$0.revoked
                     },
-                    blockingIssue: problema
+                    blockingIssue: problema,
+                    passportStops: paradas
                 )
             )
         }
@@ -88,6 +99,10 @@ extension KmpBridge {
 
             let nombreGrupo = classes.first(where: { $0.id == instancia.classId })?.name
                 ?? "Grupo \(instancia.classId)"
+            // Solo se comprueba lo que aún puede recibir entregas.
+            let desfasada = estado == .active && !instancia.archived
+                ? !(await webFormInstrumentMatches(formInstanceId: instancia.formInstanceId, columnId: instancia.columnId))
+                : false
             resultado.append(
                 WebSubmissionTaskInfo(
                     formInstanceId: instancia.formInstanceId,
@@ -100,7 +115,8 @@ extension KmpBridge {
                     expiresAtEpochMs: instancia.expiresAtEpochMs,
                     importedCount: importadas.count,
                     lastImportedAtEpochMs: importadas.map(\.importedAtEpochMs).max(),
-                    mode: instancia.mode
+                    mode: instancia.mode,
+                    instrumentOutdated: desfasada
                 )
             )
         }
@@ -333,7 +349,9 @@ extension KmpBridge {
         baseURL: String,
         deliveryEmail: String?,
         expiresAt: Date,
-        mode: String = "self"
+        mode: String = "self",
+        /// Idioma de la web del alumnado («es» o «en»).
+        locale: String = "es"
     ) async throws -> WebPublishResult {
         guard let detalle = try await container.notebookInstrumentsRepository
             .getTemplateForColumn(columnId: columnId) else {
@@ -353,22 +371,34 @@ extension KmpBridge {
             )
         }
 
-        let items: [WebSubmissionPublisher.ItemToPublish] = detalle.items
-            .sorted { $0.order < $1.order }
-            .map { item in
-                WebSubmissionPublisher.ItemToPublish(
-                    itemId: item.id,
-                    title: item.title,
-                    type: Self.webItemType(from: item.type),
-                    required: item.required,
-                    options: item.options,
-                    helpText: item.helpText,
-                    // La plantilla del Cuaderno no guarda etiquetas por nivel; la
-                    // PWA cae a 1-2-3-4, que es lo que se ve en el instrumento.
-                    scaleLabels: nil,
-                    sectionId: nil
-                )
-            }
+        let ordenados = detalle.items.sorted { $0.order < $1.order }
+        // Pasaporte: cada parada es una sección, sale del prefijo del título y nada
+        // es obligatorio (se envía por partes).
+        let pasaporte = mode == "passport"
+        let paradas = pasaporte
+            ? WebPassportSections.split(titles: ordenados.map(\.title), fallbackTitle: detalle.template_.title)
+            : nil
+        var seccionPorIndice: [Int: String] = [:]
+        for parada in paradas?.stops ?? [] {
+            for indice in parada.itemIndexes { seccionPorIndice[indice] = parada.sectionId }
+        }
+        let items: [WebSubmissionPublisher.ItemToPublish] = ordenados.enumerated().map { indice, item in
+            WebSubmissionPublisher.ItemToPublish(
+                itemId: item.id,
+                title: paradas?.itemTitles[indice] ?? item.title,
+                type: Self.webItemType(from: item.type),
+                required: pasaporte ? false : item.required,
+                options: item.options,
+                helpText: item.helpText,
+                // La plantilla del Cuaderno no guarda etiquetas por nivel; la
+                // PWA cae a 1-2-3-4, que es lo que se ve en el instrumento.
+                scaleLabels: nil,
+                sectionId: seccionPorIndice[indice]
+            )
+        }
+        let secciones = (paradas?.stops ?? []).map {
+            WebSubmissionPublisher.SectionToPublish(sectionId: $0.sectionId, title: WebPassportSections.webTitle($0.title), help: nil)
+        }
 
         var peerTargetsToPublish: [WebSubmissionPublisher.PeerTargetToPublish] = []
         if mode == "peer" {
@@ -408,11 +438,12 @@ extension KmpBridge {
             }
         }
 
+        let buzon = WebSubmissionInbox.prepareRegistration(baseURL: baseURL)
         let publicado = try WebSubmissionPublisher.publish(
             title: detalle.template_.title,
             subtitle: nil,
-            locale: "es",
-            sections: [],
+            locale: locale,
+            sections: secciones,
             items: items,
             students: alumnado.map {
                 WebSubmissionPublisher.StudentToPublish(
@@ -424,7 +455,17 @@ extension KmpBridge {
             deliveryEmail: deliveryEmail,
             expiresAtEpochMs: Int64(expiresAt.timeIntervalSince1970 * 1000),
             mode: mode,
-            peerTargets: peerTargetsToPublish
+            peerTargets: peerTargetsToPublish,
+            inboxPath: buzon == nil ? nil : WebSubmissionInbox.path,
+            depositToken: buzon?.depositToken
+        )
+
+        // Con buzón, el registro va antes que nada: si falla no se publica, porque
+        // los enlaces apuntarían a un buzón que no conoce el formulario.
+        try await buzon?.register(
+            formInstanceId: publicado.formInstanceId,
+            expiresAt: expiresAt,
+            aliases: publicado.aliases.map(\.alias)
         )
 
         // La clave primero: un formulario registrado sin clave en el llavero no se
@@ -652,6 +693,9 @@ extension KmpBridge {
         }
 
         var decisionsByCell: [TargetCellKey: [WebSubmissionImportDecision]] = [:]
+        var peerStores: [String: WebPeerEvaluationStore] = [:]
+        var passportStores: [String: WebPassportStore] = [:]
+        var passportSections: [String: [String: String]] = [:]
         for decision in decisions {
             let key = TargetCellKey(
                 classId: decision.draft.classId,
@@ -661,55 +705,114 @@ extension KmpBridge {
             decisionsByCell[key, default: []].append(decision)
         }
 
+        // Apartados actuales de cada columna. Si la columna perdió el instrumento con
+        // el que se publicó (se borró o se volvió a importar), `saveResponses` no
+        // guardaría nada y aun así el envío contaría como importado y se borraría
+        // del buzón: se para antes y se avisa.
+        var apartadosPorColumna: [String: Set<String>] = [:]
+        var columnasConsultadas: Set<String> = []
+
         for (cellKey, cellDecisions) in decisionsByCell {
             let primerBorrador = cellDecisions[0].draft
             let nombre = primerBorrador.studentName ?? "código \(primerBorrador.alias.prefix(6))"
+            let formCorto = String(primerBorrador.formInstanceId.prefix(8))
 
-            // Recolectar todas las respuestas agrupadas por itemId
-            var answersByItemId: [String: [(answer: WebResolvedAnswer, draft: WebSubmissionDraft)]] = [:]
-            for dec in cellDecisions {
-                for ans in dec.draft.answers {
-                    answersByItemId[ans.itemId, default: []].append((ans, dec.draft))
+            if !columnasConsultadas.contains(cellKey.columnId) {
+                columnasConsultadas.insert(cellKey.columnId)
+                if let detalle = try? await container.notebookInstrumentsRepository
+                    .getTemplateForColumn(columnId: cellKey.columnId) {
+                    apartadosPorColumna[cellKey.columnId] = Set(detalle.items.map(\.id))
+                }
+            }
+            let recibidos = cellDecisions.flatMap { $0.draft.answers.map(\.itemId) }
+            guard WebSubmissionTaskInfo.instrumentStillMatches(
+                publishedItemIds: recibidos,
+                currentItemIds: apartadosPorColumna[cellKey.columnId]
+            ) else {
+                Self.registroEntregas.error(
+                    "Importar \(formCorto, privacy: .public): la columna ya no tiene el instrumento publicado (\(cellDecisions.count, privacy: .public) envíos sin guardar)"
+                )
+                resultado.failures.append((studentName: nombre, reason: WebSubmissionTaskInfo.outdatedInstrumentMessage))
+                continue
+            }
+
+            // Coevaluación: se guarda cada evaluación y la celda se recalcula con
+            // todas las recibidas hasta ahora, no solo con las de esta importación.
+            var answerSets: [[WebResolvedAnswer]] = cellDecisions.map(\.draft.answers)
+            if primerBorrador.isPeerEvaluation,
+               var almacen = peerStores[primerBorrador.formInstanceId] ?? WebPeerEvaluationStore.forForm(primerBorrador.formInstanceId) {
+                for dec in cellDecisions {
+                    almacen.record(
+                        evaluatorAlias: dec.draft.alias,
+                        targetStudentId: cellKey.studentId,
+                        clientSubmittedAt: dec.draft.clientSubmittedAt,
+                        answers: dec.draft.answers
+                    )
+                }
+                // Se guarda antes que la celda: si falla, el envío no cuenta como
+                // importado y se queda en el buzón para el siguiente intento.
+                do {
+                    try almacen.save()
+                } catch {
+                    Self.registroEntregas.error("Importar \(formCorto, privacy: .public): no se pudo guardar coevaluaciones.json: \(error.localizedDescription, privacy: .public)")
+                    resultado.failures.append((studentName: nombre, reason: "No se pudo guardar la coevaluación en este Mac (\(error.localizedDescription))."))
+                    continue
+                }
+                peerStores[primerBorrador.formInstanceId] = almacen
+                answerSets = almacen.evaluations(for: cellKey.studentId).map(\.answers)
+            }
+
+            // Pasaporte: cada envío se junta con lo ya recibido y la celda se guarda
+            // con TODO, para que su resumen cuente todas las paradas, no solo la última.
+            if primerBorrador.isPassport {
+                let formId = primerBorrador.formInstanceId
+                if passportStores[formId] == nil {
+                    passportStores[formId] = WebPassportStore.forForm(formId)
+                    passportSections[formId] = await passportSectionMap(formInstanceId: formId)
+                }
+                if var almacen = passportStores[formId] {
+                    for dec in cellDecisions.sorted(by: { $0.draft.clientSubmittedAt < $1.draft.clientSubmittedAt }) {
+                        almacen.merge(
+                            studentId: cellKey.studentId,
+                            clientSubmittedAt: dec.draft.clientSubmittedAt,
+                            answers: dec.draft.answers,
+                            sectionIdByWebItemId: passportSections[formId] ?? [:]
+                        )
+                    }
+                    // Igual que la coevaluación: primero el pasaporte, después la celda.
+                    do {
+                        try almacen.save()
+                    } catch {
+                        Self.registroEntregas.error("Importar \(formCorto, privacy: .public): no se pudo guardar pasaporte.json: \(error.localizedDescription, privacy: .public)")
+                        resultado.failures.append((studentName: nombre, reason: "No se pudo guardar el pasaporte en este Mac (\(error.localizedDescription))."))
+                        continue
+                    }
+                    passportStores[formId] = almacen
+                    answerSets = [almacen.mergedAnswers(for: cellKey.studentId)]
+                    Self.registroEntregas.notice(
+                        "Importar \(formCorto, privacy: .public): pasaporte guardado, \(cellDecisions.count, privacy: .public) envíos, \(answerSets[0].count, privacy: .public) respuestas en la celda"
+                    )
+                } else {
+                    // Sin carpeta privada no se puede juntar: se guarda solo el envío más reciente.
+                    answerSets = cellDecisions
+                        .max(by: { $0.draft.clientSubmittedAt < $1.draft.clientSubmittedAt })
+                        .map { [$0.draft.answers] } ?? []
+                }
+            }
+
+            var answersByItemId: [String: [WebResolvedAnswer]] = [:]
+            for set in answerSets {
+                for ans in set {
+                    answersByItemId[ans.itemId, default: []].append(ans)
                 }
             }
 
             var responses: [NotebookInstrumentResponse] = []
-            for (itemId, answerPairs) in answersByItemId {
-                guard !answerPairs.isEmpty else { continue }
-                let itemType = answerPairs[0].answer.type
-
-                var finalNumber: KotlinDouble?
-                var finalText: String = ""
-                var finalBool: KotlinBoolean?
-
-                switch itemType {
-                case .scale1To4, .number:
-                    let numbers = answerPairs.compactMap { $0.answer.numberValue }
-                    if !numbers.isEmpty {
-                        let media = numbers.reduce(0.0, +) / Double(numbers.count)
-                        finalNumber = KotlinDouble(value: media)
-                        if media.truncatingRemainder(dividingBy: 1) == 0 {
-                            finalText = String(Int(media))
-                        } else {
-                            finalText = String(format: "%.2f", media)
-                        }
-                    }
-                case .check:
-                    let bools = answerPairs.compactMap { $0.answer.boolValue }
-                    if !bools.isEmpty {
-                        let trues = bools.filter { $0 }.count
-                        let majority = trues > (bools.count / 2)
-                        finalBool = KotlinBoolean(value: majority)
-                        finalText = majority ? "Sí" : "No"
-                    }
-                case .text, .choice:
-                    let texts = answerPairs.compactMap { $0.answer.textValue?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-                    if texts.count == 1 {
-                        finalText = texts[0]
-                    } else if texts.count > 1 {
-                        finalText = texts.joined(separator: "\n")
-                    }
-                }
+            for (itemId, answers) in answersByItemId {
+                guard let combinada = WebAnswerCombiner.combine(answers) else { continue }
+                let finalText = combinada.text
+                let finalBool = combinada.bool.map { KotlinBoolean(value: $0) }
+                let finalNumber = combinada.number.map { KotlinDouble(value: $0) }
 
                 responses.append(
                     NotebookInstrumentResponse(
@@ -775,6 +878,62 @@ extension KmpBridge {
         }
 
         return resultado
+    }
+
+    // MARK: - Pasaporte por paradas
+
+    /// `webItemId` -> parada, sacado del manifiesto publicado.
+    private func passportSectionMap(formInstanceId: String) async -> [String: String] {
+        guard let manifiesto = await publishedManifest(formInstanceId: formInstanceId) else { return [:] }
+        var mapa: [String: String] = [:]
+        for item in manifiesto.items {
+            if let seccion = item.sectionId { mapa[item.webItemId] = seccion }
+        }
+        return mapa
+    }
+
+    /// ¿Tiene la columna todavía los apartados con los que se publicó el formulario?
+    func webFormInstrumentMatches(formInstanceId: String, columnId: String) async -> Bool {
+        let publicados = ((try? await container.webSubmissionsRepository
+            .listItemMap(formInstanceId: formInstanceId)) ?? []).map(\.itemId)
+        let actuales = (try? await container.notebookInstrumentsRepository
+            .getTemplateForColumn(columnId: columnId)).map { Set($0.items.map(\.id)) }
+        return WebSubmissionTaskInfo.instrumentStillMatches(publishedItemIds: publicados, currentItemIds: actuales)
+    }
+
+    private func publishedManifest(formInstanceId: String) async -> WebFormManifest? {
+        guard let instancia = try? await container.webSubmissionsRepository
+            .getFormInstance(formInstanceId: formInstanceId) else { return nil }
+        return try? JSONDecoder().decode(WebFormManifest.self, from: Data(instancia.manifestJson.utf8))
+    }
+
+    /// Progreso de un pasaporte: qué paradas ha enviado cada alumno y sus respuestas.
+    /// Lee lo recibido de `pasaporte.json` (local, como la hoja de enlaces).
+    func loadWebPassportProgress(formInstanceId: String) async -> WebPassportProgress? {
+        guard let instancia = try? await container.webSubmissionsRepository
+            .getFormInstance(formInstanceId: formInstanceId),
+              let manifiesto = try? JSONDecoder().decode(WebFormManifest.self, from: Data(instancia.manifestJson.utf8))
+        else { return nil }
+        let alumnado = (try? await container.classesRepository.listStudentsInClass(classId: instancia.classId)) ?? []
+        let roster = alumnado
+            .map { WebRosterEntry(id: $0.id, name: "\($0.lastName), \($0.firstName)".trimmingCharacters(in: CharacterSet(charactersIn: ", "))) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let grupo = classes.first(where: { $0.id == instancia.classId })?.name ?? "Grupo \(instancia.classId)"
+        return WebPassportProgress.build(
+            formInstanceId: formInstanceId,
+            title: instancia.title,
+            groupName: grupo,
+            manifest: manifiesto,
+            roster: roster,
+            store: WebPassportStore.forForm(formInstanceId)
+        )
+    }
+
+    /// El docente ha abierto la ficha: sus paradas dejan de marcarse como nuevas.
+    func markWebPassportSeen(formInstanceId: String, studentId: Int64) {
+        guard var almacen = WebPassportStore.forForm(formInstanceId) else { return }
+        almacen.markSeen(studentId: studentId)
+        try? almacen.save()
     }
 
 #if DEBUG

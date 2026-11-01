@@ -84,6 +84,8 @@ class KmpContainer(val driver: SqlDriver) {
     val studentTutoringSessionRepository: StudentTutoringSessionRepository = StudentTutoringSessionRepositorySqlDelight(database)
     val inclusionTaskRepository: com.migestor.shared.repository.InclusionTaskRepository =
         com.migestor.data.repository.InclusionTaskRepositorySqlDelight(database)
+    val evaluationSessionRepository: com.migestor.shared.evaluationsession.EvaluationSessionRepository =
+        com.migestor.data.repository.EvaluationSessionRepositorySqlDelight(database)
     val meetingRepository: MeetingRepository = MeetingRepositorySqlDelight(database)
     val plannerWeekPlanRepository: PlannerWeekPlanRepository = PlannerWeekPlanRepositorySqlDelight(database)
 
@@ -179,6 +181,24 @@ class KmpContainer(val driver: SqlDriver) {
         notebookRepository = notebookRepository,
         classesRepository = classesRepository,
         attendanceRepository = attendanceRepository,
+    )
+
+    // Juntas de evaluación (migración 47). Va después de notebookRepository: la Media
+    // es la misma que muestra el Cuaderno, leída de su hoja ya construida.
+    val evaluationSessions = com.migestor.shared.evaluationsession.EvaluationSessionUseCase(
+        sessions = evaluationSessionRepository,
+        live = com.migestor.shared.evaluationsession.DefaultEvaluationSessionLiveData(
+            studentIdsForClass = { classId -> classesRepository.listStudentsInClass(classId).map { it.id } },
+            notebookAverages = { classId ->
+                com.migestor.shared.evaluationsession.EvaluationSessionRules.averagesFromNotebook(
+                    notebookRepository.loadNotebookSnapshot(classId)
+                )
+            },
+            attendanceStats = { classId, studentId -> aiTrendsRepository.getStudentAttendanceStats(classId, studentId) },
+            incidentsForClass = { classId -> incidentsRepository.listIncidents(classId) },
+            supportMeasures = { studentId -> studentSupportMeasureRepository.listByStudent(studentId) },
+        ),
+        newId = { com.migestor.shared.evaluationsession.randomEvaluationSessionId() },
     )
 
     /**

@@ -38,6 +38,10 @@ struct PlannerSequenceGanttView: View {
             }
         }
         .padding(EvaluationDesign.screenPadding)
+        .reloadOnLanSync(.planner) {
+            await vm.loadEnrichedSequences()
+            reconcileExpandedSituations()
+        }
         .task(id: vm.selectedGroupId) {
             selectInitialRangeIfNeeded()
             await vm.loadEnrichedSequences()
@@ -102,7 +106,7 @@ struct PlannerSequenceGanttView: View {
                     ) {
                         Text("Todos").tag(Optional<Int64>.none)
                         ForEach(vm.groups, id: \.id) { group in
-                            Text(group.name).tag(Optional(group.id))
+                            Text(vm.groupLabel(for: group)).tag(Optional(group.id))
                         }
                     }
                     .pickerStyle(.menu)

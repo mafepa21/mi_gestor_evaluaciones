@@ -248,6 +248,10 @@ struct MacAttendanceView: View {
             await reloadClassOverviews()
             await reloadAttendance()
         }
+        .reloadOnLanSync(.attendance) {
+            await reloadClassOverviews()
+            await reloadAttendance()
+        }
         .task(id: incidentHeatmapKey) {
             await reloadIncidentHeatmap()
         }

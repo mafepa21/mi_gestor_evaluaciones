@@ -36,7 +36,7 @@ enum WebSubmissionPublisher {
         let aliases: [(alias: String, studentId: Int64)]
         /// Enlaces personales, en el orden del alumnado que se pasó.
         let links: [(studentId: Int64, studentName: String, url: String)]
-        /// Modo del formulario: "self" o "peer"
+        /// Modo del formulario: "self", "peer" o "passport"
         let mode: String
         /// Coevaluación: asignaciones (evaluatorAlias, targetAlias, targetStudentId, targetName)
         let peerTargets: [(evaluatorAlias: String, targetAlias: String, targetStudentId: Int64, targetName: String)]
@@ -121,7 +121,11 @@ enum WebSubmissionPublisher {
         expiresAtEpochMs: Int64,
         formInstanceId: String = UUID().uuidString,
         mode: String = "self",
-        peerTargets: [PeerTargetToPublish] = []
+        peerTargets: [PeerTargetToPublish] = [],
+        /// Buzón de entregas (`WebSubmissionInbox.path`) y su clave de depósito. Con los
+        /// dos, la web envía la entrega directa; sin ellos, solo por correo.
+        inboxPath: String? = nil,
+        depositToken: String? = nil
     ) throws -> PublishedForm {
         guard !items.isEmpty else { throw PublishError.noItems }
         guard !students.isEmpty else { throw PublishError.noStudents }
@@ -178,13 +182,15 @@ enum WebSubmissionPublisher {
             "publisherKey": publisherKey,
             "expiresAt": iso8601(expiresAtEpochMs),
         ]
-        if mode == "peer" {
-            manifiesto["mode"] = "peer"
+        if mode == "peer" || mode == "passport" {
+            manifiesto["mode"] = mode
         }
         if let subtitle, !subtitle.isEmpty { manifiesto["subtitle"] = subtitle }
         if let deliveryEmail, !deliveryEmail.isEmpty {
             manifiesto["deliveryEmail"] = deliveryEmail
         }
+        let usaBuzon = inboxPath != nil && depositToken != nil
+        if usaBuzon, let inboxPath { manifiesto["inbox"] = inboxPath }
         if !sections.isEmpty {
             manifiesto["sections"] = sections.map { seccion -> [String: Any] in
                 var json: [String: Any] = ["sectionId": seccion.sectionId, "title": seccion.title]
@@ -269,7 +275,7 @@ enum WebSubmissionPublisher {
             links.append((
                 studentId: alumno.id,
                 studentName: alumno.name,
-                url: "\(base)/#f=\(formInstanceId)&a=\(alias)\(targetParam)"
+                url: "\(base)/#f=\(formInstanceId)&a=\(alias)\(usaBuzon ? "&b=\(depositToken ?? "")" : "")\(targetParam)"
             ))
         }
 

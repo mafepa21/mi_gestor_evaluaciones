@@ -9,6 +9,8 @@ struct BackupRestorePreviewSheet: View {
     @State private var currentSummary: AppleBackupSummary?
     @State private var restoreStep: RestoreStep = .preview
     @State private var errorMessage: String? = nil
+    @State private var restartCountdown = 3
+    @State private var isRestarting = false
     
     enum RestoreStep {
         case preview
@@ -91,24 +93,34 @@ struct BackupRestorePreviewSheet: View {
             if let current = currentSummary {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 12) {
-                        ComparisonCard(title: "Base de Datos Actual", summary: current, isBackup: false)
+                        ComparisonCard(title: "Base de Datos Actual", summary: current, isBackup: false, showsLibretas: showsLibretas(current))
 
                         Image(systemName: "arrow.right.circle.fill")
                             .font(.title2)
                             .foregroundStyle(AppleDesignSystem.accent)
 
-                        ComparisonCard(title: "Copia a Restaurar", summary: backup.manifest.summary, isBackup: true)
+                        ComparisonCard(title: "Copia a Restaurar", summary: backup.manifest.summary, isBackup: true, showsLibretas: showsLibretas(current))
                     }
 
                     VStack(spacing: 12) {
-                        ComparisonCard(title: "Base de Datos Actual", summary: current, isBackup: false)
+                        ComparisonCard(title: "Base de Datos Actual", summary: current, isBackup: false, showsLibretas: showsLibretas(current))
 
                         Image(systemName: "arrow.down.circle.fill")
                             .font(.title2)
                             .foregroundStyle(AppleDesignSystem.accent)
 
-                        ComparisonCard(title: "Copia a Restaurar", summary: backup.manifest.summary, isBackup: true)
+                        ComparisonCard(title: "Copia a Restaurar", summary: backup.manifest.summary, isBackup: true, showsLibretas: showsLibretas(current))
                     }
+                }
+                if showsLibretas(current) {
+                    Label(
+                        backup.manifest.summary.libretaCount != nil
+                            ? "Las libretas volverán a como estaban en la copia."
+                            : "Esta copia no trae libretas: las de ahora se quedan como están.",
+                        systemImage: "info.circle"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 }
             } else {
                 HStack {
@@ -222,7 +234,7 @@ struct BackupRestorePreviewSheet: View {
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(AppleDesignSystem.warning)
                 
-                Text("Para cargar la nueva base de datos sin corrupción de memoria en KMP, la aplicación debe cerrarse e iniciarse nuevamente.")
+                Text(restartNoticeText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -232,7 +244,7 @@ struct BackupRestorePreviewSheet: View {
             .overlay(RoundedRectangle(cornerRadius: AppleDesignSystem.controlRadius).stroke(AppleDesignSystem.warning.opacity(0.2), lineWidth: 1))
             
             Button(action: quitApp) {
-                Text("Entendido (Cerrar aplicación)")
+                Text(restartButtonTitle)
                     .font(.system(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(contrastingTextColor(for: AppleDesignSystem.accent))
                     .frame(maxWidth: .infinity)
@@ -243,8 +255,41 @@ struct BackupRestorePreviewSheet: View {
                     )
             }
             .buttonStyle(.plain)
+            .disabled(isRestarting)
         }
+        #if os(macOS)
+        .task { await runRestartCountdown() }
+        #endif
     }
+
+    private var restartNoticeText: String {
+        #if os(macOS)
+        isRestarting
+            ? "Reiniciando la app para cargar los datos restaurados…"
+            : "La app se reiniciará sola en \(restartCountdown) s para cargar los datos restaurados."
+        #else
+        "Para cargar la nueva base de datos sin corrupción de memoria en KMP, la aplicación debe cerrarse e iniciarse nuevamente."
+        #endif
+    }
+
+    private var restartButtonTitle: String {
+        #if os(macOS)
+        "Reiniciar ahora"
+        #else
+        "Entendido (Cerrar aplicación)"
+        #endif
+    }
+
+    #if os(macOS)
+    private func runRestartCountdown() async {
+        while restartCountdown > 0 {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard !Task.isCancelled, !isRestarting else { return }
+            restartCountdown -= 1
+        }
+        quitApp()
+    }
+    #endif
     
     private var failedView: some View {
         VStack(spacing: 20) {
@@ -313,20 +358,51 @@ struct BackupRestorePreviewSheet: View {
         }
     }
     
+    /// La fila «Libretas» solo sale si alguna de las dos bases tiene Libreta (iPad).
+    private func showsLibretas(_ current: AppleBackupSummary) -> Bool {
+        // En el Mac (y el iPhone) la Libreta no se restaura: no se promete nada.
+        LibretaStorage.isSupportedOnThisPlatform
+            && (current.libretaCount != nil || backup.manifest.summary.libretaCount != nil)
+    }
+
     private func quitApp() {
         #if os(macOS)
+        guard !isRestarting else { return }
+        isRestarting = true
+        relaunchAfterExit()
         NSApplication.shared.terminate(nil)
+        // Si algo retiene el cierre (p. ej. el helper de sincronización), se fuerza.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { exit(0) }
         #else
         exit(0)
         #endif
     }
 }
 
+#if os(macOS)
+/// Abre la app de nuevo cuando este proceso haya terminado, para que nunca convivan
+/// dos instancias sobre la misma base.
+private func relaunchAfterExit() {
+    let pid = ProcessInfo.processInfo.processIdentifier
+    let bundlePath = Bundle.main.bundlePath
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/sh")
+    process.arguments = [
+        "-c",
+        "while /bin/kill -0 \"$0\" 2>/dev/null; do /bin/sleep 0.2; done; /usr/bin/open \"$1\"",
+        String(pid),
+        bundlePath,
+    ]
+    try? process.run()
+}
+#endif
+
 // MARK: - ComparisonCard Helper
 struct ComparisonCard: View {
     let title: String
     let summary: AppleBackupSummary
     let isBackup: Bool
+    var showsLibretas: Bool = false
     
     @Environment(\.colorScheme) private var colorScheme
     
@@ -343,6 +419,15 @@ struct ComparisonCard: View {
                 StatCompareRow(label: "Columnas", value: summary.notebookColumnCount)
                 StatCompareRow(label: "Rúbricas", value: summary.rubricCount)
                 StatCompareRow(label: "Asistencias", value: summary.attendanceRecordCount)
+                if showsLibretas {
+                    HStack {
+                        Text("Libretas").font(.footnote).foregroundStyle(.secondary)
+                        Spacer()
+                        Text(summary.libretaCount.map(String.init) ?? "—")
+                            .font(.footnote.weight(.semibold))
+                    }
+                    .accessibilityElement(children: .combine)
+                }
             }
             .padding(10)
             .background(

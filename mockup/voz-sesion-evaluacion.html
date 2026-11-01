@@ -1,0 +1,322 @@
+<title>Sesión de evaluación por voz</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: lienzo de maqueta; cada estado es un marco de dispositivo (iPad/Mac ancho, iPhone estrecho) con su nota. Rejilla de 8 pt. */
+:root{
+  --bg:#eceef3; --frame:#f2f2f7; --surface:#ffffff; --fill:#e9e9ef; --fill-2:#f4f4f8;
+  --fg:#1c1c1e; --fg-2:#55555d; --fg-3:#6e6e76; --line:#dcdce3;
+  --accent:#2449d1; --accent-soft:#e6ecfd; --ai:#6a3dd1; --ai-soft:#f0eafd;
+  --rec:#d1322b; --rec-soft:#fbe6e4; --ok:#2e8a4e; --ok-soft:#e3f4e8; --warn:#8f5400; --warn-soft:#fbf0dc;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",system-ui,sans-serif;
+  --font-round:ui-rounded,-apple-system,"SF Pro Rounded",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0b0b0d; --frame:#000000; --surface:#1c1c1e; --fill:#2c2c30; --fill-2:#242428;
+  --fg:#f2f2f7; --fg-2:#b0b0b8; --fg-3:#8c8c95; --line:#38383d;
+  --accent:#6f8fff; --accent-soft:#1d2645; --ai:#a98bff; --ai-soft:#2a2140;
+  --rec:#ff5a50; --rec-soft:#3d1a17; --ok:#4cc373; --ok-soft:#163222; --warn:#f0a53a; --warn-soft:#3a2a10; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0b0b0d; --frame:#000000; --surface:#1c1c1e; --fill:#2c2c30; --fill-2:#242428;
+  --fg:#f2f2f7; --fg-2:#b0b0b8; --fg-3:#8c8c95; --line:#38383d;
+  --accent:#6f8fff; --accent-soft:#1d2645; --ai:#a98bff; --ai-soft:#2a2140;
+  --rec:#ff5a50; --rec-soft:#3d1a17; --ok:#4cc373; --ok-soft:#163222; --warn:#f0a53a; --warn-soft:#3a2a10; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.4 var(--font);-webkit-font-smoothing:antialiased}
+.page{max-width:1240px;margin:0 auto;padding-block:32px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:48px}
+.intro{display:grid;gap:8px;max-width:760px}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-2)}
+h1{margin:0;font:700 28px/1.15 var(--font-round);text-wrap:balance}
+.lede{margin:0;color:var(--fg-2)}
+.state{display:grid;gap:16px}
+.state-head{display:grid;gap:4px;max-width:760px}
+.state-head h2{margin:0;font-size:17px}
+.state-head p{margin:0;color:var(--fg-2);font-size:14px}
+
+/* Marco de hoja */
+.sheet{background:var(--frame);border-radius:20px;box-shadow:0 0 0 1px var(--line),0 12px 32px rgba(0,0,0,.08);overflow:hidden;min-width:0}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 16px;background:var(--surface);box-shadow:inset 0 -1px 0 var(--line)}
+.bar strong{font-size:17px}
+.btn{min-height:44px;padding:0 16px;border-radius:999px;border:0;font:inherit;font-size:15px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.plain{background:none;color:var(--accent);padding:0 8px}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.tinted{background:var(--accent-soft);color:var(--accent)}
+.btn.gray{background:var(--fill);color:var(--fg)}
+.btn.rec{background:var(--rec);color:#fff}
+.btn:disabled{opacity:.4;cursor:default}
+
+.context{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:16px}
+.pill{min-height:44px;display:inline-flex;align-items:center;gap:8px;padding:0 14px;border-radius:12px;background:var(--surface);box-shadow:0 0 0 1px var(--line);font-weight:500;border:0;color:var(--fg);font:inherit;cursor:pointer}
+.pill small{color:var(--fg-2);font-size:13px}
+.chev{color:var(--fg-3);font-size:11px}
+.today{flex:1;min-width:260px;justify-content:space-between;background:var(--accent-soft);box-shadow:0 0 0 1.5px var(--accent)}
+.today .k{font-size:13px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.today .v{font-weight:600}
+.today.empty{background:var(--surface);box-shadow:0 0 0 1px var(--line)}
+.today.empty .k{color:var(--fg-3)}
+
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:16px;padding:0 16px 16px}
+.col{display:grid;gap:16px;align-content:start;min-width:0}
+.card{background:var(--surface);border-radius:16px;padding:16px;display:grid;gap:12px;box-shadow:0 0 0 1px var(--line);min-width:0}
+.card h3{margin:0;font-size:15px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.muted{color:var(--fg-2);font-size:13px}
+
+/* Grabación */
+.recorder{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.mic{width:64px;height:64px;border-radius:50%;border:0;display:grid;place-items:center;cursor:pointer;flex:none;background:var(--accent);color:#fff;font-size:24px}
+.mic.on{background:var(--rec)}
+.mic.on span{width:20px;height:20px;border-radius:4px;background:#fff;display:block}
+.time{font:600 22px var(--font-round);font-variant-numeric:tabular-nums}
+.wave{display:flex;align-items:center;gap:3px;height:28px;flex:1;min-width:120px}
+.wave i{display:block;width:3px;border-radius:2px;background:var(--rec);opacity:.75}
+@media (prefers-reduced-motion:no-preference){.wave i{animation:w 1s ease-in-out infinite alternate}}
+@keyframes w{to{transform:scaleY(.4)}}
+.seg{display:inline-grid;grid-template-columns:1fr 1fr;gap:2px;padding:2px;border-radius:10px;background:var(--fill)}
+.seg button{min-height:44px;padding:0 12px;border:0;border-radius:8px;background:none;font:inherit;font-size:14px;color:var(--fg-2);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.transcript{font-size:14px;line-height:1.5;padding:12px;border-radius:12px;background:var(--fill-2);color:var(--fg)}
+.transcript b{color:var(--accent)}
+
+/* Bandeja compacta */
+.tray-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;padding:12px;border-radius:12px;background:var(--fill-2);cursor:pointer;border:0;text-align:left;font:inherit;color:inherit;width:100%}
+.tray-row[aria-current="true"]{background:var(--accent-soft);box-shadow:0 0 0 1.5px var(--accent)}
+.tray-row[aria-current="true"] b::after{content:" · en la rúbrica →";font-weight:600;color:var(--accent);font-size:13px}
+.tick{width:24px;height:24px;border-radius:50%;background:var(--accent);display:grid;place-items:center;margin-top:2px}
+.tick::after{content:"";width:6px;height:11px;border:solid #fff;border-width:0 2px 2px 0;transform:translateY(-1px) rotate(45deg)}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.chip{font-size:12px;font-weight:600;padding:3px 8px;border-radius:999px;background:var(--surface);box-shadow:0 0 0 1px var(--line);color:var(--fg-2)}
+
+/* Rúbrica */
+.rubric-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.matrix-wrap{overflow-x:auto;margin:0 -4px;padding:0 4px}
+.matrix{width:100%;min-width:560px;border-collapse:separate;border-spacing:4px;font-size:13px}
+.matrix th{font-weight:600;text-align:left;color:var(--fg-2);padding:4px 8px;font-size:12px}
+.matrix th small{display:block;font-weight:500;color:var(--fg-2)}
+.matrix td{vertical-align:top;padding:8px;border-radius:10px;background:var(--fill-2);line-height:1.35}
+.matrix td:first-child{background:none;font-weight:600;color:var(--fg);width:22%}
+.matrix tr.active td{background:var(--accent-soft)}
+.matrix tr.active td:first-child{background:none;color:var(--accent)}
+.matrix tr.active td:first-child::before{content:"▸ "}
+.matrix td.hit{box-shadow:inset 0 0 0 2px var(--accent);background:var(--surface)}
+.matrix td.hit .sug{display:block;font-weight:700;color:var(--ai);font-size:12px}
+
+/* Menú */
+.menu{background:var(--surface);border-radius:14px;box-shadow:0 0 0 1px var(--line),0 16px 40px rgba(0,0,0,.18);padding:6px;display:grid;gap:2px;max-width:420px}
+.menu .group{font-size:12px;font-weight:600;color:var(--fg-2);text-transform:uppercase;letter-spacing:.05em;padding:10px 12px 4px}
+.menu button{min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 12px;border:0;border-radius:10px;background:none;font:inherit;color:var(--fg);cursor:pointer;text-align:left}
+.menu button:hover,.menu button[aria-checked="true"]{background:var(--fill-2)}
+.menu small{color:var(--fg-2);font-size:13px}
+.menu .sep{height:1px;background:var(--line);margin:4px 8px}
+
+/* Grabaciones */
+.rec-list{display:grid;gap:0;border-radius:12px;background:var(--fill-2);overflow:hidden}
+.rec-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px;min-height:60px}
+.rec-item + .rec-item{box-shadow:inset 0 1px 0 var(--line)}
+.box{width:44px;height:44px;margin:-10px;padding:10px!important;background-clip:content-box;border-radius:6px;border:1.5px solid var(--fg-3);display:grid;place-items:center;background:none;cursor:pointer;padding:0}
+.box[aria-checked="true"]{background:var(--accent);border-color:var(--accent)}
+.box[aria-checked="true"]::after{content:"";width:6px;height:11px;border:solid #fff;border-width:0 2px 2px 0;transform:translateY(-1px) rotate(45deg)}
+.rec-item b{display:block;font-size:14px}
+.dur{font:600 14px var(--font-round);font-variant-numeric:tabular-nums;color:var(--fg-2)}
+.progress{height:6px;border-radius:3px;background:var(--fill);overflow:hidden}
+.progress i{display:block;height:100%;width:55%;background:var(--accent);border-radius:3px}
+.banner{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:12px;font-size:14px}
+.banner.warn{background:var(--warn-soft)} .banner.err{background:var(--rec-soft)}
+.banner .ic{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff}
+.banner.warn .ic{background:var(--warn);clip-path:polygon(50% 0,100% 100%,0 100%)} .banner.err .ic{background:var(--rec);clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)}
+.empty-state{display:grid;justify-items:center;gap:8px;text-align:center;padding:24px 16px;color:var(--fg-2)}
+.empty-state .big{width:48px;height:48px;border-radius:50%;background:var(--fill);display:grid;place-items:center;font-size:22px}
+
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+.phone{max-width:390px;width:100%}
+.phone .context{padding:12px}
+.phone .split{grid-template-columns:1fr;padding:0 12px 12px}
+.notes{display:grid;gap:8px;font-size:14px;color:var(--fg-2);padding:16px;border-radius:16px;box-shadow:0 0 0 1px var(--line);background:var(--surface)}
+.notes h2{margin:0;font-size:15px;color:var(--fg)}
+.notes ul{margin:0;padding-left:20px;display:grid;gap:4px}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:900px){.split{grid-template-columns:1fr}.pair{grid-template-columns:1fr}}
+</style>
+
+<div class="page">
+  <header class="intro">
+    <span class="eyebrow">Maqueta · Voz de Pista · Sesión de evaluación</span>
+    <h1>Hoy evalúo: elegir el instrumento antes de dictar</h1>
+    <p class="lede">El docente fija la rúbrica al empezar. La hoja crece para mostrarla entera con sus niveles y descriptores, y cada dictado se guarda como grabación para analizar varias de golpe. Datos de ejemplo, nombres inventados.</p>
+  </header>
+
+  <!-- 1. Principal iPad/Mac -->
+  <section class="state" aria-labelledby="s1">
+    <div class="state-head">
+      <h2 id="s1">1 · iPad y Mac: sesión con rúbrica elegida</h2>
+      <p>Hoja a pantalla casi completa. Izquierda: grabar y revisar. Derecha: la rúbrica siempre visible. Al tocar una alumna de la bandeja, se marca en la rúbrica la fila y el nivel sugerido de cada criterio.</p>
+    </div>
+    <div class="sheet">
+      <div class="bar"><button class="btn plain">Cancelar</button><strong>Voz de Pista</strong><button class="btn primary">Aplicar (12)</button></div>
+      <div class="context">
+        <button class="pill">1º ESO B <span class="chev">▾</span></button>
+        <button class="pill">Hoy, 19 oct <span class="chev">▾</span></button>
+        <button class="pill today" id="todayBtn" aria-haspopup="menu"><span><span class="k">Hoy evalúo</span><br><span class="v">Rúbrica de lanzamiento a portería</span> <small>· 6 criterios · 4 niveles</small></span><span class="chev">▾</span></button>
+      </div>
+      <div class="split">
+        <div class="col">
+          <div class="card">
+            <div class="recorder">
+              <button class="mic" aria-label="Empezar a dictar">●</button>
+              <div><div class="time">00:00</div><div class="muted">Se guarda como grabación</div></div>
+              <div class="seg" role="group" aria-label="Al terminar"><button aria-pressed="true">Analizar al parar</button><button aria-pressed="false">Solo guardar</button></div>
+            </div>
+            <div class="row"><button class="btn gray">Grabaciones (3)</button><button class="btn gray">Subir archivo</button></div>
+          </div>
+          <div class="card">
+            <div class="row" style="justify-content:space-between"><h3>Bandeja · 12 alumnas</h3><span class="muted">Faltan 3</span></div>
+            <button class="tray-row" aria-current="true"><span class="tick"></span><span><b>Noemí Gallardo</b><span class="muted"> · 1.er lanzamiento</span><span class="chips"><span class="chip">Apoyo · Logrado</span><span class="chip">Postura · En desarrollo</span><span class="chip">Golpeo · Logrado</span><span class="chip">Dirección · Logrado</span></span></span></button>
+            <button class="tray-row"><span class="tick"></span><span><b>Marta Vidal</b><span class="muted"> · 1.er lanzamiento</span><span class="chips"><span class="chip">Apoyo · En desarrollo</span><span class="chip">Golpeo · Logrado</span></span></span></button>
+            <button class="tray-row"><span class="tick"></span><span><b>Rocío Navas</b><span class="chips"><span class="chip">Apoyo · Inicial</span><span class="chip">Postura · En desarrollo</span></span></span></button>
+          </div>
+        </div>
+        <div class="col">
+          <div class="card">
+            <div class="rubric-head"><h3>Rúbrica de lanzamiento a portería</h3><button class="btn plain">Ocultar</button></div>
+            <p class="muted" style="margin:0">Noemí Gallardo · lo sugerido sale de su dictado. Toca una celda para cambiar el nivel.</p>
+            <div class="matrix-wrap">
+              <table class="matrix">
+                <thead><tr><th>Criterio</th><th>Inicial<small>1</small></th><th>En desarrollo<small>2</small></th><th>Logrado<small>3</small></th><th>Avanzado<small>4</small></th></tr></thead>
+                <tbody>
+                  <tr><td>Aproximación al balón</td><td>Llega parado o sin carrera.</td><td>Carrera irregular, pasos descompensados.</td><td>Carrera fluida, último paso largo.</td><td>Carrera y ritmo ajustados al tipo de tiro.</td></tr>
+                  <tr class="active"><td>Pie de apoyo</td><td>Lejos o detrás del balón.</td><td>A veces lejos o adelantado.</td><td class="hit"><span class="sug">✦ Sugerido</span>Junto al balón y apuntando a la portería.</td><td>Siempre bien colocado, incluso con carrera rápida.</td></tr>
+                  <tr class="active"><td>Posición corporal y equilibrio</td><td>Se cae o pierde el equilibrio.</td><td class="hit"><span class="sug">✦ Sugerido</span>Algo desequilibrada en el golpeo.</td><td>Estable, tronco sobre el balón.</td><td>Estable y orientada al objetivo en todo el gesto.</td></tr>
+                  <tr><td>Gesto técnico</td><td>Gesto corto y descoordinado.</td><td>Gesto incompleto o poco amplio.</td><td>Gesto amplio y coordinado.</td><td>Gesto amplio, coordinado y económico.</td></tr>
+                  <tr class="active"><td>Superficie de golpeo</td><td>Golpea con la punta.</td><td>Mezcla punta y superficie correcta.</td><td class="hit"><span class="sug">✦ Sugerido</span>Interior o empeine según el tiro.</td><td>Superficie precisa y golpeo limpio.</td></tr>
+                  <tr class="active"><td>Dirección y potencia</td><td>Balón flojo y sin dirección.</td><td>Dirección o potencia, no ambas.</td><td class="hit"><span class="sug">✦ Sugerido</span>Colocado a un lado con fuerza.</td><td>Colocado y potente donde quiere.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Menú Hoy evalúo -->
+  <section class="state" aria-labelledby="s2">
+    <div class="state-head">
+      <h2 id="s2">2 · Menú «Hoy evalúo»</h2>
+      <p>Solo instrumentos con criterios de esta clase, agrupados por tipo y con los de la sesión del día arriba. «Detectar al dictar» deja el comportamiento actual.</p>
+    </div>
+    <div class="menu" role="menu" aria-label="Hoy evalúo">
+      <div class="group">Sesión de hoy</div>
+      <button role="menuitemradio" aria-checked="true">Rúbrica de lanzamiento a portería <small>6 criterios ✓</small></button>
+      <div class="group">Rúbricas</div>
+      <button role="menuitemradio" aria-checked="false">Rúbrica de bádminton: juego en pista <small>4 criterios</small></button>
+      <button role="menuitemradio" aria-checked="false">Autoevaluación y coevaluación <small>3 indicadores</small></button>
+      <div class="group">Listas de cotejo</div>
+      <button role="menuitemradio" aria-checked="false">Calentamiento autónomo <small>4 ítems</small></button>
+      <div class="sep"></div>
+      <button role="menuitemradio" aria-checked="false">Detectar al dictar <small>sin instrumento fijo</small></button>
+    </div>
+  </section>
+
+  <!-- 3. Grabando + Grabaciones -->
+  <section class="state" aria-labelledby="s3">
+    <div class="state-head">
+      <h2 id="s3">3 · Grabar ahora, analizar después</h2>
+      <p>Cada dictado se guarda en el dispositivo con la clase, la fecha y el instrumento. Con «Solo guardar» no se analiza: útil en pista. Luego se eligen varias y se analizan juntas en una sola bandeja.</p>
+    </div>
+    <div class="pair">
+      <div class="card">
+        <h3>Grabando</h3>
+        <div class="recorder">
+          <button class="mic on" aria-label="Parar y guardar"><span></span></button>
+          <div><div class="time">02:14</div><div class="muted">Guardando en Grabaciones</div></div>
+          <div class="wave" aria-hidden="true"><i style="height:30%"></i><i style="height:70%;animation-delay:.1s"></i><i style="height:50%;animation-delay:.2s"></i><i style="height:90%;animation-delay:.3s"></i><i style="height:40%;animation-delay:.4s"></i><i style="height:75%;animation-delay:.15s"></i><i style="height:55%;animation-delay:.25s"></i><i style="height:35%;animation-delay:.35s"></i><i style="height:80%;animation-delay:.05s"></i><i style="height:45%;animation-delay:.45s"></i></div>
+        </div>
+        <div class="transcript"><b>Noemí.</b> Buen pie de apoyo, la posición corporal un tanto desequilibrada, pero el golpeo con el interior es bueno…</div>
+        <div class="seg" role="group" aria-label="Al terminar"><button aria-pressed="false">Analizar al parar</button><button aria-pressed="true">Solo guardar</button></div>
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h3>Grabaciones · 1º ESO B</h3><button class="btn plain">Seleccionar todo</button></div>
+        <div class="rec-list">
+          <div class="rec-item"><button class="box" role="checkbox" aria-checked="true" aria-label="Incluir Lanzamiento a portería 1, 9:04"></button><span><b>Lanzamiento a portería · 1</b><span class="muted">Hoy 10:42 · Rúbrica de lanzamiento</span></span><span class="dur">9:04</span></div>
+          <div class="rec-item"><button class="box" role="checkbox" aria-checked="true" aria-label="Incluir Lanzamiento a portería 2, 4:31"></button><span><b>Lanzamiento a portería · 2</b><span class="muted">Hoy 11:05 · Rúbrica de lanzamiento</span></span><span class="dur">4:31</span></div>
+          <div class="rec-item"><button class="box" role="checkbox" aria-checked="false" aria-label="Incluir Retrasos y material, 0:38"></button><span><b>Retrasos y material</b><span class="muted">Ayer 9:10 · Detectar al dictar</span></span><span class="dur">0:38</span></div>
+        </div>
+        <div class="row"><button class="btn primary">Analizar 2 grabaciones</button><button class="btn plain" style="color:var(--rec)">Borrar…</button></div>
+        <p style="margin:0;font-size:14px"><b>Privacidad:</b> las grabaciones nunca salen del dispositivo y se borran solas al aplicar sus acciones.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Analizando varias / vacío / errores -->
+  <section class="state" aria-labelledby="s4">
+    <div class="state-head">
+      <h2 id="s4">4 · Analizando, vacío y errores</h2>
+      <p>La transcripción de varias grabaciones va una a una con progreso real. Los errores dicen qué pasa y qué hacer.</p>
+    </div>
+    <div class="pair">
+      <div class="card">
+        <h3>Analizando grabaciones</h3>
+        <div class="row" style="justify-content:space-between"><span>Transcribiendo 2 de 2 · Lanzamiento a portería · 2</span><span class="dur">55 %</span></div>
+        <div class="progress" role="progressbar" aria-valuenow="55" aria-valuemin="0" aria-valuemax="100"><i></i></div>
+        <p class="muted" style="margin:0">La bandeja se va llenando con lo ya transcrito. Puedes empezar a revisar.</p>
+        <button class="btn gray">Detener</button>
+      </div>
+      <div class="card">
+        <h3>Sin grabaciones</h3>
+        <div class="empty-state"><div class="big" aria-hidden="true">◉</div><b>Aún no hay grabaciones de esta clase</b><span>Pulsa el micrófono y elige «Solo guardar» para dictar en pista sin parar a revisar.</span></div>
+      </div>
+      <div class="card">
+        <h3>Error: dictado sin conexión</h3>
+        <div class="banner err"><span class="ic">!</span><div><b>Falta el dictado en español sin conexión</b>La grabación se ha guardado, pero no se puede transcribir. Descárgalo en Ajustes › General › Teclado › Dictado y vuelve a analizarla.</div></div>
+      </div>
+      <div class="card">
+        <h3>Aviso: instrumento sin criterios</h3>
+        <div class="banner warn"><span class="ic">!</span><div><b>«Nota práctica» no tiene criterios</b>Se dictará una nota por alumna, sin rúbrica. Para ver niveles, elige una rúbrica o lista de cotejo.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. iPhone -->
+  <section class="state" aria-labelledby="s5">
+    <div class="state-head">
+      <h2 id="s5">5 · iPhone</h2>
+      <p>Una columna. La rúbrica se abre en su propia hoja con «Ver rúbrica»; en pista basta el micrófono grande.</p>
+    </div>
+    <div class="sheet phone">
+      <div class="bar"><button class="btn plain">Cancelar</button><strong>Voz de Pista</strong><button class="btn plain" style="font-weight:700">Aplicar</button></div>
+      <div class="context">
+        <button class="pill today" style="min-width:0;width:100%"><span><span class="k">Hoy evalúo</span><br><span class="v">Rúbrica de lanzamiento</span></span><span class="chev">▾</span></button>
+      </div>
+      <div class="split">
+        <div class="col">
+          <div class="card" style="justify-items:center;text-align:center">
+            <button class="mic" style="width:88px;height:88px;font-size:32px" aria-label="Empezar a dictar">●</button>
+            <div class="seg" role="group" aria-label="Al terminar"><button aria-pressed="false">Analizar</button><button aria-pressed="true">Solo guardar</button></div>
+            <div class="row" style="justify-content:center"><button class="btn tinted">Ver rúbrica</button><button class="btn gray">Grabaciones (3)</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="notes">
+    <h2>Decisiones HIG</h2>
+    <ul>
+      <li>«Hoy evalúo» es un menú con selección única, cerca del contexto (grupo y fecha), no un paso más.</li>
+      <li>iPad: hoja de tamaño página. Mac: ventana mínima de 1100 × 760. iPhone: hoja grande y la rúbrica en hoja aparte.</li>
+      <li>La rúbrica es una tabla de solo lectura salvo la fila activa; el color no es la única pista: la celda sugerida lleva texto «Sugerido».</li>
+      <li>Grabar es un único botón de 64 pt (88 pt en iPhone); el modo «Solo guardar» se elige con un control segmentado visible antes y durante.</li>
+      <li>Las grabaciones viven en el dispositivo y se borran al aplicar; se puede borrar a mano en cualquier momento.</li>
+      <li>Con texto grande o poco ancho, la tabla pasa a una tarjeta por criterio con los 4 niveles apilados, sin scroll horizontal. En Mac estrecho, la rúbrica va a un inspector ocultable.</li>
+      <li>VoiceOver lee una fila por criterio: «Pie de apoyo, sugerido Logrado, 3 de 4» y su descriptor; el nivel se cambia con ajuste arriba/abajo.</li>
+      <li>«Hoy evalúo» se bloquea mientras se graba. Cancelar con una grabación en curso pide confirmación.</li>
+    </ul>
+  </aside>
+</div>
+
+<script>
+document.querySelectorAll('.seg').forEach(s=>s.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;s.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));}));
+document.querySelectorAll('.box').forEach(b=>b.addEventListener('click',()=>{b.setAttribute('aria-checked',b.getAttribute('aria-checked')!=='true');const n=document.querySelectorAll('.box[aria-checked="true"]').length;const a=document.querySelector('.rec-item').closest('.card').querySelector('.btn.primary');a.textContent=n===1?'Analizar 1 grabación':'Analizar '+n+' grabaciones';a.disabled=n===0;}));
+document.querySelectorAll('.tray-row').forEach(r=>r.addEventListener('click',()=>{document.querySelectorAll('.tray-row').forEach(x=>x.setAttribute('aria-current',x===r));}));
+document.querySelectorAll('.menu button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.menu button').forEach(x=>x.setAttribute('aria-checked',x===b));}));
+</script>

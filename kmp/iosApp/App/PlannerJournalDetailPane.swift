@@ -125,7 +125,7 @@ struct PlannerJournalDetailPane: View {
                 vm.journalDraft.injuriesText,
                 vm.journalDraft.unequippedStudentsText,
                 vm.journalDraft.stationObservationsText,
-                session.groupName,
+                vm.groupLabel(for: session),
                 session.teachingUnitName,
                 session.objectives,
                 session.activities,
@@ -173,12 +173,12 @@ private struct SessionJournalHeaderCard: View {
                 EvaluationSectionTitle(
                     eyebrow: "Diario",
                     title: session.teachingUnitName,
-                    subtitle: "\(session.groupName) · \(vm.timeLabel(for: Int(session.period)))"
+                    subtitle: "\(vm.groupLabel(for: session)) · \(vm.timeLabel(for: Int(session.period)))"
                 )
 
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 12) {
                     quickField("Fecha", value: vm.dateRangeLabel)
-                    quickField("Grupo", value: session.groupName)
+                    quickField("Grupo", value: vm.groupLabel(for: session))
                     quickField("Hora", value: vm.timeLabel(for: Int(session.period)))
                     editableField("Profesor", text: $vm.journalDraft.teacherName)
                     editableField("Espacio", text: $vm.journalDraft.scheduledSpace)

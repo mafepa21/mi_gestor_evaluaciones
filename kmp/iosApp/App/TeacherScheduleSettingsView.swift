@@ -8,6 +8,8 @@ import AppKit
 @MainActor
 final class TeacherScheduleSettingsViewModel: ObservableObject {
     @Published var groups: [SchoolClass] = []
+    /// Nombre visible por grupo; distingue los que se llaman igual.
+    @Published var groupLabelById: [Int64: String] = [:]
     @Published var classColorHexById: [Int64: String] = [:]
     @Published var weeklySlots: [WeeklySlotTemplate] = []
     @Published var teacherSchedule: TeacherSchedule?
@@ -21,6 +23,10 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     @Published var nonTeachingEvents: [CalendarEvent] = []
     @Published var scheduleImportPreview: ScheduleImportPreview?
     @Published var scheduleImportPlan: ScheduleImportCatalogPlan?
+    /// Grupo elegido para cada código del Excel que encaja con varios grupos.
+    @Published var scheduleImportGroupChoices: [String: ScheduleGroupChoice] = [:]
+    /// Solapes con el horario existente de los grupos elegidos a mano.
+    @Published var scheduleImportChoiceConflicts: [String] = []
     @Published var isImportingSchedule = false
     @Published var isCalendarPresetPresented = false
 
@@ -119,6 +125,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         guard let bridge else { return }
         await bridge.ensureClassesLoaded()
         groups = bridge.classes.sorted { $0.name < $1.name }
+        groupLabelById = bridge.classDisplayNames(for: groups)
         classColorHexById = bridge.plannerCourseColors(for: groups.map(\.id))
         weeklySlots = bridge.plannerWeeklySlots(classId: nil)
         if scheduleFormGroupId == nil {
@@ -323,6 +330,8 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         do {
             let urls = try result.get()
             let parsed = try ScheduleExcelImportService().preview(from: urls)
+            scheduleImportGroupChoices = [:]
+            scheduleImportChoiceConflicts = []
             let withConflicts = previewWithExistingConflicts(parsed)
             scheduleImportPreview = withConflicts
             scheduleImportPlan = buildCatalogPlan(for: withConflicts)
@@ -339,6 +348,13 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
 
     func importSchedulePreview(_ preview: ScheduleImportPreview, emptySlotMode: ScheduleEmptySlotImportMode, createSubjects: Bool = true) async {
         guard let bridge, teacherSchedule != nil else { return }
+        let pendingChoices = catalogResolver.resolveGroups(preview: preview, existingGroups: groups, choices: scheduleImportGroupChoices)
+            .ambiguousCandidatesByCode
+        guard pendingChoices.isEmpty else {
+            scheduleError = "Elige a qué grupo va \(pendingChoices.keys.sorted().map(groupDisplayName(for:)).joined(separator: ", ")) antes de importar."
+            scheduleSaveState = .failed(scheduleError)
+            return
+        }
         isImportingSchedule = true
         scheduleSaveState = .saving
         defer { isImportingSchedule = false }
@@ -382,6 +398,8 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
 
             scheduleImportPreview = nil
             scheduleImportPlan = nil
+            scheduleImportGroupChoices = [:]
+            scheduleImportChoiceConflicts = []
             await reload()
             scheduleSaveState = .saved(Date())
             scheduleError = ""
@@ -429,6 +447,77 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         } catch {
             await reload()
             scheduleError = "No se pudo completar la reparación: \(error.localizedDescription)"
+            scheduleSaveState = .failed(scheduleError)
+        }
+    }
+
+    private var sameNameSlots: [SameNameGroupScheduleDays.Slot] {
+        teacherScheduleSlots.map { .init(id: $0.id, groupId: $0.schoolClassId, day: Int($0.dayOfWeek)) }
+    }
+
+    /// Grupos repetidos («4º ESO A» de dos centros) con el reparto de días.
+    var sameNameGroupFamilies: [SameNameGroupScheduleDays.Family] {
+        SameNameGroupScheduleDays.families(
+            groups: groups.map { .init(id: $0.id, name: $0.name) },
+            slots: sameNameSlots
+        )
+    }
+
+    /// Pasa todas las franjas de ese día (de cualquier grupo con el mismo
+    /// nombre) al grupo elegido. Usa el mismo guardado que editar una franja.
+    func reassignSameNameSlots(in family: SameNameGroupScheduleDays.Family, day: Int, to groupId: Int64) async {
+        let ids = Set(SameNameGroupScheduleDays.slotsToReassign(in: family, day: day, to: groupId, slots: sameNameSlots).map(\.id))
+        await reassignSlots(teacherScheduleSlots.filter { ids.contains($0.id) }, to: groupId, label: dayLabel(for: day))
+    }
+
+    /// Franjas cuyo grupo ya no existe (en el Planner salen como «Grupo 21»),
+    /// agrupadas por ese id perdido.
+    var orphanScheduleSlotGroups: [(groupId: Int64, slots: [TeacherScheduleSlot])] {
+        let orphanIds = SameNameGroupScheduleDays.orphanGroupIds(
+            knownGroupIds: Set(groups.map(\.id)),
+            slots: sameNameSlots
+        )
+        return orphanIds.map { orphanId in
+            (orphanId, effectiveScheduleSlots.filter { $0.schoolClassId == orphanId })
+        }
+    }
+
+    /// Pasa todas las franjas de un grupo que ya no existe a un grupo real.
+    func reassignOrphanSlots(from orphanGroupId: Int64, to groupId: Int64) async {
+        await reassignSlots(
+            teacherScheduleSlots.filter { $0.schoolClassId == orphanGroupId },
+            to: groupId,
+            label: "Grupo \(orphanGroupId)"
+        )
+    }
+
+    private func reassignSlots(_ slots: [TeacherScheduleSlot], to groupId: Int64, label: String) async {
+        guard let bridge, let schedule = teacherSchedule else { return }
+        guard !slots.isEmpty else { return }
+        scheduleSaveState = .saving
+        var moved = 0
+        do {
+            for slot in slots {
+                _ = try await bridge.plannerSaveTeacherScheduleSlot(
+                    scheduleId: schedule.id,
+                    classId: groupId,
+                    subjectLabel: slot.subjectLabel,
+                    unitLabel: slot.unitLabel,
+                    dayOfWeek: Int(slot.dayOfWeek),
+                    startTime: slot.startTime,
+                    endTime: slot.endTime,
+                    editingSlotId: slot.id,
+                    existingWeeklyTemplateId: slot.weeklyTemplateId?.int64Value
+                )
+                moved += 1
+            }
+            await reload()
+            scheduleImportStatusMessage = "\(label): \(moved) franja(s) pasadas a \(groupName(groupId))."
+            scheduleError = ""
+            scheduleSaveState = .saved(Date())
+        } catch {
+            await reload()
+            scheduleError = "Se pasaron \(moved) de \(slots.count) franjas. \(error.localizedDescription)"
             scheduleSaveState = .failed(scheduleError)
         }
     }
@@ -599,26 +688,56 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
 
     func knownGroupNamesByCode() -> [String: String] {
         guard let preview = scheduleImportPreview else { return [:] }
-        let groupResolution = catalogResolver.resolveGroups(preview: preview, existingGroups: groups)
-        return Dictionary(
+        let groupResolution = catalogResolver.resolveGroups(preview: preview, existingGroups: groups, choices: scheduleImportGroupChoices)
+        let labels = groupLabels()
+        var result = Dictionary(
             groupResolution.matchedIdByCode.compactMap { code, classId in
-                groups.first(where: { $0.id == classId }).map { (code, $0.name) }
+                labels[classId].map { (code, $0) }
             },
             uniquingKeysWith: { first, _ in first }
         )
+        for (code, choice) in scheduleImportGroupChoices where choice == .createNew {
+            result[code] = "\(groupDisplayName(for: code)) (nuevo)"
+        }
+        return result
+    }
+
+    func groupName(_ classId: Int64) -> String {
+        groupLabelById[classId] ?? groups.first(where: { $0.id == classId })?.name ?? "Grupo \(classId)"
+    }
+
+    /// Nombres de grupo que distinguen los repetidos (dos "4º ESO A").
+    func groupLabels() -> [Int64: String] {
+        bridge?.classDisplayNames(for: groups) ?? Dictionary(groups.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// El docente decide a qué grupo va un código del Excel que encaja con
+    /// varios. Recalcula el resumen y los solapes con el horario de ese grupo.
+    func chooseImportGroup(_ choice: ScheduleGroupChoice, forCode code: String) {
+        guard let preview = scheduleImportPreview else { return }
+        scheduleImportGroupChoices[code] = choice
+        let chosenCodes = Set(scheduleImportGroupChoices.keys)
+        scheduleImportChoiceConflicts = existingSlotDiagnostics(for: preview, onlyCodes: chosenCodes).conflicts
+        scheduleImportPlan = buildCatalogPlan(for: preview)
     }
 
     private func buildCatalogPlan(for preview: ScheduleImportPreview) -> ScheduleImportCatalogPlan {
         guard let bridge else { return .empty }
-        let groupResolution = catalogResolver.resolveGroups(preview: preview, existingGroups: groups)
+        let groupResolution = catalogResolver.resolveGroups(preview: preview, existingGroups: groups, choices: scheduleImportGroupChoices)
         let subjectResolution = catalogResolver.resolveSubjects(preview: preview, existingSubjects: bridge.subjects)
-        let plan = ScheduleImportCatalogPlan.build(groupResolution: groupResolution, subjectResolution: subjectResolution)
+        let labels = groupLabels()
+        let plan = ScheduleImportCatalogPlan.build(
+            groupResolution: groupResolution,
+            subjectResolution: subjectResolution,
+            promptResolution: catalogResolver.resolveGroups(preview: preview, existingGroups: groups),
+            candidateTitle: { labels[$0] ?? "Grupo \($0)" }
+        )
 
         let ambiguousWarnings = catalogResolver.subjectCodesByGroup(preview: preview)
             .filter { $0.value.count > 1 }
             .map { groupCode, subjectCodes -> String in
                 let name = groupResolution.matchedIdByCode[groupCode]
-                    .flatMap { classId in groups.first(where: { $0.id == classId })?.name }
+                    .flatMap { labels[$0] }
                     ?? groupDisplayName(for: groupCode)
                 return "\(name) imparte \(subjectCodes.count) materias (\(subjectCodes.sorted().joined(separator: ", "))): se deja sin asignatura fija. Duplica el grupo desde Cursos si quieres cuadernos separados."
             }
@@ -630,7 +749,8 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
             groupsReusedCount: plan.groupsReusedCount,
             subjectsToCreate: plan.subjectsToCreate,
             subjectsReusedCount: plan.subjectsReusedCount,
-            warnings: plan.warnings + ambiguousWarnings
+            warnings: plan.warnings + ambiguousWarnings,
+            groupChoicePrompts: plan.groupChoicePrompts
         )
     }
 
@@ -654,7 +774,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
             }
         }
 
-        let groupResolution = catalogResolver.resolveGroups(preview: preview, existingGroups: groups)
+        let groupResolution = catalogResolver.resolveGroups(preview: preview, existingGroups: groups, choices: scheduleImportGroupChoices)
         let subjectCodesByGroup = catalogResolver.subjectCodesByGroup(preview: preview)
         var groupIdByCode = groupResolution.matchedIdByCode
 
@@ -686,6 +806,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
 
         await bridge.ensureClassesLoaded()
         groups = bridge.classes.sorted { $0.name < $1.name }
+        groupLabelById = bridge.classDisplayNames(for: groups)
 
         return (groupIdByCode, subjectNames)
     }
@@ -710,19 +831,46 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     }
 
     private func previewWithExistingConflicts(_ preview: ScheduleImportPreview) -> ScheduleImportPreview {
-        guard let bridge else { return preview }
-        let groupResolution = catalogResolver.resolveGroups(preview: preview, existingGroups: groups)
+        guard bridge != nil else { return preview }
+        let diagnostics = existingSlotDiagnostics(for: preview, onlyCodes: nil)
+        var warnings = preview.warnings
+        if diagnostics.alreadyImportedCount > 0 {
+            warnings.append("\(diagnostics.alreadyImportedCount) franja(s) ya existen igual en el horario y se omitirán al importar.")
+        }
+        let ambiguousCodes = catalogResolver.resolveGroups(preview: preview, existingGroups: groups).ambiguousCandidatesByCode.keys
+        if !ambiguousCodes.isEmpty {
+            warnings.append("Hay varios grupos que pueden ser \(ambiguousCodes.sorted().map(groupDisplayName(for:)).joined(separator: ", ")). Elige cuál es en «Grupos con el mismo nombre».")
+        }
+
+        return ScheduleImportPreview(
+            sourceName: preview.sourceName,
+            slots: preview.slots,
+            subjectLegend: preview.subjectLegend,
+            conflicts: Array(Set(preview.conflicts + diagnostics.conflicts)).sorted(),
+            warnings: warnings
+        )
+    }
+
+    /// Solapes y franjas ya importadas frente al horario existente. Con
+    /// `onlyCodes` se limita a esos códigos (los elegidos a mano).
+    private func existingSlotDiagnostics(
+        for preview: ScheduleImportPreview,
+        onlyCodes: Set<String>?
+    ) -> (conflicts: [String], alreadyImportedCount: Int) {
+        guard let bridge else { return ([], 0) }
+        let groupResolution = catalogResolver.resolveGroups(preview: preview, existingGroups: groups, choices: scheduleImportGroupChoices)
         let subjectResolution = catalogResolver.resolveSubjects(preview: preview, existingSubjects: bridge.subjects)
         let subjectNames = subjectNameByCode(from: subjectResolution, existingSubjects: bridge.subjects)
-        var conflicts = preview.conflicts
-        var warnings = preview.warnings
+        let labels = groupLabels()
+        var conflicts: [String] = []
         var alreadyImportedCount = 0
 
         for imported in preview.persistableSlots {
             for groupCode in imported.groupCodes {
+                if let onlyCodes, !onlyCodes.contains(groupCode) { continue }
                 guard let classId = groupResolution.matchedIdByCode[groupCode] else { continue }
                 let subjectLabel = resolvedSubjectLabel(for: imported, groupCode: groupCode, subjectNameByCode: subjectNames)
-                let groupName = groups.first(where: { $0.id == classId })?.name ?? groupDisplayName(for: groupCode)
+                let groupName = labels[classId] ?? groupDisplayName(for: groupCode)
 
                 for existing in effectiveScheduleSlots where existing.schoolClassId == classId && Int(existing.dayOfWeek) == imported.weekday {
                     guard rangesOverlap(startA: existing.startTime, endA: existing.endTime, startB: imported.startTime, endB: imported.endTime) else { continue }
@@ -739,17 +887,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
             }
         }
 
-        if alreadyImportedCount > 0 {
-            warnings.append("\(alreadyImportedCount) franja(s) ya existen igual en el horario y se omitirán al importar.")
-        }
-
-        return ScheduleImportPreview(
-            sourceName: preview.sourceName,
-            slots: preview.slots,
-            subjectLegend: preview.subjectLegend,
-            conflicts: Array(Set(conflicts)).sorted(),
-            warnings: warnings
-        )
+        return (Array(Set(conflicts)).sorted(), alreadyImportedCount)
     }
 
     private func rangesOverlap(startA: String, endA: String, startB: String, endB: String) -> Bool {

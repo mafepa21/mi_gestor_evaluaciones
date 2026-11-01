@@ -10,6 +10,7 @@ struct ClassroomCaptureBar: View {
     let onQuickNote: () -> Void
     let onInjury: () -> Void
     let onObservation: () -> Void
+    var onCourtVoice: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -19,6 +20,16 @@ struct ClassroomCaptureBar: View {
                 .frame(minWidth: 220, alignment: .leading)
 
             Spacer(minLength: 4)
+
+            if let onCourtVoice {
+                Button(action: onCourtVoice) {
+                    Label("Voz de Pista", systemImage: "mic.badge.plus")
+                        .font(.caption.weight(.bold))
+                        .lineLimit(1)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
 
             classroomAction("Asistencia", systemImage: "checklist.checked", action: onOpenAttendance)
             classroomAction("Rúbrica", systemImage: "checklist", action: onOpenRubric)
@@ -72,6 +83,7 @@ struct ClassroomCaptureSheetView: View {
         case .quickNote: return "Nota rápida"
         case .observation: return "Observación"
         case .injury: return selectedStudent?.isInjured == true ? "Retirar lesión" : "Marcar lesión"
+        case .courtVoice: return "Voz de Pista"
         }
     }
 
@@ -83,6 +95,8 @@ struct ClassroomCaptureSheetView: View {
             return "Se registrará como observación individual para seguimiento."
         case .injury:
             return "Actualiza el estado físico del alumno para Cuaderno, Asistencia y Rúbricas."
+        case .courtVoice:
+            return "Captura manos libres de múltiples acciones."
         }
     }
 

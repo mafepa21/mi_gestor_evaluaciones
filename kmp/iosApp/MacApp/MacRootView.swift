@@ -27,7 +27,7 @@ struct MacRootView: View {
     @StateObject private var studentSelection = StudentSelectionStore()
     @SceneStorage("mac.root.columnVisibility") private var storedColumnVisibility = MacRootColumnVisibilityValue.all
     @SceneStorage("mac.root.inspectorVisible") private var storedInspectorVisible = true
-    @AppStorage("diagnostics.quarantine.acknowledged") private var acknowledgedQuarantineId = ""
+    @AppStorage(AppleDatabaseRescueService.quarantineAcknowledgedUntilKey) private var acknowledgedQuarantineUntil: Double = 0
     @FocusState private var isNotebookSearchFocused: Bool
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
     /// Tamaño de la ventana: la hoja de sesión del Planner lo usa para ocuparla casi entera.
@@ -49,6 +49,7 @@ struct MacRootView: View {
     @State private var isInspectorVisible = true
     @State private var selectedFeature: MacFeatureDescriptor.Feature = .dashboard
     @State private var isEvaluationCreationPresented = false
+    @State private var isPhysicalTestWizardPresented = false
     @State private var banner: MacRootBanner?
     @State private var selectedPlannerSessionId: Int64? = nil
     @State private var bannerDismissTask: Task<Void, Never>?
@@ -57,7 +58,7 @@ struct MacRootView: View {
     private var pendingQuarantinedDatabase: AppleQuarantinedDatabase? {
         guard rescueService.pendingRescue == nil else { return nil }
         return backupService.quarantinedDatabases.first {
-            $0.looksRecoverable && $0.id != acknowledgedQuarantineId
+            $0.looksRecoverable && $0.quarantinedAt.timeIntervalSince1970 > acknowledgedQuarantineUntil
         }
     }
 
@@ -166,11 +167,11 @@ struct MacRootView: View {
             presenting: pendingQuarantinedDatabase
         ) { item in
             Button("Entendido") {
-                acknowledgedQuarantineId = item.id
+                AppleDatabaseRescueService.acknowledgeAllQuarantined(backupService.quarantinedDatabases)
             }
             Button("Mostrar en Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([item.url])
-                acknowledgedQuarantineId = item.id
+                AppleDatabaseRescueService.acknowledgeAllQuarantined(backupService.quarantinedDatabases)
             }
         } message: { item in
             let counts = item.summary.map {
@@ -214,7 +215,15 @@ struct MacRootView: View {
                     defaultClassId: studentSelection.selectedClassId,
                     onDismiss: { isEvaluationCreationPresented = false }
                 )
-                .environmentObject(session.bridge)
+                .kmpBridgeEnvironment(session.bridge)
+            }
+            .sheet(isPresented: $isPhysicalTestWizardPresented) {
+                PhysicalTestSetupWizardSheet(
+                    bridge: session.bridge,
+                    initialClassId: studentSelection.selectedClassId,
+                    onSaved: { _ in physicalTestsToolbarActions.refresh() },
+                    onOpenNotebook: { classId in open(module: .notebook, classId: classId, studentId: nil) }
+                )
             }
     }
 
@@ -421,7 +430,7 @@ struct MacRootView: View {
                 onEdit: { plannerToolbarActions?.onEditSession(plannerSession) },
                 presentation: .sheet
             )
-            .environmentObject(session.bridge)
+            .kmpBridgeEnvironment(session.bridge)
             // Casi toda la ventana (32 pt de margen por lado): una hoja de Mac no
             // crece sola más allá de su tamaño ideal.
             .frame(
@@ -533,7 +542,7 @@ struct MacRootView: View {
                     selectFeature(.students)
                 }
             )
-            .environmentObject(session.bridge)
+            .kmpBridgeEnvironment(session.bridge)
         case .notebook:
             NotebookMacLayout(
                 bridge: session.bridge,
@@ -574,7 +583,7 @@ struct MacRootView: View {
                 onOpenModule: open(module:classId:studentId:),
                 onCreateEvaluation: { isEvaluationCreationPresented = true }
             )
-            .environmentObject(session.bridge)
+            .kmpBridgeEnvironment(session.bridge)
         case .rubrics:
             MacRubricsView(bridge: session.bridge)
         case .physicalTests:
@@ -616,20 +625,20 @@ struct MacRootView: View {
                 },
                 onNavigationContextChange: { plannerDiaryContext = $0 }
             )
-            .environmentObject(session.bridge)
+            .kmpBridgeEnvironment(session.bridge)
             .environmentObject(plannerDiaryLayoutState)
         case .situations:
             LearningSituationsWorkspaceView(
                 selectedClassId: studentSelection.selectedClassBinding,
                 onOpenModule: open(module:classId:studentId:)
             )
-            .environmentObject(session.bridge)
+            .kmpBridgeEnvironment(session.bridge)
         case .tournaments:
             TournamentsWorkspaceView(
                 selectedClassId: studentSelection.selectedClassBinding,
                 onOpenModule: open(module:classId:studentId:)
             )
-            .environmentObject(session.bridge)
+            .kmpBridgeEnvironment(session.bridge)
         case .webSubmissions:
             // Módulo propio en la barra lateral: es trabajo diario, no soporte.
             // Antes vivía aparcado en Ajustes → Diagnóstico.
@@ -637,12 +646,17 @@ struct MacRootView: View {
                 WebSubmissionsWorkspaceView()
                     .padding(24)
             }
-            .environmentObject(session.bridge)
+            .kmpBridgeEnvironment(session.bridge)
         case .meetings:
             MacMeetingsView(bridge: session.bridge)
-                .environmentObject(session.bridge)
+                .kmpBridgeEnvironment(session.bridge)
         case .inclusion:
             InclusionTrackerView(
+                bridge: session.bridge,
+                selectedClassId: studentSelection.selectedClassBinding
+            )
+        case .evaluationSessions:
+            EvaluationSessionView(
                 bridge: session.bridge,
                 selectedClassId: studentSelection.selectedClassBinding
             )
@@ -700,7 +714,7 @@ struct MacRootView: View {
                     presentation: .inspector,
                     onClose: { plannerInspectorSession = nil }
                 )
-                .environmentObject(session.bridge)
+                .kmpBridgeEnvironment(session.bridge)
             } else {
                 MacModuleInspectorPlaceholder(feature: MacFeatureRegistry.descriptor(for: feature))
             }
@@ -881,6 +895,13 @@ struct MacRootView: View {
             .disabled(!notebookToolbarActions.organizationMenuAvailable)
 
             Button {
+                layoutState.openNotebookClosingReview()
+            } label: {
+                Label("Revisar cierre…", systemImage: "checklist")
+            }
+            .disabled(!notebookToolbarActions.organizationMenuAvailable)
+
+            Button {
                 notebookToolbarActions.openOrganizationMenu()
             } label: {
                 Label("Organizar columnas", systemImage: "slider.horizontal.3")
@@ -959,6 +980,15 @@ struct MacRootView: View {
                 }
 
                 Button {
+                    dashboardToolbarActions.courtVoice()
+                } label: {
+                    Label("Voz de Pista", systemImage: "waveform.badge.mic")
+                }
+                .disabled(!dashboardToolbarActions.canRunActions)
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+                .help("Captura manos libres por voz (⇧⌘M)")
+
+                Button {
                     dashboardToolbarActions.passList()
                 } label: {
                     Label("Pasar lista", systemImage: "checkmark.circle")
@@ -968,6 +998,13 @@ struct MacRootView: View {
                 .help("Pasar lista para la clase activa")
 
                 Menu {
+                    Button {
+                        dashboardToolbarActions.courtVoice()
+                    } label: {
+                        Label("Voz de Pista", systemImage: "waveform.badge.mic")
+                    }
+                    .disabled(!dashboardToolbarActions.canRunActions)
+
                     Button {
                         dashboardToolbarActions.observation()
                     } label: {
@@ -1107,28 +1144,35 @@ struct MacRootView: View {
 
             if selectedFeature == .physicalTests {
                 Button {
-                    physicalTestsToolbarActions.newBattery()
+                    isPhysicalTestWizardPresented = true
                 } label: {
-                    Label("Batería", systemImage: "plus.rectangle.on.rectangle")
+                    Label("Nueva prueba", systemImage: "plus")
                 }
-                .disabled(!physicalTestsToolbarActions.canUseClassActions)
-                .help("Nueva batería de condición física")
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut("n", modifiers: .command)
+                .help("Crear una prueba con su baremo y añadirla al cuaderno (⌘N)")
 
-                Button {
-                    physicalTestsToolbarActions.capture()
+                Menu {
+                    Button {
+                        physicalTestsToolbarActions.newBattery()
+                    } label: {
+                        Label("Nueva batería", systemImage: "plus.rectangle.on.rectangle")
+                    }
+                    Button {
+                        physicalTestsToolbarActions.capture()
+                    } label: {
+                        Label("Captura de marcas", systemImage: "square.and.pencil")
+                    }
+                    Button {
+                        physicalTestsToolbarActions.createColumns()
+                    } label: {
+                        Label("Crear columnas en el cuaderno", systemImage: "tablecells")
+                    }
                 } label: {
-                    Label("Captura", systemImage: "square.and.pencil")
+                    Label("Más opciones", systemImage: "ellipsis.circle")
                 }
                 .disabled(!physicalTestsToolbarActions.canUseClassActions)
-                .help("Abrir captura de marcas")
-
-                Button {
-                    physicalTestsToolbarActions.createColumns()
-                } label: {
-                    Label("Cuaderno", systemImage: "tablecells")
-                }
-                .disabled(!physicalTestsToolbarActions.canUseClassActions)
-                .help("Crear columnas de marca y nota en el cuaderno")
+                .help("Baterías, captura y columnas")
             }
 
             if selectedFeature == .planner, let plannerToolbarActions {
@@ -1311,6 +1355,7 @@ struct MacRootView: View {
         case .webSubmissions: return .mint
         case .meetings: return .brown
         case .inclusion: return .teal
+        case .evaluationSessions: return .indigo
         case .students: return .blue
         case .evaluationHub: return .orange
         case .rubrics: return .teal
@@ -1560,7 +1605,6 @@ struct MacRootView: View {
         case .planner:
             selectFeature(.planner)
         case .physicalTests:
-            // Mediciones ya no está en la barra lateral: se abre desde el menú.
             selectFeature(.physicalTests)
         }
     }
@@ -1658,6 +1702,8 @@ struct MacRootView: View {
             selectFeature(.evaluationHub)
         case .inclusion:
             selectFeature(.inclusion)
+        case .evaluationSessions:
+            selectFeature(.evaluationSessions)
         default:
             showBanner(
                 "\(module.title) todavía no está disponible en la shell Mac.",

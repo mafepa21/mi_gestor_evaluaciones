@@ -1,117 +1,122 @@
 import SwiftUI
 
-struct BackupStatusHero: View {
-    @ObservedObject var service: AppleBackupService
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var showingCreateDialog = false
-    @State private var backupNote = ""
+// MARK: - Estado de protección
 
-    private var safetyStatus: (title: String, subtitle: String, color: Color, icon: String) {
-        if service.backups.isEmpty {
-            return (
-                title: "Datos desprotegidos",
-                subtitle: "No se han detectado copias de seguridad locales. Crea una copia ahora para proteger tu trabajo diario.",
-                color: IOSAppStyle.danger,
-                icon: "exclamationmark.shield.fill"
-            )
+/// Resumen del estado de las copias locales, compartido por Ajustes y el centro de copias.
+struct BackupProtectionStatus {
+    enum Level { case protected, stale, unprotected }
+
+    let level: Level
+    let title: String
+    let detail: String
+
+    /// La copia de referencia es la más reciente que se puede usar: una copia vacía o
+    /// dañada no protege nada aunque sea la última.
+    init(backups: [AppleBackupDescriptor], now: Date = Date()) {
+        let usable = backups.first { backup in
+            !backup.hasEmptyDatabase && !(backup.isVerified && backup.verificationError != nil)
         }
-        
-        let newest = service.backups[0].manifest.createdAt
-        let daysAgo = Calendar.current.dateComponents([.day], from: newest, to: Date()).day ?? 0
-        
+        guard let usable else {
+            level = .unprotected
+            title = "Aún no tienes ninguna copia"
+            detail = "Crea una ahora para no perder tu trabajo."
+            return
+        }
+        let lastText = "Última copia \(usable.manifest.createdAt.formattedRelativeText) · \(usable.sizeText)"
+        let daysAgo = Calendar.current.dateComponents([.day], from: usable.manifest.createdAt, to: now).day ?? 0
         if daysAgo > 7 {
-            return (
-                title: "Protección desactualizada",
-                subtitle: "Tu última copia tiene más de 7 días (\(daysAgo) días). Te sugerimos realizar un respaldo reciente.",
-                color: IOSAppStyle.warning,
-                icon: "shield.dotted"
-            )
+            level = .stale
+            title = "Tu última copia tiene \(daysAgo) días"
+            detail = lastText
+        } else {
+            level = .protected
+            title = "Tus datos están protegidos"
+            detail = lastText
         }
-        
-        return (
-            title: "Datos protegidos",
-            subtitle: "Tus datos están a salvo. Tienes una copia reciente y válida realizada hace menos de una semana.",
-            color: IOSAppStyle.success,
-            icon: "checkmark.shield.fill"
-        )
     }
 
+    var tint: Color {
+        switch level {
+        case .protected: return IOSAppStyle.success
+        case .stale: return IOSAppStyle.warning
+        case .unprotected: return IOSAppStyle.danger
+        }
+    }
+
+    var systemImage: String {
+        switch level {
+        case .protected: return "checkmark.shield.fill"
+        case .stale: return "exclamationmark.shield.fill"
+        case .unprotected: return "xmark.shield.fill"
+        }
+    }
+}
+
+// MARK: - BackupStatusSummary
+
+/// Fila de estado de una línea: símbolo, título y detalle. El control opcional va a la derecha.
+struct BackupStatusSummary<Accessory: View>: View {
+    @ObservedObject var service: AppleBackupService
+    var detailOverride: String?
+    @ViewBuilder var accessory: () -> Accessory
+
+    @ScaledMetric(relativeTo: .title3) private var badgeSize: CGFloat = 40
+
+    private var status: BackupProtectionStatus { BackupProtectionStatus(backups: service.backups) }
+    private var isCreating: Bool { service.operationState == .creating }
+    private var isScanning: Bool { service.operationState == .scanning && service.backups.isEmpty }
+
     var body: some View {
-        PremiumCard.section {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .center, spacing: 16) {
-                    // Pulsing / glowing status icon
-                    ZStack {
-                        Circle()
-                            .fill(safetyStatus.color.opacity(0.12))
-                            .frame(width: 56, height: 56)
-                        
-                        Image(systemName: safetyStatus.icon)
-                            .font(.system(size: 26, weight: .bold))
-                            .foregroundStyle(safetyStatus.color)
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(safetyStatus.title)
-                            .font(IOSAppStyle.sectionTitle.weight(.bold))
-                            .foregroundStyle(safetyStatus.color)
-                        
-                        if let lastBackup = service.backups.first {
-                            Text("Última: \(lastBackup.manifest.createdAt.formattedRelativeText) · \(lastBackup.sizeText)")
-                                .font(IOSAppStyle.captionText)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("Sin historial de copias")
-                                .font(IOSAppStyle.captionText)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    
-                    Spacer()
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(status.tint.opacity(0.15))
+                if isCreating || isScanning {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: status.systemImage)
+                        .font(.title3)
+                        .foregroundStyle(status.tint)
                 }
-                
-                Text(safetyStatus.subtitle)
-                    .font(IOSAppStyle.bodyText)
+            }
+            .frame(width: badgeSize, height: badgeSize)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(titleText)
+                    .font(.headline)
+                Text(detailText)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                
-                Divider()
-                    .padding(.vertical, 2)
-                
-                HStack {
-                    if service.operationState == .creating {
-                        HStack(spacing: 12) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Creando copia de seguridad...")
-                                .font(IOSAppStyle.bodyText.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        .transition(.opacity)
-                    } else {
-                        PrimaryActionButton(
-                            label: "Crear Copia en 1 Clic",
-                            systemImage: "plus.shield",
-                            tint: IOSAppStyle.info,
-                            fullWidth: false
-                        ) {
-                            backupNote = ""
-                            showingCreateDialog = true
-                        }
-                        .transition(.opacity)
-                    }
-                    
-                    Spacer()
-                }
             }
+            .accessibilityElement(children: .combine)
+
+            Spacer(minLength: 8)
+
+            accessory()
         }
-        .sheet(isPresented: $showingCreateDialog) {
-            CreateBackupSheet(isPresented: $showingCreateDialog, note: $backupNote) {
-                let finalNote = backupNote.trimmingCharacters(in: .whitespacesAndNewlines)
-                _ = try await service.createBackup(note: finalNote.isEmpty ? nil : finalNote)
-            }
-        }
-        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: service.operationState)
+        .padding(.vertical, 8)
+        .animation(.smooth(duration: 0.25), value: service.operationState)
+    }
+
+    private var titleText: String {
+        if isCreating { return "Creando copia…" }
+        if isScanning { return "Comprobando copias…" }
+        return status.title
+    }
+
+    private var detailText: String {
+        if isCreating { return "Puedes seguir usando la app." }
+        if isScanning { return " " }
+        return detailOverride ?? status.detail
+    }
+}
+
+extension BackupStatusSummary where Accessory == EmptyView {
+    init(service: AppleBackupService, detailOverride: String? = nil) {
+        self.init(service: service, detailOverride: detailOverride) { EmptyView() }
     }
 }
 

@@ -81,6 +81,11 @@ kotlin {
         val macosX64Main by getting {
             dependsOn(macosMain)
         }
+        val macosArm64Test by getting {
+            dependencies {
+                implementation(kotlin("test"))
+            }
+        }
         val desktopTest by getting {
             dependencies {
                 implementation(kotlin("test"))

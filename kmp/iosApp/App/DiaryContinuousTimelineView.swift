@@ -166,6 +166,8 @@ struct DiaryContinuousTimelineView: View {
             }
         }
         .background(appPageBackground(for: colorScheme))
+        // Sin esto el diario no veía lo llegado del otro dispositivo hasta tocarlo.
+        .reloadOnLanSync(.planner) { await reloadClassSessions() }
         .task(id: selectedClassId) {
             await reloadClassSessions()
         }

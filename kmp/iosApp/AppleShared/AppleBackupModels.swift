@@ -47,19 +47,24 @@ public struct AppleBackupSummary: Codable, Hashable {
     public let notebookColumnCount: Int
     public let rubricCount: Int
     public let attendanceRecordCount: Int
+    /// Libretas incluidas (solo copias hechas en iPad). `nil` = la copia no trae libretas;
+    /// las copias antiguas no tienen este campo y se siguen leyendo igual.
+    public let libretaCount: Int?
 
     public init(
         classCount: Int,
         studentCount: Int,
         notebookColumnCount: Int,
         rubricCount: Int,
-        attendanceRecordCount: Int
+        attendanceRecordCount: Int,
+        libretaCount: Int? = nil
     ) {
         self.classCount = classCount
         self.studentCount = studentCount
         self.notebookColumnCount = notebookColumnCount
         self.rubricCount = rubricCount
         self.attendanceRecordCount = attendanceRecordCount
+        self.libretaCount = libretaCount
     }
 }
 
@@ -104,6 +109,13 @@ extension AppleBackupDescriptor {
     public var isRestorable: Bool {
         isVerified && !hasEmptyDatabase
     }
+
+    /// Copia creada automáticamente justo antes de una restauración.
+    public var isEmergencyBackup: Bool {
+        manifest.note?.hasPrefix(AppleBackupDescriptor.emergencyNotePrefix) == true
+    }
+
+    static let emergencyNotePrefix = "Copia de seguridad de emergencia"
 }
 
 /// Base de datos que el arranque apartó porque no pudo abrirla, renombrándola a

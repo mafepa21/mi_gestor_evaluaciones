@@ -2,7 +2,13 @@ import SwiftUI
 import MiGestorKit
 
 struct DiaryWorkspaceView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (classes),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.classes)] }
+    }
     @EnvironmentObject var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
@@ -14,6 +20,8 @@ struct DiaryWorkspaceView: View {
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
     let onOpenPlanner: (PlannerNavigationContext) -> Void
     let onNavigationContextChange: (PlannerNavigationContext) -> Void
+    /// Solo iPad: abre la libreta de una clase (por su número). `nil` = no se muestra.
+    var onOpenLibreta: ((Int64) -> Void)? = nil
 
     @State var diaryViewMode: DiaryViewMode = .timeline
     @State var selectedFilter: DiaryStatusFilter = .all
@@ -129,6 +137,7 @@ struct DiaryWorkspaceView: View {
                 diaryWorkspaceContent
             }
         }
+        .reloadOnLanSync(.planner) { await vm.refreshOnReappear() }
         .task {
             await vm.bind(bridge: bridge)
             await vm.applyExternalContext(
@@ -309,7 +318,8 @@ struct DiaryWorkspaceView: View {
             },
             onOpenStudents: {
                 onOpenModule(.students, session.groupId, nil)
-            }
+            },
+            onOpenLibreta: onOpenLibreta.map { open in { open(session.groupId) } }
         )
         .background(appMutedCardBackground(for: colorScheme).opacity(0.22))
     }
@@ -624,6 +634,7 @@ struct DiaryInspectorPanel: View {
     let onOpenAttendance: () -> Void
     let onOpenNotebook: () -> Void
     let onOpenStudents: () -> Void
+    var onOpenLibreta: (() -> Void)? = nil
 
     var body: some View {
         ScrollView {
@@ -682,6 +693,9 @@ struct DiaryInspectorPanel: View {
                 VStack(spacing: 10) {
                     WorkspaceActionRow(title: "Ir a asistencia", systemImage: "checklist.checked", action: onOpenAttendance)
                     WorkspaceActionRow(title: "Abrir cuaderno", systemImage: "square.grid.3x3.fill", action: onOpenNotebook)
+                    if let onOpenLibreta {
+                        WorkspaceActionRow(title: "Abrir libreta", systemImage: "pencil.and.scribble", action: onOpenLibreta)
+                    }
                     WorkspaceActionRow(title: "Ver alumnado", systemImage: "person.3.fill", action: onOpenStudents)
                 }
             }

@@ -636,8 +636,10 @@ final class NotebookVoiceGradeDictationService: ObservableObject {
     @Published private(set) var lastTranscript = ""
     @Published var errorMessage: String?
 
-    private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "es-ES"))
-    private let audioEngine = AVAudioEngine()
+    // Se crean al primer dictado, no al abrir el Cuaderno: la primera vez que se
+    // crea el reconocedor cuesta unos 45 ms en el hilo de la pantalla.
+    private lazy var recognizer = SFSpeechRecognizer(locale: Locale(identifier: "es-ES"))
+    private var audioEngine: AVAudioEngine?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var autoStopTask: Task<Void, Never>?
@@ -685,6 +687,8 @@ final class NotebookVoiceGradeDictationService: ObservableObject {
         request.shouldReportPartialResults = true
         recognitionRequest = request
 
+        let audioEngine = audioEngine ?? AVAudioEngine()
+        self.audioEngine = audioEngine
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         inputNode.removeTap(onBus: 0)
@@ -741,8 +745,8 @@ final class NotebookVoiceGradeDictationService: ObservableObject {
     func stopListening() {
         autoStopTask?.cancel()
         autoStopTask = nil
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        audioEngine?.stop()
+        audioEngine?.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
         recognitionTask?.cancel()
         recognitionRequest = nil

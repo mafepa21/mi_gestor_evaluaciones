@@ -13,6 +13,14 @@ enum PerfLog {
     /// Por debajo de esto no se apunta nada.
     static let defaultThresholdMs: Double = 150
 
+    /// Con `-perf.logAll YES` al lanzar se apunta todo, aunque no sea lento.
+    /// Sirve para sacar una línea base (`docs/REGISTRO_RENDIMIENTO.md`).
+    static let logsEverything = UserDefaults.standard.bool(forKey: "perf.logAll")
+
+    private static func exceeds(_ ms: Double, _ thresholdMs: Double) -> Bool {
+        logsEverything || ms >= thresholdMs
+    }
+
     @discardableResult
     static func measure<T>(
         _ name: StaticString,
@@ -73,13 +81,13 @@ enum PerfLog {
     static func end(_ key: String, thresholdMs: Double = defaultThresholdMs, maxAgeMs: Double = 10_000) {
         guard let start = pendingStarts.removeValue(forKey: key) else { return }
         let ms = elapsedMs(since: start)
-        guard ms >= thresholdMs, ms <= maxAgeMs else { return }
+        guard exceeds(ms, thresholdMs), ms <= maxAgeMs else { return }
         logger.notice("Lento: \(key, privacy: .public) \(Int(ms), privacy: .public) ms")
     }
 
     private static func report(_ name: StaticString, start: DispatchTime, detail: String, thresholdMs: Double) {
         let ms = elapsedMs(since: start)
-        guard ms >= thresholdMs else { return }
+        guard exceeds(ms, thresholdMs) else { return }
         let label = "\(name)"
         logger.notice("Lento: \(label, privacy: .public) \(Int(ms), privacy: .public) ms \(detail, privacy: .public)")
     }
@@ -95,9 +103,37 @@ enum PerfLog {
         DispatchQueue.main.async {
             signposter.endInterval("Cambio de pantalla", state)
             let ms = elapsedMs(since: start)
-            guard ms >= defaultThresholdMs else { return }
+            guard exceeds(ms, defaultThresholdMs) else { return }
             logger.notice("Lento: cambio de pantalla a \(screen, privacy: .public) \(Int(ms), privacy: .public) ms")
         }
+    }
+
+    // MARK: Arranque
+
+    @MainActor private static var launchMarked = false
+
+    /// Mide desde que arranca el proceso hasta que «Hoy» tiene datos y termina la
+    /// vuelta del bucle principal en la que se pinta. Solo la primera vez.
+    @MainActor
+    static func markLaunchCompleted(thresholdMs: Double = 2_000) {
+        guard !launchMarked else { return }
+        launchMarked = true
+        DispatchQueue.main.async {
+            guard let ms = msSinceProcessStart() else { return }
+            guard exceeds(ms, thresholdMs) else { return }
+            logger.notice("Lento: arranque hasta Hoy visible \(Int(ms), privacy: .public) ms")
+        }
+    }
+
+    /// Hora de arranque del proceso según el kernel (antes de `main`).
+    static func msSinceProcessStart() -> Double? {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+        guard sysctl(&mib, u_int(mib.count), &info, &size, nil, 0) == 0 else { return nil }
+        let start = info.kp_proc.p_un.__p_starttime
+        let startSeconds = Double(start.tv_sec) + Double(start.tv_usec) / 1_000_000
+        return (Date().timeIntervalSince1970 - startSeconds) * 1_000
     }
 }
 

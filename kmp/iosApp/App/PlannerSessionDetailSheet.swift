@@ -69,7 +69,9 @@ enum PlannerSessionDetailSessionType {
 
 struct PlannerSessionDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.colorScheme) private var colorScheme
 
     let session: PlanningSession

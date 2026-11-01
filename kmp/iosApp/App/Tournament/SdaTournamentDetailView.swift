@@ -23,7 +23,9 @@ struct SdaTournamentDetailView: View {
     let onLiveModeChange: (Bool) -> Void
     let deleteRequest: SdaTournamentDeleteRequest?
 
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) private var dismiss
     @State private var rosterPhase: RosterPhase = .loading
     @State private var students: [(id: String, name: String)] = []
@@ -765,7 +767,9 @@ struct SdaTournamentSheetHost: View {
     let deleteRequest: SdaTournamentDeleteRequest?
     private let recordId: String?
     private let recordName: String
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) private var dismiss
     @State private var loaded: Loaded?
     @State private var isConfirmingUnreadableDelete = false

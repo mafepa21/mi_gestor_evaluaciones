@@ -124,7 +124,7 @@ struct IOSRootView: View {
         }
         .appFullScreenCover(isPresented: $showingRubricBuilder) {
             RubricsBuilderScreen()
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
 #if os(macOS)
                 .frame(minWidth: 1_120, idealWidth: 1_280, maxWidth: 1_600, minHeight: 720, idealHeight: 900)
 #endif
@@ -304,13 +304,13 @@ struct IOSRootView: View {
             switch kind {
             case .course:
                 CreateCourseSheet { activeSheet = nil }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
             case .student:
                 CreateStudentSheet(defaultClassId: selectionStore.selectedClassId) { activeSheet = nil }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
             case .evaluation:
                 CreateEvaluationSheet(defaultClassId: selectionStore.selectedClassId) { activeSheet = nil }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
             }
         case .contextualAI(let state):
             ContextualAIAssistantSheet(
@@ -1095,7 +1095,7 @@ struct IOSWorkspaceContent: View {
                     activeSheet = .create(.student)
                 }
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .students:
             StudentProfilesWorkspaceView(
                 bridge: bridge,
@@ -1137,13 +1137,13 @@ struct IOSWorkspaceContent: View {
                 onNavigationContextChange: onUpdatePlannerContext,
                 onOpenLibreta: libretaOpener
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .situations:
             LearningSituationsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .diary:
             DiaryWorkspaceView(
                 vm: plannerViewModel,
@@ -1154,14 +1154,14 @@ struct IOSWorkspaceContent: View {
                 onNavigationContextChange: onUpdatePlannerContext,
                 onOpenLibreta: libretaOpener
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .evaluationHub:
             EvaluationHubView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule,
                 onCreateEvaluation: { activeSheet = .create(.evaluation) }
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .libreta:
             #if os(iOS)
             LibretaModuleView()
@@ -1171,7 +1171,7 @@ struct IOSWorkspaceContent: View {
             #endif
         case .meetings:
             MeetingsWorkspaceView(bridge: bridge)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         case .inclusion:
             InclusionTrackerView(bridge: bridge, selectedClassId: $selectionStore.selectedClassId)
         case .evaluationSessions:
@@ -1191,13 +1191,13 @@ struct IOSWorkspaceContent: View {
                 onOpenBuilder: { bridge.resetRubricBuilder(); showingRubricBuilder = true },
                 onEditRubric: { rubric in bridge.loadRubricForEditing(rubric); showingRubricBuilder = true }
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .reports:
             ReportsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 selectedStudentId: $selectionStore.selectedStudentId
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .webSubmissions:
             WebSubmissionsIPadInfoView()
         case .library:
@@ -1205,19 +1205,19 @@ struct IOSWorkspaceContent: View {
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peSessions:
             PESessionsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peTests:
             PhysicalTestsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peRubrics:
             RubricsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
@@ -1226,31 +1226,31 @@ struct IOSWorkspaceContent: View {
                 onEditRubric: { rubric in bridge.loadRubricForEditing(rubric); showingRubricBuilder = true },
                 peMode: true
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peIncidents:
             EFIncidentsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peMaterial:
             PEMaterialWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .peTournaments:
             TournamentsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .settings:
             SettingsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case .backups:
             BackupsWorkspaceView(selectedClassId: $selectionStore.selectedClassId)
         default:

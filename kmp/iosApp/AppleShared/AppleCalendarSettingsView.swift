@@ -3,7 +3,9 @@ import MiGestorKit
 
 /// Ajustes → Calendario de Apple: sincroniza la app con el calendario «Colegio» de la cuenta de Calendario.
 struct AppleCalendarSettingsView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    var bridge: KmpBridge { bridgeReference! }
     @AppStorage(AppleCalendarMirror.enabledKey) private var isEnabled = false
     @State private var message: String?
     @State private var isWorking = false

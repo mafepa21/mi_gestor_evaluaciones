@@ -679,7 +679,7 @@ private struct QuickEvaluationSheet: View {
                 attachRubric(rubricId)
                 showingRubricBuilder = false
             })
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
             .frame(minWidth: 1_120, idealWidth: 1_280, maxWidth: 1_600, minHeight: 720, idealHeight: 900)
         }
         .alert("No se pudo preparar la evaluación", isPresented: Binding(

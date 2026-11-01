@@ -58,7 +58,7 @@ struct MacSettingsView: View {
                         onOpenModule(.students, classId, nil)
                     }
                 )
-                .environmentObject(session.bridge)
+                .kmpBridgeEnvironment(session.bridge)
                 .background(Color(NSColor.windowBackgroundColor))
             } else {
                 // `detailViewForRoute` puede navegar con `NavigationLink` (p.ej.
@@ -118,7 +118,7 @@ struct MacSettingsView: View {
             GeneralSettingsView(settings: settings)
         case .appleCalendar:
             AppleCalendarSettingsView()
-                .environmentObject(session.bridge)
+                .kmpBridgeEnvironment(session.bridge)
         case .courses, .schedule:
             // Se resuelven arriba, fuera del ScrollView genérico.
             EmptyView()
@@ -128,16 +128,16 @@ struct MacSettingsView: View {
             NotebookSettingsView(settings: settings)
         case .dataSecurity:
             DataSecuritySettingsView(settings: settings)
-                .environmentObject(session.bridge)
+                .kmpBridgeEnvironment(session.bridge)
         case .dataManagement:
             DataManagementSettingsView()
-                .environmentObject(session.bridge)
+                .kmpBridgeEnvironment(session.bridge)
         case .sync:
             SyncSettingsView(settings: settings)
-                .environmentObject(session.bridge)
+                .kmpBridgeEnvironment(session.bridge)
         case .appleAI:
             AppleAISettingsView(settings: settings)
-                .environmentObject(session.bridge)
+                .kmpBridgeEnvironment(session.bridge)
         case .appearance:
             AppearanceSettingsView(settings: settings)
         case .diagnostics:
@@ -145,7 +145,7 @@ struct MacSettingsView: View {
             // de las entregas web. Las demás pestañas ya lo pasaban; esta era la
             // única que no, y por eso reventaba al entrar.
             SettingsDiagnosticsView()
-                .environmentObject(session.bridge)
+                .kmpBridgeEnvironment(session.bridge)
         }
     }
 }

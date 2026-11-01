@@ -2,7 +2,13 @@ import SwiftUI
 import MiGestorKit
 
 struct RubricEvaluationView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (classes, isNotebookRubricAutoAdvanceActive, rubricEvaluationCoordinator, rubricEvaluationState),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.classes), .init($0.isNotebookRubricAutoAdvanceActive), .init(ObjectIdentifier($0.rubricEvaluationCoordinator as AnyObject)), .init($0.rubricEvaluationState)] }
+    }
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @Environment(\.colorScheme) private var colorScheme
     @State private var showingFamilyReportSheet: Bool = false

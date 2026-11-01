@@ -142,7 +142,10 @@ private struct MacPhysicalTestCaptureRow: Identifiable {
 }
 
 struct MacPhysicalTestsView: View {
-    @ObservedObject var bridge: KmpBridge
+    /// Sin observar el bridge entero: solo se redibuja con lo que lee (`bridgeWatch`).
+    /// Con `@ObservedObject` se recalculaba entera con cada cambio del Cuaderno o de SyncLAN.
+    let bridge: KmpBridge
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -322,6 +325,9 @@ struct MacPhysicalTestsView: View {
     }
 
     var body: some View {
+        let _ = bridgeWatch.bridge(bridge) {
+            [.init($0.classes), .init($0.studentsInClass), .init(ObjectIdentifier($0.notebookState as AnyObject))]
+        }
         VStack(spacing: 0) {
             Picker("", selection: $inspectorState.selectedSection) {
                 ForEach(PhysicalTestsMacSection.allCases) { item in
@@ -340,7 +346,7 @@ struct MacPhysicalTestsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(MacAppStyle.pageBackground)
-        .task { await reload() }
+        .task { await PerfLog.measure("EF: primera carga") { await reload() } }
         .reloadOnLanSync(.physicalEducation) { await reload() }
         .appOnChange(of: selectedClassId) { _ in Task { await reload() } }
         .appOnChange(of: selectedTestId) { _ in

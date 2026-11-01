@@ -10,7 +10,9 @@ struct SdaTournamentRegistrationSheet: View {
     @ObservedObject var store: SdaTournamentStore
     let className: String
 
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) private var dismiss
     @AppStorage("webSubmissions.baseURL") private var baseURL = "https://projectosef.alwaysdata.net"
     @AppStorage("webSubmissions.deliveryEmail") private var deliveryEmail = ""

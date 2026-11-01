@@ -215,7 +215,7 @@ struct MacRootView: View {
                     defaultClassId: studentSelection.selectedClassId,
                     onDismiss: { isEvaluationCreationPresented = false }
                 )
-                .environmentObject(session.bridge)
+                .kmpBridgeEnvironment(session.bridge)
             }
             .sheet(isPresented: $isPhysicalTestWizardPresented) {
                 PhysicalTestSetupWizardSheet(
@@ -430,7 +430,7 @@ struct MacRootView: View {
                 onEdit: { plannerToolbarActions?.onEditSession(plannerSession) },
                 presentation: .sheet
             )
-            .environmentObject(session.bridge)
+            .kmpBridgeEnvironment(session.bridge)
             // Casi toda la ventana (32 pt de margen por lado): una hoja de Mac no
             // crece sola más allá de su tamaño ideal.
             .frame(
@@ -542,7 +542,7 @@ struct MacRootView: View {
                     selectFeature(.students)
                 }
             )
-            .environmentObject(session.bridge)
+            .kmpBridgeEnvironment(session.bridge)
         case .notebook:
             NotebookMacLayout(
                 bridge: session.bridge,
@@ -583,7 +583,7 @@ struct MacRootView: View {
                 onOpenModule: open(module:classId:studentId:),
                 onCreateEvaluation: { isEvaluationCreationPresented = true }
             )
-            .environmentObject(session.bridge)
+            .kmpBridgeEnvironment(session.bridge)
         case .rubrics:
             MacRubricsView(bridge: session.bridge)
         case .physicalTests:
@@ -625,20 +625,20 @@ struct MacRootView: View {
                 },
                 onNavigationContextChange: { plannerDiaryContext = $0 }
             )
-            .environmentObject(session.bridge)
+            .kmpBridgeEnvironment(session.bridge)
             .environmentObject(plannerDiaryLayoutState)
         case .situations:
             LearningSituationsWorkspaceView(
                 selectedClassId: studentSelection.selectedClassBinding,
                 onOpenModule: open(module:classId:studentId:)
             )
-            .environmentObject(session.bridge)
+            .kmpBridgeEnvironment(session.bridge)
         case .tournaments:
             TournamentsWorkspaceView(
                 selectedClassId: studentSelection.selectedClassBinding,
                 onOpenModule: open(module:classId:studentId:)
             )
-            .environmentObject(session.bridge)
+            .kmpBridgeEnvironment(session.bridge)
         case .webSubmissions:
             // Módulo propio en la barra lateral: es trabajo diario, no soporte.
             // Antes vivía aparcado en Ajustes → Diagnóstico.
@@ -646,10 +646,10 @@ struct MacRootView: View {
                 WebSubmissionsWorkspaceView()
                     .padding(24)
             }
-            .environmentObject(session.bridge)
+            .kmpBridgeEnvironment(session.bridge)
         case .meetings:
             MacMeetingsView(bridge: session.bridge)
-                .environmentObject(session.bridge)
+                .kmpBridgeEnvironment(session.bridge)
         case .inclusion:
             InclusionTrackerView(
                 bridge: session.bridge,
@@ -714,7 +714,7 @@ struct MacRootView: View {
                     presentation: .inspector,
                     onClose: { plannerInspectorSession = nil }
                 )
-                .environmentObject(session.bridge)
+                .kmpBridgeEnvironment(session.bridge)
             } else {
                 MacModuleInspectorPlaceholder(feature: MacFeatureRegistry.descriptor(for: feature))
             }

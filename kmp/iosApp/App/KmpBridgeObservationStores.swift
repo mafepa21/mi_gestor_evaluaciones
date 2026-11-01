@@ -120,7 +120,8 @@ final class NotebookBridgeStore: ObservableObject {
         // Fin de la medida "Cuaderno: cambio de grupo" (empieza en `selectClass`).
         bridge.$notebookState
             .filter { $0 is NotebookUiStateData }
-            // 400 ms: el estado llega tras un debounce fijo de 150 ms en el bridge.
+            // 400 ms. El estado del grupo nuevo se publica en cuanto llegan sus filas
+            // (`publishNotebookDataWhenReady`), sin el debounce de 150 ms del bridge.
             .sink { _ in PerfLog.end("Cuaderno: cambio de grupo", thresholdMs: 400) }
             .store(in: &cancellables)
         bridgeSink(bridge.$notebookStructureState, \.notebookStructureState, into: &cancellables)
@@ -168,6 +169,12 @@ final class DashboardBridgeStore: ObservableObject {
         bridgeSink(bridge.$classes, \.classes, into: &cancellables)
         bridgeSink(bridge.$studentsInClass, \.studentsInClass, into: &cancellables)
         bridgeSink(bridge.$dashboardSnapshot, \.dashboardSnapshot, into: &cancellables)
+        // Fin de la medida "arranque hasta Hoy visible": primer resumen con datos.
+        bridge.$dashboardSnapshot
+            .compactMap { $0 }
+            .first()
+            .sink { _ in PerfLog.markLaunchCompleted() }
+            .store(in: &cancellables)
         bridgeSink(bridge.$syncStatusMessage, \.syncStatusMessage, into: &cancellables)
         bridgeSink(bridge.$syncPendingChanges, \.syncPendingChanges, into: &cancellables)
         bridgeSink(bridge.$syncLastRunAt, \.syncLastRunAt, into: &cancellables)
@@ -316,6 +323,65 @@ extension EnvironmentValues {
     var kmpBridgeReference: KmpBridge? {
         get { self[KmpBridgeReferenceKey.self] }
         set { self[KmpBridgeReferenceKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Pone el bridge en el entorno de las dos formas: como objeto observado (vistas
+    /// que aún usan `@EnvironmentObject`) y como referencia sin suscripción
+    /// (`kmpBridgeReference`). Las ventanas y hojas de Mac solo recibían la primera.
+    func kmpBridgeEnvironment(_ bridge: KmpBridge) -> some View {
+        environmentObject(bridge)
+            .environment(\.kmpBridgeReference, bridge)
+    }
+}
+
+/// Redibuja una vista solo cuando cambian los valores del bridge que ella lee.
+/// Uso: `@StateObject private var bridgeWatch = KmpBridgeWatch()` y
+/// `var bridge: KmpBridge { bridgeWatch.bridge(bridgeReference) { [.init($0.classes)] } }`.
+/// Con `@EnvironmentObject` la vista se recalculaba con cualquier cambio del bridge
+/// (una nota guardándose, el estado de SyncLAN cada pocos segundos).
+@MainActor
+final class KmpBridgeWatch: ObservableObject {
+    /// Valor vigilado: cualquier `Equatable` (los tipos Kotlin comparan con `isEqual`).
+    struct Value: Equatable {
+        private let base: Any
+        private let isEqualTo: (Any) -> Bool
+
+        init<T: Equatable>(_ value: T) {
+            base = value
+            isEqualTo = { ($0 as? T) == value }
+        }
+
+        static func == (lhs: Value, rhs: Value) -> Bool {
+            lhs.isEqualTo(rhs.base)
+        }
+    }
+
+    private var cancellable: AnyCancellable?
+    private var lastValues: [Value] = []
+
+    /// Devuelve el bridge y, la primera vez, empieza a vigilar `select`.
+    /// No publica nada al suscribirse: se puede llamar dentro de `body`.
+    func bridge(_ bridge: KmpBridge?, watching select: @escaping (KmpBridge) -> [Value]) -> KmpBridge {
+        guard let bridge else {
+            preconditionFailure("Falta kmpBridgeReference en el entorno (usa kmpBridgeEnvironment)")
+        }
+        if cancellable == nil {
+            lastValues = select(bridge)
+            cancellable = bridge.objectWillChange
+                // `objectWillChange` llega antes del cambio: se lee en la vuelta siguiente,
+                // y varios cambios seguidos cuentan como uno.
+                .debounce(for: .zero, scheduler: DispatchQueue.main)
+                .sink { [weak self, weak bridge] _ in
+                    guard let self, let bridge else { return }
+                    let values = select(bridge)
+                    guard values != self.lastValues else { return }
+                    self.lastValues = values
+                    self.objectWillChange.send()
+                }
+        }
+        return bridge
     }
 }
 

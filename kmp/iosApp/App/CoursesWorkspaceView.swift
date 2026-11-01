@@ -2,7 +2,13 @@ import SwiftUI
 import MiGestorKit
 
 struct CoursesWorkspaceView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (academicYears, activeAcademicYear, archivedAcademicYears, classes, subjects),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.academicYears), .init($0.activeAcademicYear), .init($0.archivedAcademicYears), .init($0.classes), .init($0.subjects)] }
+    }
     @Environment(\.colorScheme) var colorScheme
     @Binding var selectedClassId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -29,7 +35,7 @@ struct CoursesWorkspaceView: View {
                         Task { await saveClassDraft(draft) }
                     }
                 )
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
             .sheet(isPresented: $showingSubjectCatalog) {
                 SubjectCatalogSheet(
@@ -40,7 +46,7 @@ struct CoursesWorkspaceView: View {
                         Task { await deleteSubject(subject) }
                     }
                 )
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
             .sheet(item: $archivedYearDetail) { year in
                 ArchivedAcademicYearDetailSheet(
@@ -49,7 +55,7 @@ struct CoursesWorkspaceView: View {
                         pendingDeleteAcademicYear = year
                     }
                 )
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
             .sheet(isPresented: $showingAcademicYearWizard) {
                 AcademicYearWizardSheet(
@@ -762,7 +768,13 @@ private struct CourseSheetTextField: View {
 private struct ArchivedAcademicYearDetailSheet: View {
     let year: KmpBridge.AcademicYearSnapshot
     let onDelete: () -> Void
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (academicYears, activeAcademicYear, archivedAcademicYears, classes, subjects),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    private var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.academicYears), .init($0.activeAcademicYear), .init($0.archivedAcademicYears), .init($0.classes), .init($0.subjects)] }
+    }
     @Environment(\.dismiss) private var dismiss
     @State private var showingDeleteConfirmation = false
     @State private var exportText = ""
@@ -1031,7 +1043,13 @@ private struct AcademicYearWizardSheet: View {
 }
 
 private struct CourseClassEditorSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (academicYears, activeAcademicYear, archivedAcademicYears, classes, subjects),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.academicYears), .init($0.activeAcademicYear), .init($0.archivedAcademicYears), .init($0.classes), .init($0.subjects)] }
+    }
     let schoolClass: SchoolClass?
     let onSave: (CourseClassDraft) -> Void
 
@@ -1105,7 +1123,13 @@ private struct SubjectCatalogSheet: View {
     let onSave: (SubjectDraft) async -> Bool
     let onDelete: (KmpSubject) -> Void
 
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (academicYears, activeAcademicYear, archivedAcademicYears, classes, subjects),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    private var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.academicYears), .init($0.activeAcademicYear), .init($0.archivedAcademicYears), .init($0.classes), .init($0.subjects)] }
+    }
     @Environment(\.dismiss) private var dismiss
     @State private var editingSubject: KmpSubject?
     @State private var pendingDeleteSubject: KmpSubject?

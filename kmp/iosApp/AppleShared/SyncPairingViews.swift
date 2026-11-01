@@ -397,7 +397,13 @@ enum SyncLanHeroCopy {
 // MARK: - SyncLanView (nueva vista rediseñada por secciones)
 
 struct SyncLanView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (discoveredSyncHosts, pairedSyncHost, syncDivergence, syncPendingChanges, syncStatusMessage),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.discoveredSyncHosts), .init($0.pairedSyncHost), .init($0.syncDivergence), .init($0.syncPendingChanges), .init($0.syncStatusMessage)] }
+    }
     @ObservedObject var settings: AppSettingsStore
 
     @State private var selectedHost: String = ""
@@ -1006,7 +1012,13 @@ private struct SyncActivityRow: View {
 // MARK: - SyncLanCard (legacy — conservado para compatibilidad)
 
 struct SyncLanCard: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (discoveredSyncHosts, pairedSyncHost, syncDivergence, syncPendingChanges, syncStatusMessage),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.discoveredSyncHosts), .init($0.pairedSyncHost), .init($0.syncDivergence), .init($0.syncPendingChanges), .init($0.syncStatusMessage)] }
+    }
     @State private var selectedHost: String = ""
     @State private var selectedPort: String = "8765"
     @State private var pin: String = ""

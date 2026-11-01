@@ -699,6 +699,9 @@ extension KmpBridge {
         }
 
         let retainedLevelOrders = Set(state.levels.map { Int32($0.order) })
+        // El paquete de sync viaja con los ids reales: sin ellos, al aplicarlo sobre una
+        // rúbrica que ya existe cada criterio se inserta de nuevo y aparece duplicado.
+        var syncedCriteria: [[String: Any]] = []
         for criterion in state.criteria {
             let existingLevelsByOrder: [Int32: RubricLevel]
             if let existingCriterionId = criterion.id?.int64Value {
@@ -725,9 +728,10 @@ extension KmpBridge {
                 syncVersion: criterion.id == nil ? 1 : 2
             ).int64Value
 
+            var syncedLevels: [[String: Any]] = []
             for level in state.levels {
                 let reusableLevelId = existingLevelsByOrder[Int32(level.order)]?.id
-                _ = try await container.rubricsRepository.saveLevel(
+                let levelId = try await container.rubricsRepository.saveLevel(
                     id: reusableLevelId.map { KotlinLong(value: $0) },
                     criterionId: criterionId,
                     name: level.name,
@@ -737,8 +741,22 @@ extension KmpBridge {
                     updatedAtEpochMs: nowMs,
                     deviceId: localDeviceId,
                     syncVersion: reusableLevelId == nil ? 1 : 2
-                )
+                ).int64Value
+                syncedLevels.append([
+                    "id": levelId,
+                    "name": level.name,
+                    "points": Int(level.points),
+                    "description": criterion.levelDescriptions[level.uid] ?? "",
+                    "order": Int(level.order)
+                ])
             }
+            syncedCriteria.append([
+                "id": criterionId,
+                "description": criterion.description_,
+                "weight": criterion.weight,
+                "order": Int(criterion.order),
+                "levels": syncedLevels
+            ])
         }
 
         enqueueLocalChange(
@@ -752,21 +770,7 @@ extension KmpBridge {
                 "description": state.instructions.nilIfBlank ?? NSNull(),
                 "classId": state.selectedClassId?.int64Value ?? NSNull(),
                 "teachingUnitId": selectedRubricTeachingUnitId ?? NSNull(),
-                "criteria": state.criteria.map { criterion in
-                    [
-                        "description": criterion.description_,
-                        "weight": criterion.weight,
-                        "order": Int(criterion.order),
-                        "levels": state.levels.map { level in
-                            [
-                                "name": level.name,
-                                "points": Int(level.points),
-                                "description": criterion.levelDescriptions[level.uid] ?? "",
-                                "order": Int(level.order)
-                            ]
-                        }
-                    ]
-                }
+                "criteria": syncedCriteria
             ]
         )
 

@@ -1213,9 +1213,9 @@ struct IOSWorkspaceContent: View {
             )
             .kmpBridgeEnvironment(bridge)
         case .peTests:
-            PhysicalTestsWorkspaceView(
+            PhysicalTestsHomeView(
                 selectedClassId: $selectionStore.selectedClassId,
-                onOpenModule: onOpenModule
+                onOpenNotebook: { onOpenModule(.notebook, $0, nil) }
             )
             .kmpBridgeEnvironment(bridge)
         case .peRubrics:

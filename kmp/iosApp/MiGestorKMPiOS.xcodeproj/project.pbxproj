@@ -102,6 +102,7 @@
 		1BB5B1294E60AD563A8AB901 /* WebSubmissionImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF82345E1A34DF613A018608 /* WebSubmissionImportTests.swift */; };
 		1BE418013AE187C52A1C4B4D /* SdaSituationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68E09552D03E6F4A5A8FDD5D /* SdaSituationPickerSheet.swift */; };
 		1C1A78FD72228C3E1A8852EC /* PageTemplateMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BC4DE39615F354D9B463D9B /* PageTemplateMenu.swift */; };
+		1C8EFF05FAF8C0965132E2B3 /* NotebookModulePhysicalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D27387AE67C9F0D93CE2B8E6 /* NotebookModulePhysicalTests.swift */; };
 		1CB0C6C869915B2E832E376F /* PhysicalTestCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60FB4440A1EC9C54F45F11BC /* PhysicalTestCaptureView.swift */; };
 		1CE2E6B16C6F676B65D50109 /* RubricEvaluationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A866C1384FDBACD5D7ED109B /* RubricEvaluationView.swift */; };
 		1CE7969670E1B97AF23C5114 /* KmpBridge+NotebookClosing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E5BA3343E7178D5A8E97830 /* KmpBridge+NotebookClosing.swift */; };
@@ -118,6 +119,7 @@
 		21E0B2C77C3EE6DACA4F0DC3 /* SdaTournamentTeamsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 080817A14B7DE8F7F3A3F59F /* SdaTournamentTeamsSheet.swift */; };
 		21EC372D555174E20612BAD5 /* PlannerWeekMiniatureGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DA915360711FBD27A37EB78 /* PlannerWeekMiniatureGrid.swift */; };
 		2219BE1568B49EB5DA9F5F96 /* LearningSituationImportReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC75FF6843F1F641887E8D6 /* LearningSituationImportReviewSheet.swift */; };
+		222F4CC9DDF44595FCE1D357 /* NotebookPhysicalTestCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50C4460C7D5F34D67206476A /* NotebookPhysicalTestCell.swift */; };
 		22A0A3DC73CB669DF9914A08 /* PerfLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3A6585B3DD2F80359E49B7B /* PerfLog.swift */; };
 		233E4313DEDDC02CD056C9CA /* AppleFoundationContextualAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C238867D14FCB6C59390D5 /* AppleFoundationContextualAIService.swift */; };
 		2488DE46081B98631BCC334D /* NotebookColumnStatisticsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDEB71116492CCC22B09906C /* NotebookColumnStatisticsSheet.swift */; };
@@ -192,6 +194,7 @@
 		39F3A2702DC71FDF2C366E10 /* KnockoutMatchResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630945C2C91E334840CDFB86 /* KnockoutMatchResult.swift */; };
 		3A7321203FAD5FDC7FA37FAB /* SettingsDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56F2CF5E5B8BFCE0959388B9 /* SettingsDiagnosticsView.swift */; };
 		3A77A11B8A5081671AE092FB /* KmpBridgeObservationStores.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F4818F5D8B238485F914767 /* KmpBridgeObservationStores.swift */; };
+		3A92E209874DF27BC8AB344E /* NotebookPhysicalTestColumns.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219B0EF950D696ED946A4368 /* NotebookPhysicalTestColumns.swift */; };
 		3AB64143C70A452FF016C4BA /* LearningSituationDocumentImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61BED513E849E7CB7DA762A5 /* LearningSituationDocumentImportService.swift */; };
 		3ABA9D7F79176B65A0300DB0 /* WebSubmissionPublishSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C520758F3BD01731CA8DD507 /* WebSubmissionPublishSheet.swift */; };
 		3AD84687F5A456F91CBA4568 /* BookmarkRibbon.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF6ACFEF548F5A8E6E946CDD /* BookmarkRibbon.swift */; };
@@ -220,6 +223,7 @@
 		40FBB644C354353E94CE0F81 /* DashboardDispatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCF119E0DE892DBACD7073A3 /* DashboardDispatchView.swift */; };
 		4148DA502A11374295FF10CB /* LanSyncModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA5A45FD868FC55FC21CA2AD /* LanSyncModels.swift */; };
 		4169B13E657161078B5CBCE2 /* WebSubmissionLinkEmailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB79EE8F7050ABE5BF09C0BD /* WebSubmissionLinkEmailSheet.swift */; };
+		41D4AFF6FE0EC5477C337A19 /* NotebookPhysicalGroupTimerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E234995F16510669D577F59D /* NotebookPhysicalGroupTimerSheet.swift */; };
 		42355FA614EB4F899CB54DBA /* RubricsBuilderScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CABF3C938060DE09EB0F96BB /* RubricsBuilderScreen.swift */; };
 		428537EEF8A394024D951475 /* AttendanceShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F42B9FCF55764453E68E5BB6 /* AttendanceShared.swift */; };
 		4299F80F86E80964DDE16E57 /* PhysicalScaleSpreadsheetImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22447905F7FB345D13F85D52 /* PhysicalScaleSpreadsheetImport.swift */; };
@@ -227,6 +231,7 @@
 		43101C459EA2DE9D65B9E71B /* PlannerSessionComposerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCB48C7B33C7EB638C18CEF5 /* PlannerSessionComposerSheet.swift */; };
 		440351B56EAE67764CF69FE8 /* PhysicalTestsImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B4496675F03A7009E2F05A /* PhysicalTestsImportTests.swift */; };
 		45B1E73E6B999CE726A2E811 /* NotebookCoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5383F2114C4AEB7D37E9F3AD /* NotebookCoverView.swift */; };
+		4632F2B48116798CAEA74F1D /* NotebookPhysicalTestCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50C4460C7D5F34D67206476A /* NotebookPhysicalTestCell.swift */; };
 		4707B72C8C73EC4A917ECED4 /* SyncStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A708FA79C628B9F04661BFC6 /* SyncStatusBadge.swift */; };
 		47A6E2AE579A58D566D63878 /* RubricsReportsWorkspaceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D7199BBDD6580774907119 /* RubricsReportsWorkspaceViews.swift */; };
 		47D80C34D5057F3AEA01A558 /* EvaluationHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2960F7D65E3A8DF5997306CD /* EvaluationHubView.swift */; };
@@ -235,6 +240,7 @@
 		481456E6917D53DC0747A5FD /* NotebookModuleDialogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 352EEB0A224407D7F429897D /* NotebookModuleDialogs.swift */; };
 		484F7BDF69DA03ED8222E014 /* DiaryTimelineModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531AE7FED19377A844BC1165 /* DiaryTimelineModels.swift */; };
 		488764D78E28A742D70180A6 /* NotebookModuleDialogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 352EEB0A224407D7F429897D /* NotebookModuleDialogs.swift */; };
+		491308D59B073CE84608E606 /* NotebookPhysicalCapturePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C3F75F504027B8A526359E9 /* NotebookPhysicalCapturePanel.swift */; };
 		4914568CE9DDEBCF1F7CFDF2 /* AppearanceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C0172AFB78FC2D43D634B3D /* AppearanceSettingsView.swift */; };
 		4967D7BFC05BD566EEFCB680 /* ScheduleGridPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B18D4606AA037B05A26A0280 /* ScheduleGridPDFRenderer.swift */; };
 		49E95C4D5249C7672428EB00 /* SchoolCalendarPreset2026_2027.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC7C9F4E4DD0E148ACD0A165 /* SchoolCalendarPreset2026_2027.swift */; };
@@ -297,6 +303,7 @@
 		57B71C3913C7F4D901323B42 /* PlannerFloatingTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73E80A05F8F203CF9F01667C /* PlannerFloatingTabBar.swift */; };
 		5875943920728E03C6CCBB59 /* InclusionTrackerMockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 854AFEAE091E5E97F7AFC0B0 /* InclusionTrackerMockView.swift */; };
 		58BC993ADD2C8A0AE4F3F1F1 /* CooperativeGroupGeneratorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 995790F8B9F9C8C528105319 /* CooperativeGroupGeneratorService.swift */; };
+		58D7CFB9EDEA2903EB9E83C8 /* NotebookPhysicalTestColumnsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42844DB2AE9B7C84A319DB22 /* NotebookPhysicalTestColumnsTests.swift */; };
 		59234820B563D9BA8FB23DE3 /* NotebookAICommentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DFB7CB99B772BA64AA591A9 /* NotebookAICommentSheet.swift */; };
 		59720E0A98318EF90A5FBFB9 /* NotebookInspectorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 064505192DE6C78C8E8249B0 /* NotebookInspectorPanel.swift */; };
 		5980AF103BC140E68048ACDC /* StudentProfile360Sheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2E6198F8A34293A814CE88 /* StudentProfile360Sheet.swift */; };
@@ -438,6 +445,7 @@
 		7F9DEC07FE3E26C70A7F8BAF /* SupportMeasureBulkImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A723B93313D3C43F0E9D8A12 /* SupportMeasureBulkImport.swift */; };
 		7FC3CC82E0DA9D27DCD9A52D /* AddColumnSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583BC23E9E292D736CC9EF49 /* AddColumnSheet.swift */; };
 		7FD9C1F757868C1FA5CA3E20 /* NotebookGridContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBDA814F8187BFDA3302D347 /* NotebookGridContainer.swift */; };
+		7FEA017B96FA13B6E3B6006A /* NotebookModulePhysicalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D27387AE67C9F0D93CE2B8E6 /* NotebookModulePhysicalTests.swift */; };
 		802527B386B74746FC01044B /* PhysicalTestsColumnCreationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADD746834EBC2A6B190831A /* PhysicalTestsColumnCreationPolicy.swift */; };
 		80AA3C628C903C85F9BACC67 /* RotationScheduleGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20254611EC1D80EBB65F4904 /* RotationScheduleGenerator.swift */; };
 		80AB8A54BCEB9D6E00C4EB6C /* KmpBridge+LearningSituations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 821B86EBC3A6F3E280190B15 /* KmpBridge+LearningSituations.swift */; };
@@ -560,6 +568,7 @@
 		A28DE00327B6A0494218FE26 /* NotebookModuleQuickKeypad.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC4FA91E783D30DECEFCF17B /* NotebookModuleQuickKeypad.swift */; };
 		A31393B5788EF9D99E654BC4 /* PhysicalTestsImportPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3F2744A2DF80ACFD0C00A1B /* PhysicalTestsImportPreviewSheet.swift */; };
 		A31B6319A0B9AB589B53F8F5 /* KmpBridge+SyncLAN.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D1F4F31F6224448FEE5718 /* KmpBridge+SyncLAN.swift */; };
+		A32AB87DB4D977AC6B575448 /* KmpBridge+PhysicalNotebookMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = A16842DB14119A317A47411F /* KmpBridge+PhysicalNotebookMark.swift */; };
 		A3A92B21AB297E3BEBC8DC15 /* AppleDatabaseRescueService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94B709773B9FE5B2D3E2C936 /* AppleDatabaseRescueService.swift */; };
 		A3ED480752FFCEC976396ED0 /* OnboardingHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FB163477150A620CBC0CAC7 /* OnboardingHost.swift */; };
 		A40D936691C2C70F5CCEF15E /* TournamentPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB8C76314641AE93E91C95A /* TournamentPlan.swift */; };
@@ -698,6 +707,7 @@
 		CB3BE3F89786EA2DB04FB206 /* WebSubmissionInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7682BF9F312DD4F38A85EC00 /* WebSubmissionInbox.swift */; };
 		CB41FB0AE2F7A38BEA39C862 /* TournamentPlanPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC89453D48EA02E07A2B17E2 /* TournamentPlanPersistence.swift */; };
 		CB68304DC093C13D524BFE1A /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 7DB760443A1EAA2F7DCB8484 /* AppIcon.icon */; };
+		CBBC2FB199E6F6567DB7FEA8 /* NotebookPhysicalGroupTimerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E234995F16510669D577F59D /* NotebookPhysicalGroupTimerSheet.swift */; };
 		CBE4A99E28DCA47F73380CDD /* ScheduleValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDA74C6D3F0AF268E3BC5C7 /* ScheduleValidator.swift */; };
 		CC34E88C2A11979EEB5E667A /* CalendarDuplicatePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5333C1A2F380B75E03914FC6 /* CalendarDuplicatePlanner.swift */; };
 		CC871883DB2586C8F0FD5293 /* KmpBridge+WebForms.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAB9EAD726530D8C61519E3E /* KmpBridge+WebForms.swift */; };
@@ -755,6 +765,7 @@
 		DC35FF5AFA5C13C3A59D97CE /* LibraryShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64503D2711A4129AC7C01FB1 /* LibraryShared.swift */; };
 		DCA27168B229DA96EC2E2944 /* DataManagementSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72A84FEEBDA24C73D956D7A /* DataManagementSettingsView.swift */; };
 		DD13B77B44248EB49497524F /* InclusionTrackerComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00EB8CDFD29E04C0A6E6FBBF /* InclusionTrackerComponents.swift */; };
+		DD506F29F4CB67AE7F39FA47 /* KmpBridge+PhysicalNotebookMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = A16842DB14119A317A47411F /* KmpBridge+PhysicalNotebookMark.swift */; };
 		DD5D6CEE951094108091C062 /* PlannerSummaryDashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1867CC94618A27E645618888 /* PlannerSummaryDashboard.swift */; };
 		DD657AF41470FFC03ADB4709 /* CoverColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2833EA49D0F08471C90E7463 /* CoverColor.swift */; };
 		DD84170CC38144B0F5383E65 /* DiaryContinuousTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E09B3820CF091595567D36EC /* DiaryContinuousTimelineView.swift */; };
@@ -804,6 +815,8 @@
 		E8A798B8A71BF860EBB277B7 /* PlannerWorkspaceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 282FEB62319DAF8B963180EB /* PlannerWorkspaceViewModel.swift */; };
 		E8AE4881FFB88C106A37924D /* PlannerSummaryDashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1867CC94618A27E645618888 /* PlannerSummaryDashboard.swift */; };
 		E9032AE57114FF9AB7D4C082 /* MiGestorKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9B37D82D4C30174CBD843E47 /* MiGestorKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E91BC30FA503B45C071F768F /* NotebookPhysicalTestColumns.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219B0EF950D696ED946A4368 /* NotebookPhysicalTestColumns.swift */; };
+		E926AEB161E805EBA9172E00 /* NotebookPhysicalCapturePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C3F75F504027B8A526359E9 /* NotebookPhysicalCapturePanel.swift */; };
 		E93A2A714D06644B634BF386 /* EvaluationSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 810903E198F9573C820FD886 /* EvaluationSessionView.swift */; };
 		E94011DC47D904A106662F80 /* AppleFoundationStudentInsightService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C7735C70A8D47952837D52A /* AppleFoundationStudentInsightService.swift */; };
 		E988C7307DAE60B51E368E73 /* PlannerClassKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215CB7021F2E9BE22EDBE2A0 /* PlannerClassKit.swift */; };
@@ -960,6 +973,7 @@
 		0A721D85250D04A5EF2F4512 /* LanSyncClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanSyncClient.swift; sourceTree = "<group>"; };
 		0A82B65C635417DCFDEB7318 /* PlannerDayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerDayView.swift; sourceTree = "<group>"; };
 		0C0172AFB78FC2D43D634B3D /* AppearanceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsView.swift; sourceTree = "<group>"; };
+		0C3F75F504027B8A526359E9 /* NotebookPhysicalCapturePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookPhysicalCapturePanel.swift; sourceTree = "<group>"; };
 		0CAE8A67112E3157FC3FFECE /* WeightEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeightEditorSheet.swift; sourceTree = "<group>"; };
 		0CC6DFA99A14F5A04ED29EE1 /* PlannerSessionClassKitSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSessionClassKitSheet.swift; sourceTree = "<group>"; };
 		0D4F77F8AE48BC67BBEA1603 /* WorkspaceSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceSidebar.swift; sourceTree = "<group>"; };
@@ -1004,6 +1018,7 @@
 		214D549C163ADFF0B572F9CE /* KmpBridge+EvaluationSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+EvaluationSession.swift"; sourceTree = "<group>"; };
 		215CB7021F2E9BE22EDBE2A0 /* PlannerClassKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerClassKit.swift; sourceTree = "<group>"; };
 		219075A940430441ED71DF42 /* WebSubmissionsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionsWorkspaceView.swift; sourceTree = "<group>"; };
+		219B0EF950D696ED946A4368 /* NotebookPhysicalTestColumns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookPhysicalTestColumns.swift; sourceTree = "<group>"; };
 		22447905F7FB345D13F85D52 /* PhysicalScaleSpreadsheetImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalScaleSpreadsheetImport.swift; sourceTree = "<group>"; };
 		22A843B7836ADC09ABE07A6E /* InclusionTrackerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InclusionTrackerView.swift; sourceTree = "<group>"; };
 		246EEFCF796608A3FDAE0AEA /* NotebookWorkGroupPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookWorkGroupPolicy.swift; sourceTree = "<group>"; };
@@ -1068,6 +1083,7 @@
 		412BDB0BE52A021D8CFE19FE /* LanSyncDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanSyncDiscovery.swift; sourceTree = "<group>"; };
 		418B317080940EE2A662D215 /* MacPhysicalTestsToolbarActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPhysicalTestsToolbarActions.swift; sourceTree = "<group>"; };
 		41D847221EF034B6A7ED4339 /* BackupRestorePreviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupRestorePreviewSheet.swift; sourceTree = "<group>"; };
+		42844DB2AE9B7C84A319DB22 /* NotebookPhysicalTestColumnsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookPhysicalTestColumnsTests.swift; sourceTree = "<group>"; };
 		4309F19FDFC6A480E12806A8 /* SettingsRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRow.swift; sourceTree = "<group>"; };
 		438FE85184775DE1F77E9FBD /* WorkspaceModuleSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceModuleSwitcher.swift; sourceTree = "<group>"; };
 		44666CD26B297BBB70CA88A9 /* AttendanceMatrixGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceMatrixGridView.swift; sourceTree = "<group>"; };
@@ -1088,6 +1104,7 @@
 		4EB9CFB8F48275F1DBC3C8AE /* PlannerCopySessionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerCopySessionSheet.swift; sourceTree = "<group>"; };
 		4ED9D8451FE6172EFBD59BC5 /* DiaryWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryWorkspaceView.swift; sourceTree = "<group>"; };
 		4FAD51C6457A04A95BF795DA /* PageCurlController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageCurlController.swift; sourceTree = "<group>"; };
+		50C4460C7D5F34D67206476A /* NotebookPhysicalTestCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookPhysicalTestCell.swift; sourceTree = "<group>"; };
 		515D5694AA82CA792EE56E33 /* NotebookSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookSettingsView.swift; sourceTree = "<group>"; };
 		51882E52C46262210355378A /* AppleEncryptedBackupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleEncryptedBackupTests.swift; sourceTree = "<group>"; };
 		5271364D8F83E4653AA75C0E /* TournamentsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TournamentsWorkspaceView.swift; sourceTree = "<group>"; };
@@ -1259,6 +1276,7 @@
 		A000A844E2F1245DA5956673 /* NotebookViewModifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookViewModifiers.swift; sourceTree = "<group>"; };
 		A0774A7DE7911EED2EC152DD /* TournamentEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TournamentEngineTests.swift; sourceTree = "<group>"; };
 		A15BAB5448398CA4382E7437 /* ScaledSystemFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScaledSystemFont.swift; sourceTree = "<group>"; };
+		A16842DB14119A317A47411F /* KmpBridge+PhysicalNotebookMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+PhysicalNotebookMark.swift"; sourceTree = "<group>"; };
 		A16EC8B96A8491E180F8CE3D /* EvaluationSessionBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationSessionBoardView.swift; sourceTree = "<group>"; };
 		A1BA1A353C3D0548CC0C2E8A /* NotebookColumnOrganizerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookColumnOrganizerSheet.swift; sourceTree = "<group>"; };
 		A2C577C58E87983763516A38 /* DashboardClassroomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardClassroomView.swift; sourceTree = "<group>"; };
@@ -1352,6 +1370,7 @@
 		CD2E6198F8A34293A814CE88 /* StudentProfile360Sheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentProfile360Sheet.swift; sourceTree = "<group>"; };
 		CEAAF5669D2AF30F91887B74 /* PlannerWorkspaceViewModel+Schedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+Schedule.swift"; sourceTree = "<group>"; };
 		D0B03581E247976F1D0F9535 /* PlannerWorkspaceViewModel+BulkOperations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+BulkOperations.swift"; sourceTree = "<group>"; };
+		D27387AE67C9F0D93CE2B8E6 /* NotebookModulePhysicalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModulePhysicalTests.swift; sourceTree = "<group>"; };
 		D2AB4196DBEAD5BB81AB5A13 /* WebPassportProgressSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPassportProgressSheet.swift; sourceTree = "<group>"; };
 		D2E833F8E8281D5E3F4BFB0F /* NotebookMacLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookMacLayout.swift; sourceTree = "<group>"; };
 		D332467A125C50215481D20B /* TutoringShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutoringShared.swift; sourceTree = "<group>"; };
@@ -1383,6 +1402,7 @@
 		E0C94B9DDCF7110BC8C2A4DB /* PlannerLiquidGlassControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerLiquidGlassControls.swift; sourceTree = "<group>"; };
 		E17F26C351FECC360A2DAF1E /* SdaTournamentComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SdaTournamentComponents.swift; sourceTree = "<group>"; };
 		E1D1F4F31F6224448FEE5718 /* KmpBridge+SyncLAN.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+SyncLAN.swift"; sourceTree = "<group>"; };
+		E234995F16510669D577F59D /* NotebookPhysicalGroupTimerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookPhysicalGroupTimerSheet.swift; sourceTree = "<group>"; };
 		E37D119F98E876CB3CAA8910 /* PlannerWorkspaceViewModel+Journal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+Journal.swift"; sourceTree = "<group>"; };
 		E409AC49E4C2F349EEC469ED /* PlannerSessionDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSessionDetailSheet.swift; sourceTree = "<group>"; };
 		E44007C231E03029435B056F /* AppleBackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleBackupService.swift; sourceTree = "<group>"; };
@@ -1541,6 +1561,7 @@
 				19F8CDBBBF2E11474BA08A78 /* KmpBridgeWatchTests.swift */,
 				880A34E6ED9FC0F10FE40AC2 /* LearningSituationDocumentImportTests.swift */,
 				968077A1B396C10078A51773 /* LegacyTournamentMigratorTests.swift */,
+				42844DB2AE9B7C84A319DB22 /* NotebookPhysicalTestColumnsTests.swift */,
 				20EE80FA20BE8E0C4C732321 /* NotebookWorkGroupImportTests.swift */,
 				659E68B250103237250CA60E /* PhysicalScaleSpreadsheetImportTests.swift */,
 				85B4496675F03A7009E2F05A /* PhysicalTestsImportTests.swift */,
@@ -1697,6 +1718,7 @@
 				6ED32EAFF51BE275270F5F2A /* MeetingActaPDF.swift */,
 				1DFC26768A94C315D01AF726 /* MeetingsShared.swift */,
 				FAC46319C44007155F43DDDB /* NotebookAverageExplanationView.swift */,
+				219B0EF950D696ED946A4368 /* NotebookPhysicalTestColumns.swift */,
 				515D5694AA82CA792EE56E33 /* NotebookSettingsView.swift */,
 				D74476D5561462609506B631 /* NotebookWorkGroupImportService.swift */,
 				246EEFCF796608A3FDAE0AEA /* NotebookWorkGroupPolicy.swift */,
@@ -1794,6 +1816,7 @@
 				A682E1CAE862C15E3F1B2065 /* KmpBridge+Notebook.swift */,
 				6E5BA3343E7178D5A8E97830 /* KmpBridge+NotebookClosing.swift */,
 				121AB49AB4B52F4FE5FD8FB2 /* KmpBridge+PhysicalEducation.swift */,
+				A16842DB14119A317A47411F /* KmpBridge+PhysicalNotebookMark.swift */,
 				3237B049B528387965905F5E /* KmpBridge+PhysicalTestSetup.swift */,
 				BEBB2CA87CBCB3E4059CF73F /* KmpBridge+Planner.swift */,
 				3E44ACF17D174B125022ED67 /* KmpBridge+Rubrics.swift */,
@@ -2011,11 +2034,15 @@
 				86A9F5C3A35823EC9555F412 /* NotebookModuleDisplayFormatting.swift */,
 				8457F6307147064BDBB54971 /* NotebookModuleGridCells.swift */,
 				AEEB5AEB802B224689F0882B /* NotebookModuleOrganization.swift */,
+				D27387AE67C9F0D93CE2B8E6 /* NotebookModulePhysicalTests.swift */,
 				FC4FA91E783D30DECEFCF17B /* NotebookModuleQuickKeypad.swift */,
 				5BA1F288BF073BB3431CF16E /* NotebookModuleSupportActions.swift */,
 				8A4E8D89679CED5E074F1005 /* NotebookModuleToolbarState.swift */,
 				78D342F2953510BDA01694A6 /* NotebookModuleTypes.swift */,
 				4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */,
+				0C3F75F504027B8A526359E9 /* NotebookPhysicalCapturePanel.swift */,
+				E234995F16510669D577F59D /* NotebookPhysicalGroupTimerSheet.swift */,
+				50C4460C7D5F34D67206476A /* NotebookPhysicalTestCell.swift */,
 				879D485471F6F7037D782483 /* NotebookQuickKeypadDock.swift */,
 				C5BB221D33601136CB3F7F0F /* NotebookSeatingPlanView.swift */,
 				55519476F175FF4B59F1AB21 /* NotebookSkeletonGridView.swift */,
@@ -2113,6 +2140,13 @@
 				7B6269F60689E51D017ECE88 /* Tournament */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		"TEMP_1DE16198-84A5-4E86-85E8-BD868C24AE62" /* .claude */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = .claude;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -2385,6 +2419,7 @@
 				0B76889311EC1A92AA95496C /* KmpBridgeWatchTests.swift in Sources */,
 				BBC3ED3DFE1B028A9D42695B /* LearningSituationDocumentImportTests.swift in Sources */,
 				EB9EF09DBFD79A64E04FDBBC /* LegacyTournamentMigratorTests.swift in Sources */,
+				58D7CFB9EDEA2903EB9E83C8 /* NotebookPhysicalTestColumnsTests.swift in Sources */,
 				291FB5143C0E35F49D108703 /* NotebookWorkGroupImportTests.swift in Sources */,
 				B883628F83A41EBC7C5820B0 /* PhysicalScaleSpreadsheetImportTests.swift in Sources */,
 				440351B56EAE67764CF69FE8 /* PhysicalTestsImportTests.swift in Sources */,
@@ -2535,6 +2570,7 @@
 				F3EF2A03225D74BCCF271EFC /* KmpBridge+Notebook.swift in Sources */,
 				1CE7969670E1B97AF23C5114 /* KmpBridge+NotebookClosing.swift in Sources */,
 				4E3C68DC5B9D88936A82C5B8 /* KmpBridge+PhysicalEducation.swift in Sources */,
+				DD506F29F4CB67AE7F39FA47 /* KmpBridge+PhysicalNotebookMark.swift in Sources */,
 				E45A45317B8B313290103179 /* KmpBridge+PhysicalTestSetup.swift in Sources */,
 				94AE8AEACCA6FABF346032E2 /* KmpBridge+Planner.swift in Sources */,
 				12F5AB37512EE54423FB8427 /* KmpBridge+Rubrics.swift in Sources */,
@@ -2639,11 +2675,16 @@
 				5D9121C3245358372E102A24 /* NotebookModuleDisplayFormatting.swift in Sources */,
 				3F94D941976F275287C0CA24 /* NotebookModuleGridCells.swift in Sources */,
 				C9E78365D5064396BEFC11C8 /* NotebookModuleOrganization.swift in Sources */,
+				7FEA017B96FA13B6E3B6006A /* NotebookModulePhysicalTests.swift in Sources */,
 				A28DE00327B6A0494218FE26 /* NotebookModuleQuickKeypad.swift in Sources */,
 				D6723E23F4F90F03E1E999E7 /* NotebookModuleSupportActions.swift in Sources */,
 				A5180F527898A05083E23CF0 /* NotebookModuleToolbarState.swift in Sources */,
 				3EB980B5E6F11D4DFD90A1F2 /* NotebookModuleTypes.swift in Sources */,
 				878FB204389D94BB6A912BF6 /* NotebookModuleView.swift in Sources */,
+				491308D59B073CE84608E606 /* NotebookPhysicalCapturePanel.swift in Sources */,
+				41D4AFF6FE0EC5477C337A19 /* NotebookPhysicalGroupTimerSheet.swift in Sources */,
+				4632F2B48116798CAEA74F1D /* NotebookPhysicalTestCell.swift in Sources */,
+				E91BC30FA503B45C071F768F /* NotebookPhysicalTestColumns.swift in Sources */,
 				71045E32928D5EF93DB340E6 /* NotebookQuickKeypadDock.swift in Sources */,
 				774C8481CFDCFE2829E7ACA5 /* NotebookSeatingPlanView.swift in Sources */,
 				B82B37EE06DEB54E59585F17 /* NotebookSettingsView.swift in Sources */,
@@ -2959,6 +3000,7 @@
 				E795C42BAAE0E7DC85E39B52 /* KmpBridge+Notebook.swift in Sources */,
 				AD7F7548FFF613A91CD9DE17 /* KmpBridge+NotebookClosing.swift in Sources */,
 				2BCB17B07E782475C4F707A7 /* KmpBridge+PhysicalEducation.swift in Sources */,
+				A32AB87DB4D977AC6B575448 /* KmpBridge+PhysicalNotebookMark.swift in Sources */,
 				8D08D36A56FEC7A973BF0E26 /* KmpBridge+PhysicalTestSetup.swift in Sources */,
 				79038D66BB6E3B268F91CE8F /* KmpBridge+Planner.swift in Sources */,
 				614D6043366F2972FE8BC9B1 /* KmpBridge+Rubrics.swift in Sources */,
@@ -3045,11 +3087,16 @@
 				EA5A98F4E0DDCA4302284B10 /* NotebookModuleDisplayFormatting.swift in Sources */,
 				B96BC684E6FC2DE3073BCFDF /* NotebookModuleGridCells.swift in Sources */,
 				FCFCDB058F5AC765537750B3 /* NotebookModuleOrganization.swift in Sources */,
+				1C8EFF05FAF8C0965132E2B3 /* NotebookModulePhysicalTests.swift in Sources */,
 				9DBAC0638928BB61794F3584 /* NotebookModuleQuickKeypad.swift in Sources */,
 				6877F85FFE101D346660E09C /* NotebookModuleSupportActions.swift in Sources */,
 				2F72D4E14B451CD4EE6F131C /* NotebookModuleToolbarState.swift in Sources */,
 				D361AF85734491324E76B258 /* NotebookModuleTypes.swift in Sources */,
 				D3EBA1E1A169F964D3CA7654 /* NotebookModuleView.swift in Sources */,
+				E926AEB161E805EBA9172E00 /* NotebookPhysicalCapturePanel.swift in Sources */,
+				CBBC2FB199E6F6567DB7FEA8 /* NotebookPhysicalGroupTimerSheet.swift in Sources */,
+				222F4CC9DDF44595FCE1D357 /* NotebookPhysicalTestCell.swift in Sources */,
+				3A92E209874DF27BC8AB344E /* NotebookPhysicalTestColumns.swift in Sources */,
 				16A0E5A9486A6222634E9645 /* NotebookQuickKeypadDock.swift in Sources */,
 				BBF46271F4DFC6A1D7CEFCDD /* NotebookReaderView.swift in Sources */,
 				8177D8D46978C81F4594E4B4 /* NotebookSeatingPlanView.swift in Sources */,

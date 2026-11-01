@@ -654,7 +654,31 @@ extension NotebookModuleView {
     }
 
     @MainActor
+    @ViewBuilder
     private func columnRowCell(
+        column: NotebookColumnDefinition,
+        item: NotebookTableRow,
+        data: NotebookUiStateData,
+        rowIndex: Int,
+        allRows: [NotebookTableRow],
+        navigableSegments: [NotebookDisplaySegment]
+    ) -> some View {
+        if let pair = gridNavigationContext.physicalPairsByScoreId[column.id] {
+            physicalTestRowCell(pair: pair, column: column, item: item, data: data, rowIndex: rowIndex)
+        } else {
+            editableColumnRowCell(
+                column: column,
+                item: item,
+                data: data,
+                rowIndex: rowIndex,
+                allRows: allRows,
+                navigableSegments: navigableSegments
+            )
+        }
+    }
+
+    @MainActor
+    private func editableColumnRowCell(
         column: NotebookColumnDefinition,
         item: NotebookTableRow,
         data: NotebookUiStateData,

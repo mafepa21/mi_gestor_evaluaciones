@@ -93,3 +93,45 @@ XCTestConfigurationFilePath=/dev/null -ApplePersistenceIgnoreState YES -perf.log
 desde Terminal (desde un proceso sin sesión gráfica no abre ventana) y escuchar con
 `/usr/bin/log stream` filtrando por `processImagePath`, porque la app real escribe en el
 mismo subsistema.
+
+## Primera apertura del Cuaderno en iPad (2026-11-01)
+
+Rama `codex/cuaderno-ipad-congelado` (sale de `codex/optimizacion-repintados`).
+Simulador «Capturas iPad», Debug, `PRODUCT_BUNDLE_IDENTIFIER=com.migestor.ios.repintados`
+(base propia con los datos de ejemplo inventados), `-perf.logAll YES`. Recorrido:
+app recién abierta en Hoy → pulsar Cuaderno en la barra lateral.
+
+Qué costaba de verdad (marcas temporales en el montaje, primera apertura):
+
+| Tramo | ms |
+|---|---|
+| Crear `NotebookModuleView` (init) | 1-5 |
+| Hasta que SwiftUI crea sus `@StateObject` | 110-220 |
+| `NotebookVoiceGradeDictationService` (reconocedor de voz 45, motor de audio 6-10) | 45-57 |
+| Orquestadores de IA y almacén de fórmulas | 4-5 |
+| Primer `body` | 26-38 |
+| De `body` a `onAppear` (montaje de los hijos) | 155-280 |
+| **Primera vuelta del bucle principal** | **~450** |
+
+La segunda apertura en el mismo proceso tarda 15 ms: todo era coste de una sola vez.
+`sample` del hilo principal: casi todo es Swift resolviendo el tipo del `body`
+(`__swift_instantiateConcreteTypeFromMangledName`, demangling, tablas de conformidad
+de `ModifiedContent<…>` con decenas de hojas, avisos y `appOnChange`). Los servicios
+de IA no pesaban (4 ms).
+
+Probado y descartado: preparar el tipo por detrás tras el arranque. Bajó la vuelta a
+~300-340 ms pero no lo bastante: cada sitio del código resuelve su nombre de tipo la
+primera vez que se ejecuta, y eso no se puede adelantar desde otro hilo.
+
+Arreglo: cinco `AnyView` entre bloques enteros de modificadores (`NotebookModuleView.body`,
+`notebookContentWithDialogs`, `notebookLoadedContent`) y el dictado por voz creado al
+primer uso.
+
+| Medida | Antes | Después |
+|---|---|---|
+| Primera vuelta al abrir el Cuaderno | ~450 ms | ~100 ms |
+| Vuelta siguiente (tabla) | ~170-240 ms | ~190 ms |
+| `Lento: cambio de pantalla a notebook` | 593-672 ms | 190, 199, 188 ms |
+| «Pantalla congelada» al abrir | 495-598 ms (1 de 1 por recorrido) | 0 de 3 recorridos |
+
+Solo iPad simulador. En Mac compila, pero no se midió de nuevo.

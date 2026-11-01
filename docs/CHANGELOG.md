@@ -103,6 +103,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- **Primera apertura del Cuaderno en iPad** (rama `codex/cuaderno-ipad-congelado`): `xcodebuild` Debug de `MiGestorKMPiOS` (simulador iPad) y `MiGestorKMPMac` sin errores. Tres recorridos Hoy → Cuaderno con la app recién abierta en el simulador «Capturas iPad» (datos de ejemplo): cambio de pantalla 188-199 ms y ninguna «Pantalla congelada» (antes 495-598 ms). Detalle en `docs/REGISTRO_RENDIMIENTO.md`. No medido en Mac ni en iPad físico.
 - Pasaporte por paradas (2026-10-25): `xcodebuild test -scheme MiGestorPlannerTests` con `WebPassportTests`, `WebSubmissionImportTests` y `WebSubmissionInboxTests` → 25 tests, 0 fallos. `xcodebuild build -scheme MiGestorKMPiOS` (simulador iOS) → BUILD SUCCEEDED. No se abrió la app con datos: la base del Mac es la real del curso; queda QA manual con un grupo de prueba.
 
 - Buzón para entregas web y medias de coevaluación: `xcodebuild test` de `MiGestorPlannerTests` (492 tests, 5 nuevos, 4 omitidos, 0 fallos) OK en macOS; build `MiGestorKMPiOS` para simulador OK. Circuito real del buzón probado con la inscripción de un torneo (alumnado ficticio). QA manual: una autoevaluación de prueba publicada desde «Entregas web», enviada desde el móvil, llegó sola a su columna. No verificado: circuito real de una coevaluación. Decisión en `ADR-2026-10-24-buzon-entregas-web.md`.

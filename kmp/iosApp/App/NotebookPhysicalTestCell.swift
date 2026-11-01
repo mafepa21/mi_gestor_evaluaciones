@@ -16,6 +16,8 @@ struct NotebookPhysicalTestCell: View {
     let previewScore: @MainActor (Student, Double) async -> Double?
     let onSave: @MainActor (Student, String) async -> NotebookPhysicalMarkSaveOutcome
     let onGroupTimer: (() -> Void)?
+    var diagnose: (@MainActor (Student, Double) async -> PhysicalScoreGap?)?
+    var setSex: (@MainActor (Student, StudentSex) async -> Bool)?
 
     @State private var isCapturePresented = false
     @State private var roster: [NotebookPhysicalRosterEntry] = []
@@ -71,7 +73,9 @@ struct NotebookPhysicalTestCell: View {
                 tint: tint,
                 previewScore: previewScore,
                 onSave: onSave,
-                onGroupTimer: onGroupTimer
+                onGroupTimer: onGroupTimer,
+                diagnose: diagnose,
+                setSex: setSex
             )
         }
     }
@@ -93,7 +97,7 @@ struct NotebookPhysicalTestCell: View {
                     .fill(.separator)
                     .frame(width: 1, height: 18)
                 if score.isEmpty {
-                    Text("sin baremo")
+                    Text("sin nota")
                         .notebookFont(size: 12, weight: .medium)
                         .foregroundStyle(NotebookStyle.warningTint)
                         .lineLimit(1)
@@ -112,6 +116,6 @@ struct NotebookPhysicalTestCell: View {
     private var accessibilityValue: String {
         guard !mark.isEmpty else { return "Sin marca" }
         let spokenMark = pair.kind == .time ? NotebookPhysicalMark.spokenTime(mark) : "\(mark) \(pair.unitLabel)"
-        return score.isEmpty ? "\(spokenMark), sin baremo" : "\(spokenMark), nota \(score)"
+        return score.isEmpty ? "\(spokenMark), sin nota" : "\(spokenMark), nota \(score)"
     }
 }

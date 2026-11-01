@@ -51,7 +51,18 @@ extension NotebookModuleView {
             },
             onGroupTimer: pair.kind == .time && !column.isLocked
                 ? { physicalGroupTimerRequest = NotebookPhysicalGroupTimerRequest(pair: pair) }
-                : nil
+                : nil,
+            diagnose: { student, value in
+                await bridge.diagnosePhysicalNotebookScore(
+                    classId: classId,
+                    student: student,
+                    columnId: pair.raw.id,
+                    rawValue: value
+                )
+            },
+            setSex: { student, sex in
+                await bridge.setStudentSexFromNotebook(studentId: student.id, sex: sex)
+            }
         )
         .frame(maxHeight: .infinity)
         .background(notebookColumnCellFill(for: column, rowIndex: rowIndex))

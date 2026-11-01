@@ -283,7 +283,7 @@ struct NotebookPhysicalGroupTimerSheet: View {
                 if let score = scores[id] {
                     Text(NotebookPhysicalMark.decimalText(score)).font(.title2.weight(.semibold))
                 } else if noScaleIds.contains(id) {
-                    Text("sin baremo").font(.subheadline).foregroundStyle(.secondary)
+                    Text("sin nota").font(.subheadline).foregroundStyle(.secondary)
                 } else {
                     ProgressView().controlSize(.small)
                 }
@@ -440,7 +440,7 @@ struct NotebookPhysicalGroupTimerSheet: View {
         isSaving = false
         AppleInteractionFeedback.play(.success)
         let message = withoutScale > 0
-            ? "\(saved) tiempos guardados · \(withoutScale) sin baremo"
+            ? "\(saved) tiempos guardados · \(withoutScale) sin nota: toca su celda para ver por qué"
             : "\(saved) tiempos guardados con su nota"
         onFinished(message)
         dismiss()

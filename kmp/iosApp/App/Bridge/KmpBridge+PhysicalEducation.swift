@@ -131,6 +131,9 @@ extension KmpBridge {
         guard rawValue.isFinite else { return nil }
 
         do {
+            // La fila del cuaderno puede traer un alumno antiguo: sexo y fecha
+            // de nacimiento se leen siempre de su ficha.
+            let student = (try? await container.studentsRepository.getStudent(studentId: student.id)) ?? student
             let assignments = try await container.physicalTestsRepository.listAssignmentsForClass(classId: classId)
             for assignment in assignments {
                 let links = try await container.physicalTestsRepository.listNotebookLinksForAssignment(assignmentId: assignment.id)
@@ -155,6 +158,45 @@ extension KmpBridge {
             return nil
         }
         return nil
+    }
+
+    /// Pone el sexo desde el Cuaderno partiendo de la ficha actual, no de la fila.
+    func setStudentSexFromNotebook(studentId: Int64, sex: StudentSex) async -> Bool {
+        do {
+            guard let current = try await container.studentsRepository.getStudent(studentId: studentId) else { return false }
+            try await updateStudentSex(current, sex: sex)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Por qué una marca no tiene nota. `nil` si el baremo sí casa.
+    func diagnosePhysicalNotebookScore(
+        classId: Int64,
+        student: Student,
+        columnId: String,
+        rawValue: Double
+    ) async -> PhysicalScoreGap? {
+        if await resolvePhysicalNotebookScore(classId: classId, student: student, columnId: columnId, rawValue: rawValue) != nil {
+            return nil
+        }
+        let fresh = (try? await container.studentsRepository.getStudent(studentId: student.id)) ?? student
+        do {
+            for assignment in try await container.physicalTestsRepository.listAssignmentsForClass(classId: classId) {
+                let links = try await container.physicalTestsRepository.listNotebookLinksForAssignment(assignmentId: assignment.id)
+                guard let link = links.first(where: { $0.rawColumnId == columnId }) else { continue }
+                let scales = try await container.physicalTestsRepository.listScalesForTest(testId: link.testId)
+                return PhysicalScoreGap.classify(
+                    scales: scales,
+                    studentSex: fresh.sex,
+                    course: assignment.course.map { Int($0.int32Value) }
+                )
+            }
+        } catch {
+            return .noTableForStudent
+        }
+        return .notLinked
     }
 
     func savePhysicalResult(_ result: PhysicalTestResult, attempts: [PhysicalTestAttempt]) async throws {

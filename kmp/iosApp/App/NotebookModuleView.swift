@@ -383,13 +383,17 @@ struct NotebookModuleView: View {
     }
 
     var body: some View {
+        // `AnyView` entre bloques de modificadores: sin estos cortes, el tipo de la
+        // vista anida decenas de hojas, avisos y `onChange`, y la primera apertura
+        // del Cuaderno congelaba la pantalla ~450 ms (Swift resuelve ese tipo
+        // gigante nivel a nivel). Solo bloques enteros, nunca filas ni celdas.
         if isMacInspectorOnly {
-            notebookLifecycleCleanup(notebookContentWithDialogs)
+            notebookLifecycleCleanup(AnyView(notebookContentWithDialogs))
         } else {
             notebookLifecycleCleanup(
-                notebookObservationModifiers(
-                    notebookSheetAndTaskModifiers(notebookContentWithDialogs)
-                )
+                AnyView(notebookObservationModifiers(
+                    AnyView(notebookSheetAndTaskModifiers(AnyView(notebookContentWithDialogs)))
+                ))
             )
         }
     }
@@ -1491,9 +1495,9 @@ struct NotebookModuleView: View {
         }
 
         if isMacInspectorOnly {
-            content
+            AnyView(content)
         } else {
-            content
+            AnyView(content)
                 .sheet(item: $addColumnContext) { context in
                     addColumnSheetPresentation(for: context)
                 }

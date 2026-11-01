@@ -3442,7 +3442,13 @@ extension KmpBridge {
                     syncVersion: 1
                 )
                 for criterion in criteria {
+                    // Paquetes antiguos llegan sin id de criterio: se reutiliza el criterio
+                    // existente con mismo texto y orden en vez de insertar un duplicado.
                     let criterionId = int64Value(criterion["id"]).flatMap { $0 > 0 ? $0 : nil }
+                        ?? existingDetail?.criteria.first { existing in
+                            existing.criterion.description_ == (criterion["description"] as? String)
+                                && Int64(existing.criterion.order) == int64Value(criterion["order"])
+                        }?.criterion.id
                     let existingCriterion = existingDetail?.criteria
                         .first { $0.criterion.id == criterionId }?
                         .criterion
@@ -3487,6 +3493,7 @@ extension KmpBridge {
                     for level in levels {
                         guard let levelName = level["name"] as? String else { continue }
                         let levelId = int64Value(level["id"]).flatMap { $0 > 0 ? $0 : nil }
+                            ?? existingLevels.first { Int64($0.order) == int64Value(level["order"]) }?.id
                         let existingLevel = existingLevels.first { $0.id == levelId }
                         let pointsKeyPresent = level.keys.contains("points")
                         let levelDescriptionKeyPresent = level.keys.contains("description")

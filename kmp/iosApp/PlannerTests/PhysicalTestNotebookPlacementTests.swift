@@ -99,3 +99,29 @@ final class PhysicalTestNotebookPlacementTests: XCTestCase {
         )
     }
 }
+
+final class PhysicalScoreGapTests: XCTestCase {
+    private func scale(sex: String?) -> PhysicalTestScale {
+        let now = Instant.companion.fromEpochMilliseconds(epochMilliseconds: 0)
+        return PhysicalTestScale(
+            id: UUID().uuidString, testId: "t", name: "b", course: KotlinInt(value: 2), ageFrom: nil, ageTo: nil,
+            sex: sex, batteryId: nil, direction: .lowerIsBetter, ranges: [], scoringMode: .step, scoreRoundTo: nil,
+            trace: AuditTrace(authorUserId: nil, createdAt: now, updatedAt: now, associatedGroupId: nil, deviceId: nil, syncVersion: 0)
+        )
+    }
+
+    func testSexOnlyScalesWithoutStudentSexIsMissingSex() {
+        // Caso real: «2º ESO · chicas» y «2º ESO · chicos», alumno sin sexo en su ficha.
+        let gap = PhysicalScoreGap.classify(scales: [scale(sex: "FEMALE"), scale(sex: "MALE")], studentSex: .unspecified, course: 2)
+        XCTAssertEqual(gap, .missingSex)
+    }
+
+    func testNeutralTableMeansItIsNotAboutSex() {
+        let gap = PhysicalScoreGap.classify(scales: [scale(sex: nil), scale(sex: "MALE")], studentSex: .unspecified, course: 2)
+        XCTAssertEqual(gap, .noTableForStudent)
+    }
+
+    func testNoScalesIsNoScale() {
+        XCTAssertEqual(PhysicalScoreGap.classify(scales: [], studentSex: .female, course: 2), .noScale)
+    }
+}

@@ -65,3 +65,36 @@ enum PhysicalTestNotebookPlacement {
         return result
     }
 }
+
+/// Motivo por el que una marca se queda sin nota.
+enum PhysicalScoreGap: Equatable {
+    /// La columna no está unida a ninguna prueba.
+    case notLinked
+    /// La prueba no tiene baremo.
+    case noScale
+    /// El baremo distingue chicas y chicos y el alumno no tiene sexo en su ficha.
+    case missingSex
+    /// Hay baremo, pero ninguna tabla para su curso o edad.
+    case noTableForStudent
+
+    static func classify(scales: [PhysicalTestScale], studentSex: StudentSex, course: Int?) -> PhysicalScoreGap {
+        guard !scales.isEmpty else { return .noScale }
+        let isNeutral: (PhysicalTestScale) -> Bool = { scale in
+            let sex = scale.sex?.uppercased() ?? ""
+            return sex.isEmpty || sex == "UNSPECIFIED" || sex == "ALL" || sex == "TODOS"
+        }
+        if studentSex == .unspecified, !scales.contains(where: isNeutral) {
+            return .missingSex
+        }
+        return .noTableForStudent
+    }
+
+    var message: String {
+        switch self {
+        case .notLinked: return "Esta columna no está unida a una prueba"
+        case .noScale: return "La prueba no tiene baremo"
+        case .missingSex: return "Falta el sexo en su ficha: el baremo es de chicas o chicos"
+        case .noTableForStudent: return "El baremo no tiene tabla para su curso o edad"
+        }
+    }
+}

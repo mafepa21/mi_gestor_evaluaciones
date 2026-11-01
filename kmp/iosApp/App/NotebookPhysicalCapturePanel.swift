@@ -18,6 +18,8 @@ struct NotebookPhysicalCapturePanel: View {
     let previewScore: @MainActor (Student, Double) async -> Double?
     let onSave: @MainActor (Student, String) async -> NotebookPhysicalMarkSaveOutcome
     let onGroupTimer: (() -> Void)?
+    var diagnose: (@MainActor (Student, Double) async -> PhysicalScoreGap?)?
+    var setSex: (@MainActor (Student, StudentSex) async -> Bool)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var index: Int
@@ -28,6 +30,8 @@ struct NotebookPhysicalCapturePanel: View {
     @State private var undoTask: Task<Void, Never>?
     @State private var isTypingTime = false
     @State private var preview: Double?
+    @State private var gap: PhysicalScoreGap?
+    @State private var isSettingSex = false
     @State private var isSaving = false
     @State private var savedMessage: String?
     /// Marcas guardadas con la ventana abierta: el listado recibido no se refresca.
@@ -41,7 +45,9 @@ struct NotebookPhysicalCapturePanel: View {
         tint: Color,
         previewScore: @escaping @MainActor (Student, Double) async -> Double?,
         onSave: @escaping @MainActor (Student, String) async -> NotebookPhysicalMarkSaveOutcome,
-        onGroupTimer: (() -> Void)? = nil
+        onGroupTimer: (() -> Void)? = nil,
+        diagnose: (@MainActor (Student, Double) async -> PhysicalScoreGap?)? = nil,
+        setSex: (@MainActor (Student, StudentSex) async -> Bool)? = nil
     ) {
         self.pair = pair
         self.roster = roster
@@ -49,6 +55,8 @@ struct NotebookPhysicalCapturePanel: View {
         self.previewScore = previewScore
         self.onSave = onSave
         self.onGroupTimer = onGroupTimer
+        self.diagnose = diagnose
+        self.setSex = setSex
         _index = State(initialValue: min(max(0, startIndex), max(0, roster.count - 1)))
     }
 
@@ -171,7 +179,7 @@ struct NotebookPhysicalCapturePanel: View {
         let label: String = {
             if isRunning { return "Corriendo…" }
             guard currentValue != nil else { return pair.kind == .time ? "Pulsa Iniciar cuando salga" : "Escribe la marca" }
-            return preview.map { "Nota \(NotebookPhysicalMark.decimalText($0))" } ?? "Sin baremo para este alumno"
+            return preview.map { "Nota \(NotebookPhysicalMark.decimalText($0))" } ?? (gap?.message ?? "Sin nota")
         }()
         HStack(spacing: 8) {
             if !isRunning, currentValue != nil {
@@ -184,7 +192,34 @@ struct NotebookPhysicalCapturePanel: View {
         .padding(.horizontal, 16)
         .frame(minHeight: 32)
         .background(Capsule().fill(.quaternary.opacity(0.6)))
+        .multilineTextAlignment(.center)
         .accessibilityElement(children: .combine)
+        if gap == .missingSex, setSex != nil, !isRunning, currentValue != nil {
+            HStack(spacing: 8) {
+                Button("Es chica") { Task { await fixSex(.female) } }
+                Button("Es chico") { Task { await fixSex(.male) } }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .disabled(isSettingSex)
+            .accessibilityHint("Lo guarda en su ficha y calcula la nota")
+        }
+    }
+
+    private func fixSex(_ sex: StudentSex) async {
+        guard let student = entry?.student, let setSex else { return }
+        isSettingSex = true
+        defer { isSettingSex = false }
+        guard await setSex(student, sex) else {
+            AppleInteractionFeedback.play(.error)
+            return
+        }
+        await refreshPreview()
+        // Si ya tenía marca guardada, se vuelve a guardar para que tenga su nota.
+        let saved = (savedMarks[student.id] ?? entry?.markText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !saved.isEmpty, saved != "—", preview != nil {
+            await save(advance: false)
+        }
     }
 
     // MARK: Cronómetro
@@ -292,11 +327,13 @@ struct NotebookPhysicalCapturePanel: View {
     private func refreshPreview() async {
         guard !isRunning, let student = entry?.student, let value = currentValue else {
             preview = nil
+            gap = nil
             return
         }
         let resolved = await previewScore(student, value)
         guard !Task.isCancelled else { return }
         preview = resolved
+        gap = resolved == nil ? await diagnose?(student, value) : nil
     }
 
     private func liveElapsed() -> TimeInterval {
@@ -425,7 +462,7 @@ struct NotebookPhysicalCapturePanel: View {
             AppleInteractionFeedback.play(.success)
         case .noScale:
             savedMarks[student.id] = text
-            savedMessage = "\(name): marca guardada, sin baremo"
+            savedMessage = "\(name): marca guardada, sin nota"
             AppleInteractionFeedback.play(.warning)
         case .cleared:
             savedMarks[student.id] = ""

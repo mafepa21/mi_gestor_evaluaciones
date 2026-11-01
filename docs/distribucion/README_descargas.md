@@ -30,19 +30,21 @@ Necesitas un Mac con chip Apple (M1 o posterior) y macOS 26 o posterior.
 ## Instalar
 
 1. Abre el archivo `.dmg` que has descargado.
-2. Arrastra **Cuaderno Vivo** a la carpeta **Aplicaciones**.
+2. Abre **Instalar Cuaderno Vivo** y sigue el asistente. Te pedirá la contraseña del Mac.
 3. Abre **Cuaderno Vivo** desde Aplicaciones.
+
+Si ya tenías Cuaderno Vivo, el instalador la cierra y la sustituye por la versión nueva. Tus datos no se tocan.
 
 ### La primera vez: «Abrir igualmente»
 
-Cuaderno Vivo es un proyecto personal y no está firmado con una cuenta de pago de Apple. Por eso, la primera vez que la abres, el Mac muestra un aviso y no la deja arrancar. Es normal. Para permitirla:
+Cuaderno Vivo es un proyecto personal y no está firmado con una cuenta de pago de Apple. Por eso, la primera vez que abres el instalador (y después la app), el Mac muestra un aviso y no la deja arrancar. Es normal. Para permitirla:
 
 1. Cierra el aviso.
 2. Abre **Ajustes del Sistema** > **Privacidad y seguridad**.
 3. Baja hasta el final. Verás un mensaje sobre Cuaderno Vivo.
 4. Pulsa **Abrir igualmente** y escribe tu contraseña del Mac.
 
-Solo hay que hacerlo una vez por cada versión nueva.
+Puede pedírtelo dos veces: una para el instalador y otra al abrir la app. Solo hay que hacerlo una vez por cada versión nueva.
 
 ## Importar tus documentos
 

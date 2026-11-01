@@ -1,0 +1,40 @@
+#!/bin/bash
+# Preinstalación del .pkg de Cuaderno Vivo (se ejecuta como root).
+#
+# 1. Cierra la app y el ayudante de sincronización si están abiertos, para que
+#    la base de datos quede bien cerrada antes de cambiar los archivos.
+# 2. Borra la app instalada entera. Installer copia encima sin borrar: sin este
+#    paso, los archivos que ya no existan en la versión nueva se quedarían.
+#
+# Los datos (~/Library/Application Support/MiGestor) y las copias de seguridad
+# no se tocan nunca.
+
+APP="/Applications/Cuaderno Vivo.app"
+BUNDLE_ID="com.migestor.mac"
+HELPER="MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter"
+
+console_user="$(stat -f '%Su' /dev/console)"
+console_uid="$(id -u "${console_user}" 2>/dev/null || echo "")"
+
+# Primero se le pide a la app que se cierre como si el usuario pulsara ⌘Q.
+if [ -n "${console_uid}" ] && [ "${console_user}" != "root" ] && pgrep -x "Cuaderno Vivo" >/dev/null; then
+  launchctl asuser "${console_uid}" sudo -u "${console_user}" \
+    osascript -e "tell application id \"${BUNDLE_ID}\" to quit" >/dev/null 2>&1 || true
+fi
+
+# El ayudante no tiene ventana: basta con SIGTERM.
+pkill -TERM -f "${HELPER}" >/dev/null 2>&1 || true
+
+# Hasta 15 s para que terminen; si no, se fuerza.
+for _ in $(seq 1 30); do
+  pgrep -x "Cuaderno Vivo" >/dev/null || pgrep -f "${HELPER}" >/dev/null || break
+  sleep 0.5
+done
+pkill -KILL -x "Cuaderno Vivo" >/dev/null 2>&1 || true
+pkill -KILL -f "${HELPER}" >/dev/null 2>&1 || true
+
+if [ -d "${APP}" ]; then
+  rm -rf "${APP}"
+fi
+
+exit 0

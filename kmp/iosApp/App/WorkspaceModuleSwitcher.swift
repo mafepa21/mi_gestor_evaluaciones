@@ -144,9 +144,9 @@ extension AppWorkspaceShell {
             )
             .kmpBridgeEnvironment(bridge)
         case .peTests:
-            PhysicalTestsWorkspaceView(
+            PhysicalTestsHomeView(
                 selectedClassId: $selectedClassId,
-                onOpenModule: open(module:classId:studentId:)
+                onOpenNotebook: { open(module: .notebook, classId: $0, studentId: nil) }
             )
             .kmpBridgeEnvironment(bridge)
         case .peRubrics:

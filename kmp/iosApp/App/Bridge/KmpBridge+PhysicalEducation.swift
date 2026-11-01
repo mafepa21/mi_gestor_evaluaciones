@@ -139,7 +139,11 @@ extension KmpBridge {
                 let scale = try await container.physicalTestsRepository.resolveScale(
                     testId: link.testId,
                     course: assignment.course,
-                    age: physicalScaleAge(for: student).map { KotlinInt(value: Int32($0)) },
+                    // Sin fecha de nacimiento: edad del grupo o la habitual del curso.
+                    age: (physicalScaleAge(for: student)
+                        ?? assignment.ageFrom.map { Int($0.int32Value) }
+                        ?? PhysicalTestNotebookPlacement.typicalAge(course: assignment.course.map { Int($0.int32Value) }))
+                        .map { KotlinInt(value: Int32($0)) },
                     sex: physicalScaleSex(for: student),
                     batteryId: assignment.batteryId
                 )
@@ -197,7 +201,8 @@ extension KmpBridge {
         weight: Double,
         countsTowardAverage: Bool,
         dateEpochMs: Int64,
-        targetTabId: String? = nil
+        targetTabId: String? = nil,
+        isHidden: Bool = false
     ) async throws -> String {
         let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {
@@ -243,8 +248,8 @@ extension KmpBridge {
             availableIcons: [],
             countsTowardAverage: countsTowardAverage,
             isPinned: false,
-            isHidden: false,
-            visibility: .visible,
+            isHidden: isHidden,
+            visibility: isHidden ? .hidden : .visible,
             isLocked: false,
             isTemplate: false,
             emptyCellPolicy: .excludeFromAverage,

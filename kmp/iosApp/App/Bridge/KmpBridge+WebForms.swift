@@ -25,6 +25,16 @@ extension KmpBridge {
         let publicados = (try? await container.webSubmissionsRepository
             .listFormInstancesForClass(classId: classId)) ?? []
 
+        // El resumen de columnas no dice si cuentan para la media; la definición
+        // completa sí. Hace falta para avisar cuando una coevaluación solo
+        // informativa va a entrar en la nota.
+        let definiciones = (try? await container.notebookRepository
+            .loadNotebookSnapshot(classId: classId))?.columns ?? []
+        let cuentaEnMedia = Dictionary(
+            definiciones.map { ($0.id, $0.countsTowardAverage) },
+            uniquingKeysWith: { primero, _ in primero }
+        )
+
         var salida: [WebPublishableInstrument] = []
         for columna in columnas {
             guard let detalle = try? await container.notebookInstrumentsRepository
@@ -54,7 +64,12 @@ extension KmpBridge {
                         $0.columnId == columna.id && !$0.revoked
                     },
                     blockingIssue: problema,
-                    passportStops: paradas
+                    passportStops: paradas,
+                    scaleItems: detalle.items
+                        .sorted { $0.order < $1.order }
+                        .filter { $0.type == .scale14 }
+                        .map { WebPublishableScaleItem(id: $0.id, title: $0.title) },
+                    countsTowardAverage: cuentaEnMedia[columna.id] ?? true
                 )
             )
         }
@@ -351,7 +366,10 @@ extension KmpBridge {
         expiresAt: Date,
         mode: String = "self",
         /// Idioma de la web del alumnado («es» o «en»).
-        locale: String = "es"
+        locale: String = "es",
+        /// Dibujo de cada apartado de escala 1-4 (id del apartado → clave de
+        /// `WebRubricVisual`). Los que no aparecen se ven como rúbrica normal.
+        visuals: [String: String] = [:]
     ) async throws -> WebPublishResult {
         guard let detalle = try await container.notebookInstrumentsRepository
             .getTemplateForColumn(columnId: columnId) else {
@@ -393,7 +411,8 @@ extension KmpBridge {
                 // La plantilla del Cuaderno no guarda etiquetas por nivel; la
                 // PWA cae a 1-2-3-4, que es lo que se ve en el instrumento.
                 scaleLabels: nil,
-                sectionId: seccionPorIndice[indice]
+                sectionId: seccionPorIndice[indice],
+                visual: item.type == .scale14 ? visuals[item.id] : nil
             )
         }
         let secciones = (paradas?.stops ?? []).map {

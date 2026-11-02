@@ -93,7 +93,7 @@ struct WebSubmissionsWorkspaceView: View {
                 baseURL: $baseURL,
                 deliveryEmail: $deliveryEmail,
                 isPublishing: publishing,
-                onPublish: { columnId, url, correo, caducidad, modo, idioma in
+                onPublish: { columnId, url, correo, caducidad, modo, idioma, dibujos in
                     Task {
                         await publish(
                             columnId: columnId,
@@ -101,7 +101,8 @@ struct WebSubmissionsWorkspaceView: View {
                             deliveryEmail: correo,
                             expiresAt: caducidad,
                             mode: modo,
-                            locale: idioma
+                            locale: idioma,
+                            visuals: dibujos
                         )
                     }
                 },
@@ -694,7 +695,8 @@ struct WebSubmissionsWorkspaceView: View {
         deliveryEmail correo: String,
         expiresAt: Date,
         mode: String = "self",
-        locale: String = "es"
+        locale: String = "es",
+        visuals: [String: String] = [:]
     ) async {
         guard let classId = creationClassId else { return }
         publishing = true
@@ -707,7 +709,8 @@ struct WebSubmissionsWorkspaceView: View {
                 deliveryEmail: cleanEmail(correo),
                 expiresAt: expiresAt,
                 mode: mode,
-                locale: locale
+                locale: locale,
+                visuals: visuals
             )
             await reload()
             await reloadCreationInstruments()

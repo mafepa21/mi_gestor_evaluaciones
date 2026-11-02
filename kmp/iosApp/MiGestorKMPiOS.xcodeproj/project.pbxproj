@@ -548,6 +548,7 @@
 		9D83A1D7E52754F96510EC9E /* WebSubmissionInboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 869391CFDB1C9575306D9A05 /* WebSubmissionInboxTests.swift */; };
 		9DBAC0638928BB61794F3584 /* NotebookModuleQuickKeypad.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC4FA91E783D30DECEFCF17B /* NotebookModuleQuickKeypad.swift */; };
 		9E58C9D4FBE1D8D5C15718AB /* EducationalPatternsClassifier.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = 2FF82C9CFA92B54E8B91CEDB /* EducationalPatternsClassifier.mlmodel */; };
+		9EBE7A9F2026E1763482E015 /* StudentEmailImportCourseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E1268449FDD64F9B62D7BE0 /* StudentEmailImportCourseTests.swift */; };
 		9F5E000C6AADAB9FD0D828FC /* PlannerDaySheetPDFRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B834188C13BEE93C12A69D4 /* PlannerDaySheetPDFRendererTests.swift */; };
 		9FBB4CEAC255A4AFFC7233CB /* WebSubmissionTestBench.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C2E7C1B3A5F4520E560349 /* WebSubmissionTestBench.swift */; };
 		9FF95CF0A5AA8ED9670DAF54 /* AttendanceMatrixGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44666CD26B297BBB70CA88A9 /* AttendanceMatrixGridView.swift */; };
@@ -1043,6 +1044,7 @@
 		2B295CDB0A0C9F2C1835EF56 /* WorkspaceCreationSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceCreationSheets.swift; sourceTree = "<group>"; };
 		2BAD893EC7E90121671F7BDB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2BEF0E010E58D2913808C04F /* SdaTournamentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SdaTournamentModels.swift; sourceTree = "<group>"; };
+		2E1268449FDD64F9B62D7BE0 /* StudentEmailImportCourseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentEmailImportCourseTests.swift; sourceTree = "<group>"; };
 		2E31019B3456252E21063E25 /* PlannerWeekDetailPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerWeekDetailPane.swift; sourceTree = "<group>"; };
 		2F3CFF561EADCCA10B3E865F /* PlannerSessionDetailLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSessionDetailLayoutTests.swift; sourceTree = "<group>"; };
 		2FF82C9CFA92B54E8B91CEDB /* EducationalPatternsClassifier.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = file.mlmodel; path = EducationalPatternsClassifier.mlmodel; sourceTree = "<group>"; };
@@ -1573,6 +1575,7 @@
 				C5C8730605D67F558646673D /* SdaTournamentsOverviewTests.swift */,
 				AEDFA4E9C6FE2D6737FE3983 /* SdaTournamentSupportTests.swift */,
 				63A890708755850506B3A003 /* SdaTournamentTeamsSheetTests.swift */,
+				2E1268449FDD64F9B62D7BE0 /* StudentEmailImportCourseTests.swift */,
 				A0774A7DE7911EED2EC152DD /* TournamentEngineTests.swift */,
 				D519FB48543599E5BCF1E317 /* TournamentPlanEstimatorTests.swift */,
 				8876B438DCEBEAA8FA4D2DCE /* TournamentRegistrationTests.swift */,
@@ -2426,6 +2429,7 @@
 				A0CEF9130D5147816B3021C2 /* SdaTournamentSupportTests.swift in Sources */,
 				704638B2E91290DA9C7D9685 /* SdaTournamentTeamsSheetTests.swift in Sources */,
 				4ACE9DD2250D2D877FFF474C /* SdaTournamentsOverviewTests.swift in Sources */,
+				9EBE7A9F2026E1763482E015 /* StudentEmailImportCourseTests.swift in Sources */,
 				94F00CA3BF7BD2D188CA7630 /* TournamentEngineTests.swift in Sources */,
 				56B948961FB1B6041C2051DE /* TournamentPlanEstimatorTests.swift in Sources */,
 				784EA4B87172C9AB896017AD /* TournamentRegistrationTests.swift in Sources */,

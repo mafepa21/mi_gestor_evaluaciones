@@ -18,3 +18,4 @@
 - `averageText` llega como texto con punto («9.63» o «--»): se formatea en la vista con `formattedAverage`.
 - `recentAttendanceLabel` es texto libre del estado; `notableAttendanceLabel` oculta «presente» y «Sin registro».
 - `lastObservationText` vale «Sin observaciones» cuando no hay nada: se compara literal.
+- Importador de correos (`AppleShared/StudentEmailImportService.swift`): el curso de la hoja puede ser una ruta sin grupo («/Alumnes/ESO/1ESO 2026-27»), así que se busca en todos los grupos del nivel y decide el nombre del correo. No volver a quedarse con la primera clase que encaje.

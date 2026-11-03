@@ -35,7 +35,7 @@ struct EducamosSMExportSheet: View {
     struct MatchedColumn: Identifiable {
         let id: String // columnLetter ("G", "H", "I", "M"...)
         let educamosElement: EducamosSMElement
-        let appColumn: NotebookColumnDefinition?
+        var appColumn: NotebookColumnDefinition?
         let isCategorySA: Bool
         let appTabTitle: String?
 
@@ -190,7 +190,9 @@ struct EducamosSMExportSheet: View {
 
                             Spacer()
 
-                            if col.isMatched {
+                            if col.educamosElement.isInstrumento {
+                                columnPicker(for: col)
+                            } else if col.isMatched {
                                 HStack(spacing: 4) {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundStyle(.green)
@@ -209,7 +211,7 @@ struct EducamosSMExportSheet: View {
                     Text("Columnas detectadas")
                 } footer: {
                     let matchedCount = matchedColumns.filter(\.isMatched).count
-                    Text("\(matchedCount) de \(matchedColumns.count) columnas emparejadas con el cuaderno.")
+                    Text("\(matchedCount) de \(matchedColumns.count) columnas emparejadas con el cuaderno. Toca una columna para elegirla a mano; la app recordará tu elección en este grupo.")
                 }
 
                 Section {
@@ -287,6 +289,57 @@ struct EducamosSMExportSheet: View {
             .padding()
             .background(.bar)
         }
+    }
+
+    /// Menú para elegir a mano la columna del cuaderno de un instrumento de Educamos.
+    private func columnPicker(for col: MatchedColumn) -> some View {
+        Menu {
+            Button {
+                chooseColumn(nil, for: col)
+            } label: {
+                if col.appColumn == nil {
+                    Label("Sin columna", systemImage: "checkmark")
+                } else {
+                    Text("Sin columna")
+                }
+            }
+
+            Divider()
+
+            ForEach(selectableAppColumns, id: \.id) { appCol in
+                Button {
+                    chooseColumn(appCol, for: col)
+                } label: {
+                    if appCol.id == col.appColumn?.id {
+                        Label(appCol.title, systemImage: "checkmark")
+                    } else {
+                        Text(appCol.title)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                if col.isMatched {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text(col.sourceTitle)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                } else {
+                    Text("Elegir columna")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
+        .accessibilityLabel("Columna del cuaderno para \(col.educamosElement.shortName)")
+        .accessibilityValue(col.isMatched ? col.sourceTitle : "Sin columna")
     }
 
     // MARK: - Step 3: Export result
@@ -426,21 +479,62 @@ struct EducamosSMExportSheet: View {
         }
     }
 
+    /// Columnas que se pueden emparejar: las ocultas (p. ej. «Marca» de una prueba
+    /// con baremo) no se exportan, solo su columna visible de nota.
+    private var selectableAppColumns: [NotebookColumnDefinition] {
+        data.sheet.columns.filter { !$0.isHidden }
+    }
+
+    // MARK: - Elección manual recordada por grupo
+
+    private var savedMappingKey: String {
+        "educamos.sm.columnMapping.\(data.sheet.classId)"
+    }
+
+    /// Clave estable del elemento de Educamos: su UUID o, si falta, su nombre corto.
+    private func mappingKey(for element: EducamosSMElement) -> String {
+        element.uuid ?? "name:\(element.shortName)"
+    }
+
+    /// Elecciones guardadas: id de columna, o cadena vacía si se eligió «Sin columna».
+    private func savedMapping() -> [String: String] {
+        UserDefaults.standard.dictionary(forKey: savedMappingKey) as? [String: String] ?? [:]
+    }
+
+    private func chooseColumn(_ appColumn: NotebookColumnDefinition?, for col: MatchedColumn) {
+        var mapping = savedMapping()
+        mapping[mappingKey(for: col.educamosElement)] = appColumn?.id ?? ""
+        UserDefaults.standard.set(mapping, forKey: savedMappingKey)
+
+        guard let index = matchedColumns.firstIndex(where: { $0.id == col.id }) else { return }
+        matchedColumns[index].appColumn = appColumn
+        if let template {
+            buildStudentMatches(template: template)
+        }
+    }
+
     /// Empareja columnas, pestañas de SA y alumnos de Educamos con los datos del cuaderno.
     private func buildMatching(template: EducamosSMTemplate) {
-        let appStudents = filteredAppStudents
+        let candidates = selectableAppColumns
+        let saved = savedMapping()
 
         // 1. Emparejar columnas e instrumentos
         var columnMatches: [MatchedColumn] = []
 
         for element in template.elements {
             if element.isInstrumento {
-                // Buscar columna del cuaderno cuyo título coincida con el nombre corto
-                let matchedCol = data.sheet.columns.first { col in
-                    col.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                        .localizedCaseInsensitiveCompare(element.shortName) == .orderedSame
-                } ?? data.sheet.columns.first { col in
-                    col.title.localizedCaseInsensitiveContains(element.shortName)
+                // Primero la elección guardada; si no hay, el título que coincida con el nombre corto
+                let matchedCol: NotebookColumnDefinition?
+                if let savedId = saved[mappingKey(for: element)],
+                   savedId.isEmpty || candidates.contains(where: { $0.id == savedId }) {
+                    matchedCol = candidates.first { $0.id == savedId }
+                } else {
+                    matchedCol = candidates.first { col in
+                        col.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                            .localizedCaseInsensitiveCompare(element.shortName) == .orderedSame
+                    } ?? candidates.first { col in
+                        col.title.localizedCaseInsensitiveContains(element.shortName)
+                    }
                 }
 
                 columnMatches.append(MatchedColumn(
@@ -479,6 +573,13 @@ struct EducamosSMExportSheet: View {
         }
 
         matchedColumns = columnMatches
+        buildStudentMatches(template: template)
+    }
+
+    /// Empareja alumnos y reúne sus notas según las columnas emparejadas.
+    private func buildStudentMatches(template: EducamosSMTemplate) {
+        let appStudents = filteredAppStudents
+        let columnMatches = matchedColumns
 
         // 2. Emparejar alumnos
         matchedStudents = template.students.map { educamosStudent in

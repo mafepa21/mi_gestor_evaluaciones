@@ -120,6 +120,9 @@ struct PlannerSessionDetailSheet: View {
     @AppStorage("planner.sessionDetail.viewMode") private var viewModeRaw = PlannerSessionViewMode.document.rawValue
     @State private var isDeleteConfirmationPresented = false
     @State private var isClassKitPresented = false
+    @State private var isActualEditPresented = false
+    /// Aviso breve tras guardar «Lo que hice» en el diario.
+    @State private var isActualSavedNoticeVisible = false
     @State private var enlargedVisual: PlannerEnlargedVisual?
     @State private var isAnnexesExpanded = false
     /// Proyección de repaso rápido: se calcula una sola vez al cargar el plan.
@@ -184,6 +187,18 @@ struct PlannerSessionDetailSheet: View {
             await loadLinkedInstruments()
         }
         .quickLookPreview($sourceDocumentURL)
+        .overlay(alignment: .bottom) {
+            if isActualSavedNoticeVisible {
+                actualSavedNotice
+                    .padding(24)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .task {
+                        try? await Task.sleep(for: .seconds(4))
+                        withAnimation { isActualSavedNoticeVisible = false }
+                    }
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: isActualSavedNoticeVisible)
         .sheet(isPresented: $isClassKitPresented) {
             if let reviewProjection {
                 PlannerSessionClassKitSheet(input: PlannerClassKitInput(
@@ -191,6 +206,16 @@ struct PlannerSessionDetailSheet: View {
                     title: classKitTitle,
                     meta: headerMetaLine
                 ))
+            }
+        }
+        .sheet(isPresented: $isActualEditPresented) {
+            if let reviewProjection {
+                PlannerSessionActualEditSheet(
+                    session: session,
+                    input: PlannerActualEditInput(projection: reviewProjection, title: classKitTitle, meta: headerMetaLine),
+                    onSaved: { isActualSavedNoticeVisible = true }
+                )
+                .kmpBridgeEnvironment(bridge)
             }
         }
         .confirmationDialog(
@@ -605,10 +630,27 @@ struct PlannerSessionDetailSheet: View {
         }
     }
 
+    private var actualSavedNotice: some View {
+        HStack(spacing: 16) {
+            Label("Guardado en el diario", systemImage: "checkmark.circle.fill")
+            Button("Abrir diario") {
+                isActualSavedNoticeVisible = false
+                onOpenDiary()
+            }
+            .fontWeight(.semibold)
+        }
+        .font(.callout)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: Capsule())
+        .accessibilityElement(children: .contain)
+    }
+
     private var sessionActionsMenu: some View {
         Menu {
             if reviewProjection != nil {
                 Button { isClassKitPresented = true } label: { Label("Kit de clase", systemImage: "list.clipboard") }
+                Button { isActualEditPresented = true } label: { Label("Lo que hice", systemImage: "checklist.checked") }
             }
             Button(action: onEdit) { Label("Editar", systemImage: "pencil") }
             if onCopyToNextWeek != nil {

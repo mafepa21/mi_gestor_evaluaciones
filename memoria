@@ -3,6 +3,35 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-11-04 - Actualización Curricular y Test de Importación de Sesión 6 SA 2 Bádminton (Sistema Escalafón Relámpago CLIL)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Documentación curricular docente (`Programaciones`):
+     - Rediseño pedagógico y operativo de la Sesión 6 ("Lightning Ladder: Double Rotation System") de SA 2 (Bádminton 1º Bachillerato) para 34 alumnos en 8 minicampos: 4 actividades matemáticamente calibradas para 30 minutos útiles (Activación cooperativa 5', Escalafón Relámpago 1v1 con micro-rotación 10-15s y macro-rotación cada 4' durante 12', Escalafón Táctico Condicionado con 3 condicionantes tácticos durante 11', y Cierre con recogida 2').
+     - Formulación 100% en inglés con enfoque CLIL (Teacher Cues, Student Interaction, Debrief, scaffolding lingüístico).
+     - Incorporación en ambas rutas horarias (Ruta 1 E06 Bloque 1 y Ruta 2 E06).
+     - Compilación Pandoc a `.docx` limpia en `output/.../02_SESIONES` y sincronización con `ENTREGA_DRIVE`.
+     - Regeneración del visor HTML interactivo con `tools/ver_sa.py`.
+  2. Planificador de la App (`MiGestorKMPiOS`):
+     - Verificación del importador dinámico `LearningSituationSessionSequenceDocumentImportService` frente a la estructura de 4 actividades y 30 minutos útiles de la Sesión 6.
+     - Extensión de `LearningSituationDocumentImportTests.swift` con candidatos de búsqueda locales y aserciones explícitas para Sesión 6 (`effectiveMinutes == 30`, 4 actividades, presencia de palabras clave del sistema de doble rotación).
+- Por qué importa:
+  - Garantiza un compromiso motor superior al 70% en contextos de alta ratio (34 alumnos) y espacio reducido (8 minicampos), eliminando tanto las colas pasivas de 18 alumnos parados del "Rey de la pista" tradicional como el juego estático y riesgo de choques de partidos 2v2 en minicampos.
+  - El planificador de la app importa las sesiones directamente desde los documentos curriculares `.docx` sin desajustes de tiempos ni errores de parseo de actividades.
+- Dónde vive el cambio:
+  - `Programaciones/_archivo_tecnico/fuentes_markdown/output/Programación aula/Situaciones de aprendizaje/1º Bachillerato/SA 2 - Smash Together Badminton (1 BAC)/02_SESIONES/sesiones_secuenciadas.md`
+  - `Programaciones/output/Programación aula/Situaciones de aprendizaje/1º Bachillerato/SA 2 - Smash Together Badminton (1 BAC)/02_SESIONES/sesiones_secuenciadas.docx`
+  - `kmp/iosApp/PlannerTests/LearningSituationDocumentImportTests.swift`
+  - `docs/CHANGELOG.md`
+- Validación realizada:
+  - Simulación y verificación del parser regex de `LearningSituationSessionSequenceDocumentImportService`: 8/8 encuentros validados en ambas rutas (`shortFirst` y `longFirst`) con sumas de minutos exactas a 30 y 80 minutos.
+  - Pandoc docx generation: Exit 0 sin warnings de recursos.
+  - `tools/ver_sa.py`: 16 sesiones procesadas correctamente en el visor.
+
+Notas para futuras conversaciones:
+- En `LearningSituationDocumentImportService.swift`, el regex de minutos para encabezados de actividad toma el primer número entero encontrado antes de 'min' (`([0-9]+)\s*(?:minutos?|minutes?|min)`). Para evitar que subtítulos como `(3 blocks of 4 min) · 12 minutes` se parseen como 4 minutos en vez de 12, el total debe colocarse siempre antes o únicamente en el título de la actividad (`### 2. Lightning Ladder: Core 1v1 Duels · 12 minutes`).
+
 ## Avance 2026-10-07 - Optimización Integral de Rendimiento y Fluidez en Cuaderno, Asistencia y Planificador
 
 Resumen:

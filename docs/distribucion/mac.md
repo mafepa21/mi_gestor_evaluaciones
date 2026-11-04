@@ -19,6 +19,7 @@ Cómo publicar una versión nueva de la app de Mac para que cualquiera pueda des
 
 - El `.dmg` lleva solo «Instalar Cuaderno Vivo.pkg»: el asistente de instalación de macOS, en español (`scripts/mac-installer/`).
 - Antes de copiar, `preinstall` cierra la app (como ⌘Q) y el ayudante de sincronización, y borra `/Applications/Cuaderno Vivo.app` entera. Así no quedan archivos de la versión anterior ni copias como «Cuaderno Vivo 2».
+- Al terminar, `postinstall` expulsa el volumen `.dmg` montado y envía a la Papelera el instalador descargado (`.dmg` o `.pkg`).
 - El componente no es reubicable ni comprueba versión: siempre instala en `/Applications` y siempre deja su versión, también al reinstalar la misma.
 - Los datos (`~/Library/Application Support/MiGestor`) y las copias de seguridad no se tocan.
 - El `.pkg` tampoco está firmado: la primera vez macOS lo bloquea y hay que pulsar «Abrir igualmente» igual que con la app.

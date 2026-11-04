@@ -72,8 +72,8 @@ fi
 codesign --force --sign - "${APP_PATH}"
 codesign --verify --deep --strict "${APP_PATH}"
 
-# 3. Instalador .pkg: un componente con la app en /Applications y el
-#    script de preinstalación, envuelto en un producto con asistente en español.
+# 3. Instalador .pkg: un componente con la app en /Applications y los
+#    scripts de preinstalación y posinstalación, envuelto en un producto con asistente en español.
 echo "[3/5] Creando el instalador .pkg..."
 mkdir -p "${PKG_WORK}/root/Applications" "${PKG_WORK}/resources"
 ditto --norsrc --noextattr --noqtn "${APP_PATH}" "${PKG_WORK}/root/Applications/${APP_NAME}.app"
@@ -130,6 +130,9 @@ grep -q "Applications/${APP_NAME}.app/Contents/MacOS/" <<< "${PAYLOAD}" \
 pkgutil --expand "${STAGING}/${PKG_NAME}" "${PKG_WORK}/expanded"
 [ -x "${PKG_WORK}/expanded/CuadernoVivo-app.pkg/Scripts/preinstall" ] \
   || { echo "✗ El .pkg no lleva el script de preinstalación" >&2; exit 1; }
+[ -x "${PKG_WORK}/expanded/CuadernoVivo-app.pkg/Scripts/postinstall" ] \
+  || { echo "✗ El .pkg no lleva el script de posinstalación" >&2; exit 1; }
+cp -f "${STAGING}/${PKG_NAME}" "${OUT_DIR}/${PKG_NAME}"
 
 # 5. Crear el .dmg comprimido y su huella SHA-256 para comprobar la descarga.
 echo "[5/5] Creando ${DMG_PATH}..."

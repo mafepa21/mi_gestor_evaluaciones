@@ -1457,8 +1457,27 @@ extension KmpBridge {
         let existingRubrics = try await container.rubricsRepository.listRubrics()
         if let matching = existingRubrics.first(where: {
             $0.rubric.name.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current) ==
-            instrument.title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            instrument.title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current) &&
+            ($0.rubric.classId == nil || $0.rubric.classId?.int64Value == classId)
         }) {
+            var didBackfillPresentation = false
+            for (criterionIndex, draftCriterion) in rubric.criteria.enumerated()
+            where draftCriterion.visualKey != nil || draftCriterion.timingConfig != nil {
+                guard let existingCriterion = matching.criteria.first(where: { Int($0.criterion.order) == criterionIndex })?.criterion else { continue }
+                let resolvedVisualKey = existingCriterion.visualKey ?? draftCriterion.visualKey
+                let resolvedTimingConfig = existingCriterion.timingConfig ?? draftCriterion.timingConfig
+                if resolvedVisualKey != existingCriterion.visualKey || resolvedTimingConfig != existingCriterion.timingConfig {
+                    try await container.rubricsRepository.saveCriterionPresentation(
+                        criterionId: existingCriterion.id,
+                        visualKey: resolvedVisualKey,
+                        timingConfig: resolvedTimingConfig
+                    )
+                    didBackfillPresentation = true
+                }
+            }
+            if didBackfillPresentation {
+                try? await refreshRubrics()
+            }
             return matching.rubric.id
         }
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
@@ -1474,6 +1493,7 @@ extension KmpBridge {
             syncVersion: 1
         ).int64Value
 
+        var syncedCriteria: [[String: Any]] = []
         for (criterionIndex, criterion) in rubric.criteria.enumerated() {
             let criterionId = try await container.rubricsRepository.saveCriterion(
                 id: nil,
@@ -1485,11 +1505,19 @@ extension KmpBridge {
                 deviceId: localDeviceId,
                 syncVersion: 1
             ).int64Value
+            if criterion.visualKey != nil || criterion.timingConfig != nil {
+                try await container.rubricsRepository.saveCriterionPresentation(
+                    criterionId: criterionId,
+                    visualKey: criterion.visualKey,
+                    timingConfig: criterion.timingConfig
+                )
+            }
+            var syncedLevels: [[String: Any]] = []
             for (levelIndex, level) in rubric.levels.enumerated() {
                 let description = levelIndex < criterion.descriptors.count
                     ? criterion.descriptors[levelIndex].nilIfBlank
                     : nil
-                _ = try await container.rubricsRepository.saveLevel(
+                let levelId = try await container.rubricsRepository.saveLevel(
                     id: nil,
                     criterionId: criterionId,
                     name: level.label,
@@ -1499,9 +1527,39 @@ extension KmpBridge {
                     updatedAtEpochMs: nowMs,
                     deviceId: localDeviceId,
                     syncVersion: 1
-                )
+                ).int64Value
+                syncedLevels.append([
+                    "id": levelId,
+                    "name": level.label,
+                    "points": level.points,
+                    "description": description ?? "",
+                    "order": levelIndex
+                ])
             }
+            syncedCriteria.append([
+                "id": criterionId,
+                "description": criterion.title,
+                "weight": criterion.weight,
+                "order": criterionIndex,
+                "levels": syncedLevels,
+                "visualKey": criterion.visualKey ?? NSNull(),
+                "timingConfig": criterion.timingConfig ?? NSNull()
+            ])
         }
+        enqueueLocalChange(
+            entity: "rubric_bundle",
+            id: "\(rubricId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "rubricId": rubricId,
+                "editingRubricId": NSNull(),
+                "name": instrument.title,
+                "description": "Importada desde \(sourceFileName)",
+                "classId": classId,
+                "teachingUnitId": teachingUnitId ?? NSNull(),
+                "criteria": syncedCriteria
+            ]
+        )
         try? await refreshRubrics()
         try? await refreshRubricClassLinks()
         return rubricId

@@ -723,9 +723,11 @@ struct LearningSituationAssessmentInstrumentsImportService {
             .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
 
         let visualKey: String?
-        if normTitle.contains("cara plana") || (normTitle.contains("conduccion") && normAll.contains("cara plana")) {
+        if normTitle.contains("vuelta") && (normTitle.contains("slalom") || normTitle.contains("linea") || normTitle.contains("inicio") || normAll.contains("linea de inicio")) {
+            visualKey = "hockey.shot_on_goal"
+        } else if normTitle.contains("cara plana") || (normTitle.contains("conduccion") && normAll.contains("cara plana")) || (normTitle.contains("slalom") && normAll.contains("cara plana")) {
             visualKey = "hockey.dribble_flat_face"
-        } else if normTitle.contains("push") && normTitle.contains("flick") {
+        } else if normTitle.contains("push") && (normTitle.contains("pared") || normTitle.contains("rebote") || normTitle.contains("flick") || normAll.contains("pared")) {
             visualKey = "hockey.push_flick"
         } else if normTitle.contains("tiro a porteria") && (normAll.contains("portero") || normAll.contains("esquina")) {
             visualKey = "hockey.shot_on_goal"
@@ -743,7 +745,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
         levelCount: Int
     ) -> String? {
         guard descriptors.count == levelCount, levelCount >= 2 else { return nil }
-        let looksLikeTimeCriterion = title.contains("tiempo") || title.contains("cronometro") || title.contains("slalom")
+        let looksLikeTimeCriterion = title.contains("tiempo") || title.contains("cronometro") || title.contains("circuito") || title.contains("slalom")
         guard looksLikeTimeCriterion else { return nil }
 
         // Extraemos los segundos mencionados en los descriptores (p. ej. "15 s o más", "De 12 a 15 s", "Menos de 10 s")

@@ -15,12 +15,12 @@ enum RubricVisuals {
     }
 
     static let options: [Option] = [
-        Option(key: "hockey.dribble_flat_face", title: "Hockey · Conducción con la cara plana",
-               summary: "Qué cara del stick toca la bola y si mantiene el control en el slalom."),
-        Option(key: "hockey.push_flick", title: "Hockey · Pase push y flick",
-               summary: "Si el pase raso llega y si el flick supera el obstáculo o la línea rival."),
-        Option(key: "hockey.shot_on_goal", title: "Hockey · Tiro a portería",
-               summary: "Fuera, al centro, a una esquina o con amago al portero."),
+        Option(key: "hockey.dribble_flat_face", title: "Hockey · Slalom de 4 conos con la cara plana",
+               summary: "Salida y slalom estrecho (4 conos a 30 cm) usando solo la cara plana del stick."),
+        Option(key: "hockey.push_flick", title: "Hockey · Pase push a la pared y control tras rebote",
+               summary: "Pase raso firme contra la pared y recepción amortiguada tras el rebote."),
+        Option(key: "hockey.shot_on_goal", title: "Hockey · Vuelta al slalom y parada en línea de inicio",
+               summary: "Regreso en zigzag por los 4 conos y detención controlada antes de la línea de salida."),
     ]
 
     static func isKnown(_ key: String?) -> Bool {
@@ -54,6 +54,9 @@ enum RubricVisuals {
         case goal
         case target(CGRect)
         case post(CGRect)
+        /// Pared de rebote (derecha) o línea de salida/llegada (izquierda).
+        case wall
+        case startLine
         /// Cabeza del stick abajo a la derecha: cara plana (bien) o redondeada (mal).
         case stick(flatFace: Bool)
     }
@@ -69,61 +72,73 @@ enum RubricVisuals {
         return path
     }
 
-    private static let cones: [Mark] = [.cone(p(46, 48)), .cone(p(66, 40)), .cone(p(86, 56)), .cone(p(106, 40))]
-    private static var slalom: Path {
+    /// 4 conos muy juntos (~30 cm en pista) para el slalom de ida y vuelta.
+    private static let cones: [Mark] = [.cone(p(52, 48)), .cone(p(68, 40)), .cone(p(84, 56)), .cone(p(100, 40))]
+    private static var slalomOut: Path {
         var path = Path()
-        path.move(to: p(14, 48))
-        path.addCurve(to: p(46, 40), control1: p(30, 48), control2: p(36, 36))
-        path.addCurve(to: p(70, 50), control1: p(56, 44), control2: p(60, 56))
-        path.addCurve(to: p(96, 44), control1: p(80, 44), control2: p(84, 36))
-        path.addCurve(to: p(128, 48), control1: p(108, 52), control2: p(116, 48))
+        path.move(to: p(18, 48))
+        path.addCurve(to: p(52, 38), control1: p(34, 48), control2: p(42, 36))
+        path.addCurve(to: p(68, 52), control1: p(58, 40), control2: p(62, 54))
+        path.addCurve(to: p(84, 42), control1: p(74, 50), control2: p(78, 38))
+        path.addCurve(to: p(118, 48), control1: p(92, 46), control2: p(106, 48))
         return path
     }
-    private static var flick: Path {
+    private static var slalomBack: Path {
         var path = Path()
-        path.move(to: p(24, 48))
-        path.addQuadCurve(to: p(112, 46), control: p(66, 18))
+        path.move(to: p(124, 48))
+        path.addCurve(to: p(100, 52), control1: p(114, 48), control2: p(106, 54))
+        path.addCurve(to: p(84, 42), control1: p(94, 50), control2: p(90, 38))
+        path.addCurve(to: p(68, 52), control1: p(78, 46), control2: p(74, 54))
+        path.addCurve(to: p(28, 48), control1: p(56, 46), control2: p(40, 48))
+        return path
+    }
+    private static var wallBounceGood: Path {
+        var path = Path()
+        path.move(to: p(96, 48))
+        path.addLine(to: p(145, 44))
+        path.addLine(to: p(108, 56))
+        return path
+    }
+    private static var wallBounceFast: Path {
+        var path = Path()
+        path.move(to: p(96, 44))
+        path.addLine(to: p(145, 48))
+        path.addLine(to: p(104, 56))
         return path
     }
 
     private static let catalog: [String: [Scene]] = [
         "hockey.dribble_flat_face": [
-            Scene(marks: [.run(line(p(14, 48), p(40, 48))), .ball(p(42, 54)), .miss(p(58, 58)),
-                          .player(p(14, 48), isStudent: true), .stick(flatFace: false)]),
-            Scene(marks: [.run(line(p(14, 48), p(58, 48))), .ball(p(60, 48))] + cones +
-                  [.miss(p(70, 44)), .player(p(14, 48), isStudent: true), .stick(flatFace: true)]),
-            Scene(marks: [.run(slalom)] + cones +
-                  [.ball(p(130, 48)), .player(p(14, 48), isStudent: true), .stick(flatFace: true)]),
-            Scene(marks: [.run(slalom)] + cones +
-                  [.player(p(122, 34), isStudent: false), .ball(p(132, 52)),
-                   .player(p(124, 50), isStudent: true), .stick(flatFace: true)]),
+            Scene(marks: [.startLine, .run(line(p(18, 48), p(44, 48))), .ball(p(46, 54)), .miss(p(60, 58)),
+                          .player(p(18, 48), isStudent: true), .stick(flatFace: false)]),
+            Scene(marks: [.startLine, .run(line(p(18, 48), p(62, 48))), .ball(p(64, 48))] + cones +
+                  [.miss(p(74, 44)), .player(p(18, 48), isStudent: true), .stick(flatFace: true)]),
+            Scene(marks: [.startLine, .run(slalomOut)] + cones +
+                  [.ball(p(122, 48)), .player(p(18, 48), isStudent: true), .stick(flatFace: true)]),
+            Scene(marks: [.startLine, .run(slalomOut)] + cones +
+                  [.ball(p(124, 48)), .player(p(116, 48), isStudent: true), .stick(flatFace: true)]),
         ],
         "hockey.push_flick": [
-            Scene(marks: [.shot(line(p(24, 48), p(96, 20))), .miss(p(98, 18)),
-                          .player(p(20, 48), isStudent: true), .player(p(120, 48), isStudent: false)]),
-            Scene(marks: [.shot(line(p(24, 48), p(112, 64))), .ball(p(112, 64)),
-                          .player(p(20, 48), isStudent: true), .player(p(120, 48), isStudent: true)]),
-            Scene(marks: [.post(CGRect(x: 64, y: 42, width: 4, height: 12)),
-                          .shot(line(p(24, 48), p(112, 48))), .lob(flick),
-                          .player(p(20, 48), isStudent: true), .player(p(120, 48), isStudent: true)]),
-            Scene(marks: [.shot(line(p(24, 48), p(118, 48))),
-                          .player(p(62, 38), isStudent: false), .player(p(62, 58), isStudent: false),
-                          .player(p(86, 28), isStudent: false),
-                          .player(p(20, 48), isStudent: true), .player(p(124, 48), isStudent: true)]),
+            Scene(marks: [.wall, .shot(line(p(92, 48), p(134, 24))), .miss(p(134, 22)),
+                          .player(p(88, 48), isStudent: true)]),
+            Scene(marks: [.wall, .shot(line(p(92, 48), p(145, 46), p(116, 72))), .miss(p(116, 74)),
+                          .player(p(88, 48), isStudent: true)]),
+            Scene(marks: [.wall, .shot(wallBounceGood), .ball(p(108, 56)),
+                          .player(p(100, 52), isStudent: true)]),
+            Scene(marks: [.wall, .shot(wallBounceFast), .run(line(p(104, 56), p(82, 52))),
+                          .ball(p(80, 52)), .player(p(96, 54), isStudent: true)]),
         ],
         "hockey.shot_on_goal": [
-            Scene(marks: [.goal, .shot(line(p(104, 48), p(148, 16))), .miss(p(148, 14)),
-                          .player(p(100, 48), isStudent: true)]),
-            Scene(marks: [.goal, .shot(line(p(104, 48), p(142, 48))), .ball(p(142, 48)),
-                          .player(p(148, 48), isStudent: false), .player(p(100, 48), isStudent: true)]),
-            Scene(marks: [.goal, .target(CGRect(x: 146, y: 34, width: 8, height: 8)),
-                          .target(CGRect(x: 146, y: 54, width: 8, height: 8)),
-                          .player(p(148, 48), isStudent: false),
-                          .shot(line(p(104, 48), p(150, 38))), .player(p(100, 48), isStudent: true)]),
-            Scene(marks: [.goal, .target(CGRect(x: 146, y: 34, width: 8, height: 8)),
-                          .target(CGRect(x: 146, y: 54, width: 8, height: 8)),
-                          .run(line(p(148, 48), p(146, 38))), .player(p(146, 38), isStudent: false),
-                          .shot(line(p(104, 48), p(150, 58))), .player(p(100, 48), isStudent: true)]),
+            Scene(marks: [.startLine] + cones +
+                  [.run(line(p(124, 48), p(84, 34))), .miss(p(84, 32)),
+                   .player(p(124, 48), isStudent: true)]),
+            Scene(marks: [.startLine] + cones +
+                  [.run(slalomBack), .shot(line(p(28, 48), p(10, 48))), .miss(p(10, 48)),
+                   .player(p(26, 48), isStudent: true)]),
+            Scene(marks: [.startLine, .target(CGRect(x: 20, y: 36, width: 14, height: 24))] + cones +
+                  [.run(slalomBack), .ball(p(25, 48)), .player(p(32, 48), isStudent: true)]),
+            Scene(marks: [.startLine, .target(CGRect(x: 20, y: 36, width: 14, height: 24))] + cones +
+                  [.run(slalomBack), .ball(p(24, 48)), .player(p(28, 48), isStudent: true), .stick(flatFace: true)]),
         ],
     ]
 }
@@ -211,6 +226,16 @@ struct RubricVisualSceneView: View {
             context.stroke(Path(rect), with: .color(.white), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
         case let .post(rect):
             context.fill(Path(rect), with: .color(.orange))
+        case .wall:
+            let wallRect = CGRect(x: 146, y: 18, width: 6, height: 60)
+            context.fill(Path(wallRect), with: .color(Self.rival))
+            context.stroke(Path(wallRect), with: .color(Self.ink), lineWidth: 1.2)
+        case .startLine:
+            var linePath = Path()
+            linePath.move(to: CGPoint(x: 18, y: 14))
+            linePath.addLine(to: CGPoint(x: 18, y: 82))
+            context.stroke(linePath, with: .color(.white.opacity(0.9)),
+                           style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [4, 3]))
         case let .stick(flatFace):
             drawStick(flatFace: flatFace, in: &context)
         }

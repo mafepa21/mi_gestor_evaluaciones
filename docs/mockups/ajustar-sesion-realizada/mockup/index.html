@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lo que hice</title>
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--fg:#1c1c1e;--mut:#6e6e73;--line:#e5e5ea;--acc:#0a84ff;--ok:#30a14e;--warn:#c27c0e;--err:#d70015;--chg:#0a84ff14}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--card:#1c1c1e;--fg:#f2f2f7;--mut:#98989d;--line:#38383a;--chg:#0a84ff22}}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.4 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header.doc{padding:24px 16px 0;max-width:1240px;margin:0 auto}
+header.doc h1{margin:0 0 8px;font-size:22px}
+header.doc p{margin:0;color:var(--mut);max-width:72ch}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:32px;padding:24px 16px 48px;max-width:1240px;margin:0 auto}
+.state>h2{margin:0 0 8px;font-size:13px;letter-spacing:.04em;color:var(--mut);text-transform:uppercase}
+.sheet{background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden;min-height:560px;display:flex;flex-direction:column}
+.bar{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--card);border-bottom:1px solid var(--line);min-height:52px}
+.bar b{font-size:17px}
+.bar a{color:var(--acc);text-decoration:none;min-width:64px}
+.bar a.r{text-align:right;font-weight:600}
+.bar a.off{color:var(--mut);font-weight:400}
+.body{padding:24px 16px;display:flex;flex-direction:column;gap:24px;flex:1}
+.meta{color:var(--mut);font-size:14px}
+.title{font-size:20px;font-weight:600;margin:0}
+.note{font-size:13px;color:var(--mut);display:flex;gap:8px;align-items:center}
+textarea{width:100%;min-height:168px;border:1px solid var(--line);border-radius:12px;padding:16px;font:inherit;background:var(--card);color:var(--fg);resize:vertical}
+.ph{color:var(--mut)}
+.primary{min-height:50px;border:0;border-radius:12px;background:var(--acc);color:#fff;font:600 17px -apple-system,system-ui;width:100%}
+.primary[disabled]{opacity:.4}
+.secondary{min-height:44px;border:0;background:none;color:var(--acc);font:inherit}
+.blocks{display:flex;flex-direction:column;gap:8px}
+.blk{background:var(--card);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.blk.chg{box-shadow:inset 3px 0 0 var(--acc)}
+.blk.add{box-shadow:inset 3px 0 0 var(--ok)}
+.blk h3{margin:0;font-size:15px;display:flex;justify-content:space-between;gap:8px}
+.blk h3 span{font-weight:400;color:var(--mut);font-size:13px}
+.tag{font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--chg);color:var(--acc)}
+.tag.ok{background:#30a14e1f;color:var(--ok)}
+.tag.mut{background:var(--line);color:var(--mut)}
+.before{color:var(--mut);font-size:14px;text-decoration:line-through;text-decoration-color:#8888}
+.after{font-size:15px;border:1px solid var(--line);border-radius:8px;padding:8px}
+.row{display:flex;justify-content:space-between;align-items:center}
+.small{font-size:13px;color:var(--mut)}
+.sk{height:12px;border-radius:6px;background:var(--line);animation:p 1.2s infinite alternate}
+@keyframes p{to{opacity:.4}}
+.summary{background:var(--card);border-radius:12px;padding:16px}
+.summary ul{margin:8px 0 0;padding-left:20px}
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px;color:var(--mut);padding:32px}
+.empty .ic{font-size:40px}
+.empty b{color:var(--fg);font-size:17px}
+.banner{background:var(--card);border-radius:12px;padding:16px;display:flex;gap:8px;font-size:14px}
+.banner.err{color:var(--err)}
+.toast{align-self:center;background:var(--fg);color:var(--bg);border-radius:99px;padding:8px 16px;font-size:14px;display:flex;gap:16px}
+.toast a{color:inherit;font-weight:600}
+.i{font-size:12px;color:var(--mut);cursor:help;border-bottom:1px dotted var(--mut)}
+dialog{border:0;border-radius:14px;padding:0;width:300px;background:var(--card);color:var(--fg)}
+dialog .dbody{padding:20px 16px;text-align:center}
+dialog .dbody b{display:block;margin-bottom:8px}
+dialog .dbtns{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+dialog button{min-height:44px;border:0;background:none;color:var(--acc);font:inherit}
+dialog button+button{border-left:1px solid var(--line);font-weight:600;color:var(--err)}
+.legend{background:var(--card);border-radius:12px;padding:16px;font-size:14px}
+.legend li{margin:4px 0}
+.spin{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--acc);border-radius:50%;animation:r 1s linear infinite}@keyframes r{to{transform:rotate(1turn)}}
+</style></head><body>
+<header class="doc">
+<h1>Maqueta · «Lo que hice» (ajustar una sesión con IA de Apple)</h1>
+<p>Se abre desde el menú «…» del visor de sesión. El plan original no se toca nunca: el resultado va al diario de la sesión («Qué se ha hecho realmente» y «Adaptaciones»).</p>
+</header>
+<main>
+
+<!-- 1. Contar -->
+<section class="state"><h2>1 · Contarlo</h2>
+<div class="sheet">
+ <div class="bar"><a href="#">Cerrar</a><b>Lo que hice</b><a class="r off" href="#"></a></div>
+ <div class="body">
+  <div><p class="title">S04 · Juegos de invasión</p><div class="meta">2º ESO B · martes 3 nov · 55 min · 5 bloques</div></div>
+  <textarea placeholder="Ej.: Cambié el calentamiento por pilla-pilla con balón. Quité el último juego. El partido final duró 10 minutos más."></textarea>
+  <div class="note">🔒 El plan no cambia. Se guarda aparte, en el diario. Puedes dictar con el micrófono del teclado.</div>
+  <div style="flex:1"></div>
+  <button class="primary" disabled title="Se activa con texto">Ajustar el guion</button>
+  <button class="secondary">Editar a mano</button>
+ </div>
+</div></section>
+
+<!-- 2. Trabajando -->
+<section class="state"><h2>2 · La IA trabaja (bloque a bloque)</h2>
+<div class="sheet">
+ <div class="bar"><a href="#">Cancelar</a><b>Lo que hice</b><a class="r off" href="#">Guardar</a></div>
+ <div class="body">
+  <div class="row" style="gap:8px;justify-content:flex-start"><span class="spin"></span><span class="small">Ajustando 2 de 5…</span></div>
+  <div class="blocks">
+   <div class="blk chg"><h3>Calentamiento <span class="tag">✎ Cambiado</span></h3><div class="after">Pilla-pilla con balón en medio campo. Quien tiene el balón no puede ser pillado.</div></div>
+   <div class="blk"><h3>Rondo 4×2</h3><div class="sk"></div><div class="sk" style="width:60%"></div></div>
+   <div class="blk"><h3 style="color:var(--mut)">Juego de los 10 pases</h3><div class="sk" style="width:80%"></div></div>
+   <div class="blk"><h3 style="color:var(--mut)">Partido reducido</h3><div class="sk" style="width:70%"></div></div>
+   <div class="blk"><h3 style="color:var(--mut)">Vuelta a la calma</h3><div class="sk" style="width:50%"></div></div>
+  </div>
+ </div>
+</div></section>
+
+<!-- 3. Revisar -->
+<section class="state"><h2>3 · Revisar y guardar</h2>
+<div class="sheet">
+ <div class="bar"><a href="#">Cancelar</a><b>Lo que hice</b><a class="r" href="#" onclick="ow.showModal();return false">Guardar</a></div>
+ <div class="body">
+  <div class="summary"><b>3 cambios</b> <span class="small">· van a «Adaptaciones»</span>
+   <ul><li>Calentamiento: pilla-pilla con balón.</li><li>Juego de los 10 pases: no se hizo.</li><li>Partido reducido: 10 min más.</li></ul></div>
+  <div class="blocks">
+   <div class="blk chg"><h3>Calentamiento <span>10 min</span></h3>
+    <div class="before">Movilidad articular y carrera continua suave.</div>
+    <div class="after" contenteditable>Pilla-pilla con balón en medio campo. Quien tiene el balón no puede ser pillado.</div>
+    <div class="row"><span class="tag">✎ Cambiado</span><button class="secondary" title="Vuelve al texto del plan para este bloque">Dejar como estaba</button></div></div>
+   <div class="blk"><h3>Rondo 4×2 <span>10 min</span></h3><span class="tag mut" style="align-self:flex-start">= Sin cambios</span></div>
+   <div class="blk chg"><h3>Juego de los 10 pases <span>0 min</span></h3><div class="before">Dos equipos, 10 pases seguidos = punto.</div><div class="row"><span class="tag">⊘ No se hizo</span><button class="secondary">Dejar como estaba</button></div></div>
+   <div class="blk chg"><h3>Partido reducido <span>20 → 30 min</span></h3><div class="after" contenteditable>Partido 4×4 con dos porterías pequeñas. Se alargó 10 minutos.</div><div class="row"><span class="tag">✎ Cambiado</span><button class="secondary">Dejar como estaba</button></div></div>
+   <div class="blk"><h3>Vuelta a la calma <span>5 min</span></h3><span class="tag mut" style="align-self:flex-start">= Sin cambios</span></div>
+  </div>
+ </div>
+</div></section>
+
+<!-- 4. Añadido -->
+<section class="state"><h2>3b · Actividad que no estaba en el plan</h2>
+<div class="sheet">
+ <div class="bar"><a href="#">Cancelar</a><b>Lo que hice</b><a class="r" href="#">Guardar</a></div>
+ <div class="body">
+  <div class="blocks">
+   <div class="blk"><h3>Rondo 4×2 <span>10 min</span></h3><span class="tag mut" style="align-self:flex-start">= Sin cambios</span></div>
+   <div class="blk add"><h3>Charla sobre juego limpio <span>5 min</span></h3><div class="after" contenteditable>Paré el juego para hablar de una falta repetida.</div><div class="row"><span class="tag ok">＋ Añadido</span><button class="secondary">Quitar</button></div></div>
+   <div class="blk"><h3>Partido reducido <span>20 min</span></h3><span class="tag mut" style="align-self:flex-start">= Sin cambios</span></div>
+  </div>
+  <div class="note">Lo añadido va después del bloque que mencionas, o al final si no queda claro.</div>
+ </div>
+</div></section>
+
+<!-- 5. Guardado -->
+<section class="state"><h2>4 · Guardado</h2>
+<div class="sheet">
+ <div class="bar"><a href="#"></a><b>S04 · Juegos de invasión</b><a class="r off" href="#">…</a></div>
+ <div class="body">
+  <div class="note">La hoja se cierra y vuelves al visor. El visor sigue mostrando el plan.</div>
+  <div class="blocks"><div class="blk"><h3>Calentamiento <span>10 min</span></h3><div class="small">Movilidad articular y carrera continua suave.</div></div><div class="blk"><div class="sk"></div></div></div>
+  <div style="flex:1"></div>
+  <div class="toast">Guardado en el diario <a href="#">Abrir diario</a></div>
+ </div>
+</div></section>
+
+<!-- 6. Sin IA -->
+<section class="state"><h2>Sin IA de Apple</h2>
+<div class="sheet">
+ <div class="bar"><a href="#">Cancelar</a><b>Lo que hice</b><a class="r" href="#">Guardar</a></div>
+ <div class="body">
+  <div class="banner">ℹ️ <span>La IA de Apple no está disponible en este dispositivo. Edita el guion a mano.</span></div>
+  <div class="blocks">
+   <div class="blk"><h3>Calentamiento <span>10 min</span></h3><div class="after" contenteditable>Movilidad articular y carrera continua suave.</div></div>
+   <div class="blk"><h3>Rondo 4×2 <span>10 min</span></h3><div class="after" contenteditable>Grupos de 6, 4 pasan y 2 roban.</div></div>
+  </div>
+  <div class="note">Mismo resultado: se guarda en el diario. «Editar a mano» lleva aquí.</div>
+ </div>
+</div></section>
+
+<!-- 7. Error -->
+<section class="state"><h2>Error en un bloque</h2>
+<div class="sheet">
+ <div class="bar"><a href="#">Cancelar</a><b>Lo que hice</b><a class="r" href="#">Guardar</a></div>
+ <div class="body">
+  <div class="banner err">⚠️ <span>No se pudo ajustar «Rondo 4×2». Se queda como en el plan.</span></div>
+  <div class="blocks">
+   <div class="blk"><h3>Rondo 4×2 <span>10 min</span></h3><div class="after" contenteditable>Grupos de 6, 4 pasan y 2 roban.</div><div class="row"><span class="tag mut">Como en el plan</span><button class="secondary">Reintentar</button></div></div>
+  </div>
+ </div>
+</div></section>
+
+<!-- 8. Sin guion -->
+<section class="state"><h2>Sesión sin guion</h2>
+<div class="sheet">
+ <div class="bar"><a href="#">Cerrar</a><b>Lo que hice</b><a class="r off" href="#"></a></div>
+ <div class="empty"><div class="ic">📋</div><b>Esta sesión no tiene guion</b><span>La opción solo aparece en el menú «…» cuando hay plan cargado.</span></div>
+</div></section>
+
+<!-- 9. Modal -->
+<section class="state"><h2>Ya había texto en el diario</h2>
+<div class="sheet">
+ <div class="body"><p class="small">Al pulsar «Guardar» en el paso 3, si «Qué se ha hecho realmente» ya tenía texto:</p>
+ <button class="primary" onclick="ow.showModal()">Ver aviso</button>
+ <div class="legend"><b>Qué se guarda</b><ul>
+  <li>«Qué estaba planificado»: el guion del plan, solo si estaba vacío.</li>
+  <li>«Qué se ha hecho realmente»: los bloques finales, uno por línea con sus minutos.</li>
+  <li>«Adaptaciones»: la lista de cambios.</li>
+  <li>El estado de la sesión no cambia aquí.</li></ul></div>
+ </div>
+</div></section>
+
+<section class="state"><h2>Notas para SwiftUI (revisión HIG)</h2><div class="legend"><ul>
+<li>Barra: «Cerrar»/«Cancelar» en <code>cancellationAction</code>, «Guardar» en <code>confirmationAction</code> con <code>.disabled</code> real. ⌘↩ ajusta, Esc cierra.</li>
+<li>«Cancelar» con cambios sin guardar pide confirmación (<code>interactiveDismissDisabled</code> + diálogo).</li>
+<li>Reemplazar: <code>confirmationDialog</code> con botón <code>.destructive</code>.</li>
+<li>Estados con SF Symbol + texto (pencil, nosign, plus, equal), nunca solo color. Colores semánticos.</li>
+<li>Tipografía con estilos (Dynamic Type); filas pasan a vertical con tamaños grandes.</li>
+<li>Bloques editables: <code>TextEditor</code> con <code>accessibilityLabel</code> «Calentamiento, ahora». Antes/Ahora con etiqueta para VoiceOver.</li>
+<li>Progreso: <code>ProgressView</code> + anuncio de VoiceOver por bloque terminado.</li>
+<li>Columna máx. 820 pt, padding 24, separación 32 entre grupos y 8 dentro.</li>
+</ul></div></section>
+</main>
+<dialog id="ow"><div class="dbody"><b>¿Reemplazar lo que escribiste?</b>Se perderá el texto que ya tienes en «Qué se ha hecho realmente» y en «Adaptaciones».</div>
+<div class="dbtns"><button onclick="ow.close()">Cancelar</button><button onclick="ow.close()">Reemplazar</button></div></dialog>
+<script>const ow=document.getElementById('ow')</script>
+</body></html>

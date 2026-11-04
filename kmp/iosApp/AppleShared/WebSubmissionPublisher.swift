@@ -125,6 +125,9 @@ enum WebSubmissionPublisher {
         formInstanceId: String = UUID().uuidString,
         mode: String = "self",
         peerTargets: [PeerTargetToPublish] = [],
+        /// Coevaluación con pareja elegida: `peerTargets` trae a toda la clase y en
+        /// cada partido el alumnado elige a quién evalúa (`peerPick` en el manifiesto).
+        peerPick: Bool = false,
         /// Buzón de entregas (`WebSubmissionInbox.path`) y su clave de depósito. Con los
         /// dos, la web envía la entrega directa; sin ellos, solo por correo.
         inboxPath: String? = nil,
@@ -189,6 +192,7 @@ enum WebSubmissionPublisher {
         if mode == "peer" || mode == "passport" {
             manifiesto["mode"] = mode
         }
+        if mode == "peer" && peerPick { manifiesto["peerPick"] = true }
         if let subtitle, !subtitle.isEmpty { manifiesto["subtitle"] = subtitle }
         if let deliveryEmail, !deliveryEmail.isEmpty {
             manifiesto["deliveryEmail"] = deliveryEmail

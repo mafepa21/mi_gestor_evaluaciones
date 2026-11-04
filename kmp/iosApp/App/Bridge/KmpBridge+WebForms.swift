@@ -369,7 +369,12 @@ extension KmpBridge {
         locale: String = "es",
         /// Dibujo de cada apartado de escala 1-4 (id del apartado → clave de
         /// `WebRubricVisual`). Los que no aparecen se ven como rúbrica normal.
-        visuals: [String: String] = [:]
+        visuals: [String: String] = [:],
+        /// Coevaluación: cada alumno elige en cada partido a quién evalúa, de toda
+        /// la clase, en vez de evaluar a su grupo de la SA.
+        peerPick: Bool = false,
+        /// Coevaluación: cada alumno recibe también su autoevaluación.
+        includeSelf: Bool = true
     ) async throws -> WebPublishResult {
         guard let detalle = try await container.notebookInstrumentsRepository
             .getTemplateForColumn(columnId: columnId) else {
@@ -421,20 +426,33 @@ extension KmpBridge {
 
         var peerTargetsToPublish: [WebSubmissionPublisher.PeerTargetToPublish] = []
         if mode == "peer" {
-            let detection = await detectPeerGroupsForColumn(classId: classId, columnId: columnId)
-            if detection.loadFailed {
-                throw NSError(
-                    domain: "WebSubmissions",
-                    code: 423,
-                    userInfo: [NSLocalizedDescriptionKey: WebPeerPublishGuard.groupsFailure]
-                )
-            }
             let studentNameMap = Dictionary(uniqueKeysWithValues: alumnado.map {
                 ($0.id, "\($0.firstName) \($0.lastName)".trimmingCharacters(in: .whitespaces))
             })
-            for group in detection.groups {
-                for evaluatorId in group.studentIds {
-                    // 1. Autoevaluación propia del alumno
+            // A quién puede evaluar cada alumno: con pareja elegida, a toda la clase
+            // (elige en cada partido); si no, a su grupo de trabajo de la SA.
+            var evaluables: [(evaluatorId: Int64, targetIds: [Int64])] = []
+            if peerPick {
+                let ids = alumnado.map(\.id)
+                evaluables = ids.map { id in (id, ids.filter { $0 != id }) }
+            } else {
+                let detection = await detectPeerGroupsForColumn(classId: classId, columnId: columnId)
+                if detection.loadFailed {
+                    throw NSError(
+                        domain: "WebSubmissions",
+                        code: 423,
+                        userInfo: [NSLocalizedDescriptionKey: WebPeerPublishGuard.groupsFailure]
+                    )
+                }
+                for group in detection.groups {
+                    for evaluatorId in group.studentIds {
+                        evaluables.append((evaluatorId, group.studentIds.filter { $0 != evaluatorId }))
+                    }
+                }
+            }
+            for (evaluatorId, targetIds) in evaluables {
+                // 1. Autoevaluación propia del alumno, si el docente la quiere
+                if includeSelf {
                     peerTargetsToPublish.append(
                         WebSubmissionPublisher.PeerTargetToPublish(
                             evaluatorStudentId: evaluatorId,
@@ -442,17 +460,16 @@ extension KmpBridge {
                             targetName: "Mi autoevaluación"
                         )
                     )
-                    // 2. Coevaluación de sus compañeros de equipo
-                    for targetId in group.studentIds where targetId != evaluatorId {
-                        let targetName = studentNameMap[targetId] ?? "Compañero"
-                        peerTargetsToPublish.append(
-                            WebSubmissionPublisher.PeerTargetToPublish(
-                                evaluatorStudentId: evaluatorId,
-                                targetStudentId: targetId,
-                                targetName: targetName
-                            )
+                }
+                // 2. Coevaluación de sus compañeros
+                for targetId in targetIds {
+                    peerTargetsToPublish.append(
+                        WebSubmissionPublisher.PeerTargetToPublish(
+                            evaluatorStudentId: evaluatorId,
+                            targetStudentId: targetId,
+                            targetName: studentNameMap[targetId] ?? "Compañero"
                         )
-                    }
+                    )
                 }
             }
         }
@@ -475,6 +492,7 @@ extension KmpBridge {
             expiresAtEpochMs: Int64(expiresAt.timeIntervalSince1970 * 1000),
             mode: mode,
             peerTargets: peerTargetsToPublish,
+            peerPick: mode == "peer" && peerPick,
             inboxPath: buzon == nil ? nil : WebSubmissionInbox.path,
             depositToken: buzon?.depositToken
         )
@@ -764,6 +782,7 @@ extension KmpBridge {
                     almacen.record(
                         evaluatorAlias: dec.draft.alias,
                         targetStudentId: cellKey.studentId,
+                        round: dec.draft.round,
                         clientSubmittedAt: dec.draft.clientSubmittedAt,
                         answers: dec.draft.answers
                     )
@@ -945,6 +964,35 @@ extension KmpBridge {
             manifest: manifiesto,
             roster: roster,
             store: WebPassportStore.forForm(formInstanceId)
+        )
+    }
+
+    /// Resumen de una coevaluación: media de cada alumno por criterio, sin contar
+    /// su autoevaluación, y las parejas que no casan.
+    func loadWebPeerResults(formInstanceId: String) async -> WebPeerResults? {
+        guard let instancia = try? await container.webSubmissionsRepository
+            .getFormInstance(formInstanceId: formInstanceId),
+              let manifiesto = try? JSONDecoder().decode(WebFormManifest.self, from: Data(instancia.manifestJson.utf8))
+        else { return nil }
+        let alumnado = (try? await container.classesRepository.listStudentsInClass(classId: instancia.classId)) ?? []
+        let roster = alumnado
+            .map {
+                WebPeerResults.RosterEntry(
+                    id: $0.id,
+                    name: "\($0.firstName) \($0.lastName)".trimmingCharacters(in: .whitespaces),
+                    email: $0.email
+                )
+            }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let alias = (try? await container.webSubmissionsRepository.listAliases(formInstanceId: formInstanceId)) ?? []
+        let grupo = classes.first(where: { $0.id == instancia.classId })?.name ?? "Grupo \(instancia.classId)"
+        return WebPeerResults.build(
+            title: instancia.title,
+            groupName: grupo,
+            manifest: manifiesto,
+            roster: roster,
+            evaluations: WebPeerEvaluationStore.forForm(formInstanceId)?.allEvaluations ?? [],
+            studentIdByAlias: Dictionary(alias.map { ($0.alias, $0.studentId) }, uniquingKeysWith: { primero, _ in primero })
         )
     }
 

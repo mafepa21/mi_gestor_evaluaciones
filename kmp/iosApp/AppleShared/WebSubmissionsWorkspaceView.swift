@@ -48,6 +48,7 @@ struct WebSubmissionsWorkspaceView: View {
     @State private var publishResult: WebPublishResult?
     @State private var emailTask: WebSubmissionTaskInfo?
     @State private var passportTask: WebSubmissionTaskInfo?
+    @State private var peerTask: WebSubmissionTaskInfo?
     @State private var taskToRevoke: WebSubmissionTaskInfo?
     @State private var selectionMode = false
     @State private var selectedTaskIDs: Set<String> = []
@@ -93,7 +94,7 @@ struct WebSubmissionsWorkspaceView: View {
                 baseURL: $baseURL,
                 deliveryEmail: $deliveryEmail,
                 isPublishing: publishing,
-                onPublish: { columnId, url, correo, caducidad, modo, idioma, dibujos in
+                onPublish: { columnId, url, correo, caducidad, modo, idioma, dibujos, coevaluacion in
                     Task {
                         await publish(
                             columnId: columnId,
@@ -102,7 +103,8 @@ struct WebSubmissionsWorkspaceView: View {
                             expiresAt: caducidad,
                             mode: modo,
                             locale: idioma,
-                            visuals: dibujos
+                            visuals: dibujos,
+                            peer: coevaluacion
                         )
                     }
                 },
@@ -118,6 +120,15 @@ struct WebSubmissionsWorkspaceView: View {
                 links: linksByFormInstanceId[task.formInstanceId] ?? []
             )
         }
+        #if os(macOS)
+        .sheet(item: $peerTask) { task in
+            WebPeerResultsSheet(
+                task: task,
+                load: { await bridge.loadWebPeerResults(formInstanceId: task.formInstanceId) },
+                collect: { await collectFromInbox(reportErrors: false) }
+            )
+        }
+        #endif
         .sheet(item: $passportTask) { task in
             WebPassportProgressSheet(
                 task: task,
@@ -544,6 +555,16 @@ struct WebSubmissionsWorkspaceView: View {
                 .disabled(revoking || bulkProcessing)
             }
 
+            if task.mode == "peer" {
+                Button {
+                    peerTask = task
+                } label: {
+                    Label("Ver coevaluación", systemImage: "person.2")
+                }
+                .buttonStyle(.borderless)
+                .disabled(revoking || bulkProcessing)
+            }
+
             if task.status == .active && !task.isArchived {
                 Button {
                     Task {
@@ -696,7 +717,8 @@ struct WebSubmissionsWorkspaceView: View {
         expiresAt: Date,
         mode: String = "self",
         locale: String = "es",
-        visuals: [String: String] = [:]
+        visuals: [String: String] = [:],
+        peer: WebPeerPublishOptions = WebPeerPublishOptions()
     ) async {
         guard let classId = creationClassId else { return }
         publishing = true
@@ -710,7 +732,9 @@ struct WebSubmissionsWorkspaceView: View {
                 expiresAt: expiresAt,
                 mode: mode,
                 locale: locale,
-                visuals: visuals
+                visuals: visuals,
+                peerPick: peer.peerPick,
+                includeSelf: peer.includeSelf
             )
             await reload()
             await reloadCreationInstruments()

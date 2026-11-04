@@ -104,6 +104,9 @@ struct WebSubmissionPayload: Codable {
     let formInstanceId: String
     let answers: [WebAnswer]?
     let targets: [WebTargetPayload]?
+    /// Coevaluación con pareja elegida: número de partido de quien evalúa. Sin él,
+    /// partido 1 (los formularios de antes).
+    let round: Int?
 }
 
 // MARK: - Errores
@@ -413,6 +416,9 @@ struct WebSubmissionDraft: Identifiable {
     let isPeerEvaluation: Bool
     /// Pasaporte por paradas: el mismo alumno envía varias veces y todo se junta.
     let isPassport: Bool
+    /// Coevaluación: número de partido. Cada partido cuenta aparte; reenviar el
+    /// mismo número lo sustituye.
+    let round: Int
 
     init(
         submissionId: String,
@@ -429,7 +435,8 @@ struct WebSubmissionDraft: Identifiable {
         missingRequiredTitles: [String],
         targetAlias: String? = nil,
         isPeerEvaluation: Bool = false,
-        isPassport: Bool = false
+        isPassport: Bool = false,
+        round: Int = 1
     ) {
         self.submissionId = submissionId
         self.formInstanceId = formInstanceId
@@ -446,6 +453,7 @@ struct WebSubmissionDraft: Identifiable {
         self.targetAlias = targetAlias
         self.isPeerEvaluation = isPeerEvaluation
         self.isPassport = isPassport
+        self.round = round
     }
 
     /// Si no se ha podido resolver a quién pertenece, el docente tiene que
@@ -570,7 +578,8 @@ struct WebSubmissionImportService {
                     // Comprobación de duplicados:
                     // En autoevaluación, no se permiten dos entregas para el mismo alumno.
                     // En coevaluación, se permiten varias evaluaciones de distintos evaluadores para el mismo alumno evaluado,
-                    // pero no dos entregas del mismo evaluador para el mismo alumno evaluado.
+                    // pero no dos entregas del mismo evaluador para el mismo alumno evaluado
+                    // en el mismo partido (con pareja elegida, cada partido cuenta aparte).
                     // En pasaporte, varios envíos del mismo alumno son lo normal: se
                     // juntan al importar (ver `WebPassportStore`).
                     if let alumno = borrador.studentId, !borrador.isPassport {
@@ -578,7 +587,8 @@ struct WebSubmissionImportService {
                             if resultado.drafts.contains(where: {
                                 $0.formInstanceId == borrador.formInstanceId &&
                                 $0.studentId == alumno &&
-                                $0.alias == borrador.alias
+                                $0.alias == borrador.alias &&
+                                $0.round == borrador.round
                             }) {
                                 throw WebSubmissionImportError.duplicatedStudent(borrador.alias)
                             }
@@ -704,7 +714,8 @@ struct WebSubmissionImportService {
                         requiredAnswered: evaluacion.obligatoriosRespondidos,
                         missingRequiredTitles: evaluacion.sinResponderTitulos,
                         targetAlias: target.targetAlias,
-                        isPeerEvaluation: true
+                        isPeerEvaluation: true,
+                        round: carga.round ?? 1
                     )
                 )
             }

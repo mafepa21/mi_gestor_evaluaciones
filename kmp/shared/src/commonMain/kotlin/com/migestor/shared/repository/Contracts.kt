@@ -741,7 +741,8 @@ interface RubricsRepository {
         deviceId: String? = null,
         syncVersion: Long = 0,
     ): Double?
-    /** Marca medida con el cronómetro. Va después de `saveRubricAssessment` (necesita la fila). */
+    /** Marca medida con el cronómetro. Va después de `saveRubricAssessment` (necesita la fila;
+     *  si esa llamada cambia el nivel, borra la marca anterior). */
     @Throws(Throwable::class)
     suspend fun saveRubricAssessmentMeasurement(
         studentId: Long,

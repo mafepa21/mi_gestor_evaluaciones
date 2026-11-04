@@ -48,6 +48,8 @@ private struct RubricCriterionPresentationEditor: View {
     @State private var usesTimer: Bool
     @State private var lowerIsBetter: Bool
     @State private var cutTexts: [String]
+    /// Los cortes guardados eran para otro número de niveles: hay que revisarlos y guardar.
+    private let storedCutsMismatch: Bool
 
     init(visualKey: String?, timingConfig: String?, levelCount: Int, onChange: @escaping (String?, String?) -> Void) {
         self.levelCount = levelCount
@@ -59,6 +61,7 @@ private struct RubricCriterionPresentationEditor: View {
         _usesTimer = State(initialValue: timing != nil)
         _lowerIsBetter = State(initialValue: timing?.lowerIsBetter ?? true)
         _cutTexts = State(initialValue: Array((cuts + Array(repeating: "", count: cutCount)).prefix(cutCount)))
+        storedCutsMismatch = timing != nil && cuts.count != cutCount
     }
 
     private static func text(_ value: Double) -> String {
@@ -117,7 +120,10 @@ private struct RubricCriterionPresentationEditor: View {
             } header: {
                 Text("Tiempo")
             } footer: {
-                if cutsAreInvalid {
+                if storedCutsMismatch {
+                    Text("Los cortes guardados eran para otro número de niveles. Revísalos: hacen falta \(cutTexts.count).")
+                        .foregroundStyle(.orange)
+                } else if cutsAreInvalid {
                     Text("Escribe los cortes de menor a mayor, por ejemplo 10, 12 y 15.")
                         .foregroundStyle(.orange)
                 } else if usesTimer {

@@ -42,7 +42,7 @@ class RubricPresentationRepositoryTest {
     }
 
     @Test
-    fun laMarcaMedidaSobreviveACambiarElNivelAMano() = runTest {
+    fun laMarcaMedidaSeConservaConElMismoNivelYSeBorraSiCambia() = runTest {
         val container = newContainer()
         val repo = container.rubricsRepository
         val classId = container.classesRepository.saveClass(name = "4 ESO A", course = 4)
@@ -57,11 +57,14 @@ class RubricPresentationRepositoryTest {
 
         repo.saveRubricAssessment(studentId, evaluationId, criterionId, level3, updatedAtEpochMs = 100L)
         repo.saveRubricAssessmentMeasurement(studentId, evaluationId, criterionId, 11.4)
-        repo.saveRubricAssessment(studentId, evaluationId, criterionId, level4, updatedAtEpochMs = 200L)
+        repo.saveRubricAssessment(studentId, evaluationId, criterionId, level3, updatedAtEpochMs = 200L)
+        assertEquals(11.4, repo.listRubricAssessments(studentId, evaluationId).single().measuredValue)
 
+        // Otro nivel (a mano, hoja masiva o sync de un equipo antiguo): el tiempo ya no lo justifica.
+        repo.saveRubricAssessment(studentId, evaluationId, criterionId, level4, updatedAtEpochMs = 300L)
         val assessment = repo.listRubricAssessments(studentId, evaluationId).single()
         assertEquals(level4, assessment.levelId)
-        assertEquals(11.4, assessment.measuredValue)
+        assertNull(assessment.measuredValue)
     }
 
     @Test

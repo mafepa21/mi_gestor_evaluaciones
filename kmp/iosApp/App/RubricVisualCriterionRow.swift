@@ -46,7 +46,13 @@ struct RubricVisualCriterionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            if let timing {
+            if let timing, timing.cuts.count + 1 != rankedLevels.count {
+                // Sin esto el cronómetro mediría y no pondría nivel, sin decir por qué.
+                Label("Los cortes del cronómetro no cuadran con los \(rankedLevels.count) niveles. Revísalos en el editor de la rúbrica.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            } else if let timing {
                 RubricStopwatchPanel(
                     timing: timing,
                     levels: rankedLevels,

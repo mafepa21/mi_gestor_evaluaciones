@@ -1260,7 +1260,8 @@ DELETE FROM rubric_levels WHERE id = ?;
 upsertRubricAssessment:
 INSERT OR REPLACE INTO rubric_assessments(student_id, evaluation_id, criterion_id, level_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version, measured_value)
 VALUES (:studentId, :evaluationId, :criterionId, :levelId, :createdAt, :updatedAt, :deviceId, :syncVersion,
-    (SELECT measured_value FROM rubric_assessments WHERE student_id = :studentId AND evaluation_id = :evaluationId AND criterion_id = :criterionId));
+    -- El tiempo medido solo se conserva si el nivel no cambia: con otro nivel ya no lo justifica.
+    (SELECT measured_value FROM rubric_assessments WHERE student_id = :studentId AND evaluation_id = :evaluationId AND criterion_id = :criterionId AND level_id = :levelId));
 
 updateRubricAssessmentMeasurement:
 UPDATE rubric_assessments SET measured_value = ?

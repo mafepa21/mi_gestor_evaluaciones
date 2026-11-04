@@ -180,7 +180,21 @@ class RubricEvaluationViewModel(
         }
     }
 
+    /** Nivel elegido a mano. Si no cuadra con el tiempo medido, el tiempo deja de valer y se quita. */
     fun selectLevel(criterionId: Long, levelId: Long) {
+        val state = _uiState.value
+        val measured = state.measuredValues[criterionId]
+        if (measured != null) {
+            val criterion = state.rubricDetail?.criteria?.firstOrNull { it.criterion.id == criterionId }
+            val timedLevel = criterion?.let { RubricTiming.parse(it.criterion.timingConfig)?.levelFor(measured, it.levels) }
+            if (timedLevel?.id != levelId) {
+                _uiState.update { it.copy(measuredValues = it.measuredValues - criterionId) }
+            }
+        }
+        applyLevel(criterionId, levelId)
+    }
+
+    private fun applyLevel(criterionId: Long, levelId: Long) {
         _uiState.update { state ->
             val newSelected = state.selectedLevels + (criterionId to levelId)
             state.copy(selectedLevels = newSelected, isSaveSuccessful = false, shouldDismissDialog = false)
@@ -201,7 +215,7 @@ class RubricEvaluationViewModel(
         val criterion = _uiState.value.rubricDetail?.criteria?.firstOrNull { it.criterion.id == criterionId } ?: return null
         val level = RubricTiming.parse(criterion.criterion.timingConfig)?.levelFor(seconds, criterion.levels) ?: return null
         _uiState.update { it.copy(measuredValues = it.measuredValues + (criterionId to seconds)) }
-        selectLevel(criterionId, level.id)
+        applyLevel(criterionId, level.id)
         return level.id
     }
 

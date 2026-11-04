@@ -67,7 +67,11 @@ data class RubricCriterionState(
     val description: String = "",
     val weight: Double = 0.0,
     val order: Int = 0,
-    val levelDescriptions: Map<String, String> = emptyMap() // Map level uid to description
+    val levelDescriptions: Map<String, String> = emptyMap(), // Map level uid to description
+    /** Juego de dibujos por nivel; null = solo texto. */
+    val visualKey: String? = null,
+    /** Cortes del cronómetro (`RubricTiming`); null = sin cronómetro. */
+    val timingConfig: String? = null,
 )
 
 data class RubricLevelState(
@@ -202,6 +206,18 @@ class RubricsViewModel(
         _uiState.update { state ->
             val newCriteria = state.criteria.toMutableList()
             newCriteria[index] = newCriteria[index].copy(description = description)
+            state.copy(criteria = newCriteria)
+        }
+    }
+
+    fun updateCriterionPresentation(index: Int, visualKey: String?, timingConfig: String?) {
+        _uiState.update { state ->
+            if (index !in state.criteria.indices) return@update state
+            val newCriteria = state.criteria.toMutableList()
+            newCriteria[index] = newCriteria[index].copy(
+                visualKey = visualKey?.takeIf { it.isNotBlank() },
+                timingConfig = timingConfig?.takeIf { it.isNotBlank() },
+            )
             state.copy(criteria = newCriteria)
         }
     }
@@ -480,7 +496,9 @@ class RubricsViewModel(
                 description = dbCriterion.description,
                 weight = dbCriterion.weight,
                 order = dbCriterion.order,
-                levelDescriptions = descriptions
+                levelDescriptions = descriptions,
+                visualKey = dbCriterion.visualKey,
+                timingConfig = dbCriterion.timingConfig,
             )
         }
 
@@ -558,6 +576,7 @@ class RubricsViewModel(
                         weight = c.weight,
                         order = c.order
                     )
+                    rubricsRepository.saveCriterionPresentation(criterionId, c.visualKey, c.timingConfig)
 
                     state.levels.forEach { levelDef ->
                         rubricsRepository.saveLevel(

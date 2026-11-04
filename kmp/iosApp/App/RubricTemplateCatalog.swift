@@ -46,6 +46,9 @@ struct RubricTemplateCriterion: Identifiable, Hashable {
     let name: String
     let weight: Double
     let levels: [RubricTemplateLevel]
+    /// Dibujos por nivel (`RubricVisuals`) y cortes de cronómetro (`RubricTiming`).
+    var visualKey: String? = nil
+    var timingConfig: String? = nil
 }
 
 /// Plantilla oficial de rúbrica lista para importación.
@@ -443,7 +446,66 @@ enum RubricTemplateCatalog {
                     ]
                 )
             ]
-        )
+        ),
+        // 9. Hockey: técnica con dibujos y cronómetro
+        RubricTemplateItem(
+            id: "ef-hockey-tecnica-visual",
+            title: "Hockey · Técnica con cronómetro (4º ESO)",
+            category: .sportsAndGames,
+            subject: "Educación Física",
+            stage: "4º ESO",
+            description: "CE 2.2. Tiempo del slalom con cronómetro (la app pone el nivel) y dibujos por nivel para la conducción con la cara plana, el pase push y flick, y el tiro a portería.",
+            criteria: [
+                RubricTemplateCriterion(
+                    id: "c1",
+                    name: "Tiempo del slalom (5 conos)",
+                    weight: 0.25,
+                    levels: [
+                        RubricTemplateLevel(id: "c1_l1", order: 1, name: "Nivel 1 (1.0-4.9)", points: 1, description: "15 s o más, o no termina el recorrido."),
+                        RubricTemplateLevel(id: "c1_l2", order: 2, name: "Nivel 2 (5.0-6.9)", points: 2, description: "De 12 a 15 s."),
+                        RubricTemplateLevel(id: "c1_l3", order: 3, name: "Nivel 3 (7.0-8.9)", points: 3, description: "De 10 a 12 s."),
+                        RubricTemplateLevel(id: "c1_l4", order: 4, name: "Nivel 4 (9.0-10.0)", points: 4, description: "Menos de 10 s sin derribar conos.")
+                    ],
+                    timingConfig: "lower;10.0;12.0;15.0"
+                ),
+                RubricTemplateCriterion(
+                    id: "c2",
+                    name: "Conducción con la cara plana",
+                    weight: 0.25,
+                    levels: [
+                        RubricTemplateLevel(id: "c2_l1", order: 1, name: "Nivel 1 (1.0-4.9)", points: 1, description: "Toca la bola con la cara redondeada y pierde el control."),
+                        RubricTemplateLevel(id: "c2_l2", order: 2, name: "Nivel 2 (5.0-6.9)", points: 2, description: "Usa la cara plana en recto, pero pierde la bola al girar."),
+                        RubricTemplateLevel(id: "c2_l3", order: 3, name: "Nivel 3 (7.0-8.9)", points: 3, description: "Slalom fluido usando solo la cara plana."),
+                        RubricTemplateLevel(id: "c2_l4", order: 4, name: "Nivel 4 (9.0-10.0)", points: 4, description: "Slalom rápido con la cara plana y protege la bola ante un rival.")
+                    ],
+                    visualKey: "hockey.dribble_flat_face"
+                ),
+                RubricTemplateCriterion(
+                    id: "c3",
+                    name: "Pase push y flick",
+                    weight: 0.25,
+                    levels: [
+                        RubricTemplateLevel(id: "c3_l1", order: 1, name: "Nivel 1 (1.0-4.9)", points: 1, description: "Golpea seco levantando el stick y la bola no llega."),
+                        RubricTemplateLevel(id: "c3_l2", order: 2, name: "Nivel 2 (5.0-6.9)", points: 2, description: "Push con dirección irregular; el flick no se eleva."),
+                        RubricTemplateLevel(id: "c3_l3", order: 3, name: "Nivel 3 (7.0-8.9)", points: 3, description: "Push raso y preciso al compañero; flick controlado sobre la pica."),
+                        RubricTemplateLevel(id: "c3_l4", order: 4, name: "Nivel 4 (9.0-10.0)", points: 4, description: "Push que supera una línea de defensas; flick con intención.")
+                    ],
+                    visualKey: "hockey.push_flick"
+                ),
+                RubricTemplateCriterion(
+                    id: "c4",
+                    name: "Tiro a portería",
+                    weight: 0.25,
+                    levels: [
+                        RubricTemplateLevel(id: "c4_l1", order: 1, name: "Nivel 1 (1.0-4.9)", points: 1, description: "El tiro va fuera o no llega a la portería."),
+                        RubricTemplateLevel(id: "c4_l2", order: 2, name: "Nivel 2 (5.0-6.9)", points: 2, description: "Tira a portería, pero al centro: el portero la para."),
+                        RubricTemplateLevel(id: "c4_l3", order: 3, name: "Nivel 3 (7.0-8.9)", points: 3, description: "Tira a una esquina con intención."),
+                        RubricTemplateLevel(id: "c4_l4", order: 4, name: "Nivel 4 (9.0-10.0)", points: 4, description: "Amaga, mueve al portero y marca en la otra esquina.")
+                    ],
+                    visualKey: "hockey.shot_on_goal"
+                )
+            ]
+        ),
     ]
 
     /// Genera la representación TSV que entiende `KmpBridge.importRubricDraft(tsv:)`.
@@ -482,6 +544,9 @@ enum RubricTemplateCatalog {
         }
         for (idx, criterion) in template.criteria.enumerated() {
             bridge.updateRubricCriterionWeight(at: idx, weight: criterion.weight)
+            if criterion.visualKey != nil || criterion.timingConfig != nil {
+                bridge.updateRubricCriterionPresentation(at: idx, visualKey: criterion.visualKey, timingConfig: criterion.timingConfig)
+            }
         }
         return try await bridge.saveRubricFromBuilderReturningId()
     }

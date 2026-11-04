@@ -490,6 +490,14 @@ private struct RubricBuilderGridView: View {
                 Text("\(Int((criterion.weight * 100).rounded()))%")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.accentColor)
+
+                RubricCriterionPresentationButton(
+                    visualKey: criterion.visualKey,
+                    timingConfig: criterion.timingConfig,
+                    levelCount: state.levels.count
+                ) { visualKey, timingConfig in
+                    bridge.updateRubricCriterionPresentation(at: index, visualKey: visualKey, timingConfig: timingConfig)
+                }
             }
             .frame(width: layout.criterionWidth, alignment: .leading)
 

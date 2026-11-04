@@ -5,6 +5,7 @@ import com.migestor.shared.repository.*
 import com.migestor.shared.util.CriterionStatement
 import com.migestor.shared.util.EvaluationCriteriaReference
 import com.migestor.shared.util.NotebookRefreshBus
+import com.migestor.shared.util.RubricTiming
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -13,6 +14,8 @@ data class RubricEvaluationUiState(
     val rubricName: String = "",
     val rubricDetail: RubricDetail? = null,
     val selectedLevels: Map<Long, Long> = emptyMap(), // CriterionId -> LevelId
+    /** Tiempos del cronómetro (segundos) por criterio. Solo en criterios con cortes. */
+    val measuredValues: Map<Long, Double> = emptyMap(),
     val totalScore: Double = 0.0,
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
@@ -92,6 +95,7 @@ class RubricEvaluationViewModel(
                 val rubricDetail = rubricDeferred.await()
                 val initialAssessments = assessmentsDeferred.await()
                 val initialSelectedLevels = initialAssessments.associate { it.criterionId to it.levelId }
+                val initialMeasured = measuredValuesOf(initialAssessments)
 
                 if (loadGeneration != myGeneration) return@launch
                 _uiState.update { state ->
@@ -100,6 +104,7 @@ class RubricEvaluationViewModel(
                         rubricName = rubricDetail?.rubric?.name ?: "Rúbrica",
                         rubricDetail = rubricDetail,
                         selectedLevels = initialSelectedLevels,
+                        measuredValues = initialMeasured,
                         classId = classId,
                         criterionLabel = evaluationCriterionLabel(evaluation),
                         criterionStatements = evaluation?.let { EvaluationCriteriaReference.criterionStatements(it.name) } ?: emptyList(),
@@ -133,21 +138,23 @@ class RubricEvaluationViewModel(
                 val studentDeferred = async { studentsRepository.getStudent(studentId) }
                 val rubricDeferred = async { rubricsRepository.getRubricDetail(rubricId) }
                 val gradeDeferred = async { notebookRepository.getGradeForColumn(studentId, columnId) }
+                val assessmentsDeferred = async { rubricsRepository.listRubricAssessments(studentId, evaluationId) }
 
                 val evaluation = evaluationDeferred.await()
                 val classId = evaluation?.classId ?: 0L
                 val student = studentDeferred.await()
                 val rubricDetail = rubricDeferred.await()
                 val previousGrade = gradeDeferred.await()
+                val assessments = assessmentsDeferred.await()
 
                 // Si hay rubricSelections (JSON/String), parsearlo
                 val initialSelectedLevels = if (!previousGrade?.rubricSelections.isNullOrBlank()) {
                     parseRubricSelections(previousGrade!!.rubricSelections!!)
                 } else {
                     // Fallback a evaluaciones clásicas si no hay en el Cuaderno
-                    val initialAssessments = rubricsRepository.listRubricAssessments(studentId, evaluationId)
-                    initialAssessments.associate { it.criterionId to it.levelId }
+                    assessments.associate { it.criterionId to it.levelId }
                 }
+                val initialMeasured = measuredValuesOf(assessments)
 
                 if (loadGeneration != myGeneration) return@launch
                 _uiState.update { state ->
@@ -156,6 +163,7 @@ class RubricEvaluationViewModel(
                         rubricName = rubricDetail?.rubric?.name ?: "Rúbrica",
                         rubricDetail = rubricDetail,
                         selectedLevels = initialSelectedLevels,
+                        measuredValues = initialMeasured,
                         notes = previousGrade?.evidence ?: "",
                         classId = classId,
                         criterionLabel = evaluationCriterionLabel(evaluation),
@@ -184,6 +192,28 @@ class RubricEvaluationViewModel(
             _uiState.update { it.copy(error = "Error al calcular nota: ${e.message}") }
         }
     }
+
+    /**
+     * Tiempo del cronómetro: pone el nivel según los cortes del criterio.
+     * Devuelve el id del nivel elegido, o null si el criterio no tiene cortes válidos.
+     */
+    fun recordMeasurement(criterionId: Long, seconds: Double): Long? {
+        val criterion = _uiState.value.rubricDetail?.criteria?.firstOrNull { it.criterion.id == criterionId } ?: return null
+        val level = RubricTiming.parse(criterion.criterion.timingConfig)?.levelFor(seconds, criterion.levels) ?: return null
+        _uiState.update { it.copy(measuredValues = it.measuredValues + (criterionId to seconds)) }
+        selectLevel(criterionId, level.id)
+        return level.id
+    }
+
+    /** Borra el tiempo; el nivel elegido se queda (se puede cambiar a mano). */
+    fun clearMeasurement(criterionId: Long) {
+        _uiState.update {
+            it.copy(measuredValues = it.measuredValues - criterionId, isSaveSuccessful = false, shouldDismissDialog = false)
+        }
+    }
+
+    private fun measuredValuesOf(assessments: List<RubricAssessment>): Map<Long, Double> =
+        assessments.mapNotNull { a -> a.measuredValue?.let { a.criterionId to it } }.toMap()
 
     fun updateNotes(notes: String) {
         _uiState.update { it.copy(notes = notes, isSaveSuccessful = false, shouldDismissDialog = false) }
@@ -250,6 +280,17 @@ class RubricEvaluationViewModel(
                         levelId = levelId
                     )
                 }
+                // Tiempo del cronómetro: va detrás porque necesita la fila de la valoración.
+                state.rubricDetail?.criteria
+                    ?.filter { it.criterion.timingConfig != null && it.criterion.id in state.selectedLevels }
+                    ?.forEach { timed ->
+                        rubricsRepository.saveRubricAssessmentMeasurement(
+                            studentId = state.studentId,
+                            evaluationId = state.evaluationId,
+                            criterionId = timed.criterion.id,
+                            measuredValue = state.measuredValues[timed.criterion.id],
+                        )
+                    }
                 
                 // 3. Ya no es necesario llamar por separado a gradesRepository.saveGrade 
                 // ya que notebookRepository.upsertGrade lo hace internamente.

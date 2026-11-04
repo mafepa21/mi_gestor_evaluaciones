@@ -1445,7 +1445,8 @@ extension KmpBridge {
                         "studentId": assessment.studentId,
                         "evaluationId": assessment.evaluationId,
                         "criterionId": assessment.criterionId,
-                        "levelId": assessment.levelId
+                        "levelId": assessment.levelId,
+                        "measuredValue": assessment.measuredValue ?? NSNull()
                     ],
                     shouldPersist: false,
                     shouldScheduleAutoSync: false
@@ -3486,6 +3487,14 @@ extension KmpBridge {
                         deviceId: change.deviceId,
                         syncVersion: 1
                     )
+                    // Un equipo sin rúbricas visuales no manda las claves: se conserva lo que hay.
+                    if criterion.keys.contains("visualKey") || criterion.keys.contains("timingConfig") {
+                        try await container.rubricsRepository.saveCriterionPresentation(
+                            criterionId: savedCriterionId.int64Value,
+                            visualKey: criterion.keys.contains("visualKey") ? criterion["visualKey"] as? String : existingCriterion?.visualKey,
+                            timingConfig: criterion.keys.contains("timingConfig") ? criterion["timingConfig"] as? String : existingCriterion?.timingConfig
+                        )
+                    }
                     let levels = criterion["levels"] as? [[String: Any]] ?? []
                     let existingLevels = existingDetail?.criteria
                         .first { $0.criterion.id == criterionId }?
@@ -3691,6 +3700,21 @@ extension KmpBridge {
                     deviceId: change.deviceId,
                     syncVersion: 1
                 )
+                // Tiempo del cronómetro: solo si el cambio entrante ganó (la fila quedó con su fecha).
+                if payloadObject.keys.contains("measuredValue") {
+                    let stored = try await container.rubricsRepository.listRubricAssessments(
+                        studentId: studentId,
+                        evaluationId: evaluationId
+                    ).first { $0.criterionId == criterionId }
+                    if stored?.trace.updatedAt.toEpochMilliseconds() == change.updatedAtEpochMs {
+                        try await container.rubricsRepository.saveRubricAssessmentMeasurement(
+                            studentId: studentId,
+                            evaluationId: evaluationId,
+                            criterionId: criterionId,
+                            measuredValue: doubleValue(payloadObject["measuredValue"]).map { KotlinDouble(value: $0) }
+                        )
+                    }
+                }
                 if let evaluation = try await container.evaluationsRepository.getEvaluation(evaluationId: evaluationId),
                    let classId = int64Value(evaluation.classId),
                    classId > 0 {

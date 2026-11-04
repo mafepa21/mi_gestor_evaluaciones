@@ -664,6 +664,10 @@ extension KmpBridge {
         rubricsViewModel.updateCriterionWeight(index: Int32(index), weight: weight)
     }
 
+    func updateRubricCriterionPresentation(at index: Int, visualKey: String?, timingConfig: String?) {
+        rubricsViewModel.updateCriterionPresentation(index: Int32(index), visualKey: visualKey, timingConfig: timingConfig)
+    }
+
     func updateRubricLevelDescription(criterionIndex: Int, levelUid: String, description: String) {
         rubricsViewModel.updateLevelDescription(criterionIndex: Int32(criterionIndex), levelUid: levelUid, description: description)
     }
@@ -727,6 +731,11 @@ extension KmpBridge {
                 deviceId: localDeviceId,
                 syncVersion: criterion.id == nil ? 1 : 2
             ).int64Value
+            try await container.rubricsRepository.saveCriterionPresentation(
+                criterionId: criterionId,
+                visualKey: criterion.visualKey,
+                timingConfig: criterion.timingConfig
+            )
 
             var syncedLevels: [[String: Any]] = []
             for level in state.levels {
@@ -755,7 +764,9 @@ extension KmpBridge {
                 "description": criterion.description_,
                 "weight": criterion.weight,
                 "order": Int(criterion.order),
-                "levels": syncedLevels
+                "levels": syncedLevels,
+                "visualKey": criterion.visualKey ?? NSNull(),
+                "timingConfig": criterion.timingConfig ?? NSNull()
             ])
         }
 

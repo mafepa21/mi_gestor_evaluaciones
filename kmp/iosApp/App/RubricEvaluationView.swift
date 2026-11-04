@@ -17,6 +17,8 @@ struct RubricEvaluationView: View {
     @State private var activeCriterionId: Int64?
     /// Foto de `selectedLevels` al cargar/guardar: base de `isDirty`.
     @State private var initialLevels: [Int64: Int64]?
+    /// Foto de los tiempos del cronómetro: cambiar solo un tiempo también es un cambio.
+    @State private var initialMeasured: [Int64: Double] = [:]
     @State private var showingDiscardDialog: Bool = false
     /// `LomloeCriteriaCatalog.resolveCriteria` hecho una vez por rúbrica, no
     /// en cada redibujado.
@@ -28,7 +30,26 @@ struct RubricEvaluationView: View {
     @State private var availableWidth: CGFloat = 0
 
     private func usesMatrix(_ rubric: RubricDetail) -> Bool {
-        RubricMatrixView.fits(rubric.criteria, in: availableWidth)
+        !hasVisualCriteria(rubric) && RubricMatrixView.fits(rubric.criteria, in: availableWidth)
+    }
+
+    /// Criterio con dibujos o cronómetro: va en tarjetas, nunca en la tabla.
+    private static func isVisual(_ criterion: RubricCriterion) -> Bool {
+        RubricVisuals.isKnown(criterion.visualKey) || criterion.timingConfig != nil
+    }
+
+    private func hasVisualCriteria(_ rubric: RubricDetail) -> Bool {
+        rubric.criteria.contains { Self.isVisual($0.criterion) }
+    }
+
+    private var measuredSeconds: [Int64: Double] {
+        var result: [Int64: Double] = [:]
+        for (rawKey, rawValue) in (state.measuredValues as NSDictionary) {
+            if let key = rawKey as? NSNumber, let value = rawValue as? NSNumber {
+                result[key.int64Value] = value.doubleValue
+            }
+        }
+        return result
     }
 
     /// Ancho máximo del contenido: la tabla aprovecha la ventana; las tarjetas, columna legible.
@@ -57,7 +78,7 @@ struct RubricEvaluationView: View {
     /// Hay niveles cambiados respecto a la última carga o guardado.
     private var isDirty: Bool {
         guard let initialLevels else { return false }
-        return initialLevels != currentLevels
+        return initialLevels != currentLevels || initialMeasured != measuredSeconds
     }
 
     private var state: RubricEvaluationUiState {
@@ -142,6 +163,7 @@ struct RubricEvaluationView: View {
                     .appOnChange(of: state.isSaveSuccessful) { saved in
                         guard saved else { return }
                         initialLevels = currentLevels
+                        initialMeasured = measuredSeconds
                         guard !bridge.isNotebookRubricAutoAdvanceActive else { return }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                             closeRubric()
@@ -286,6 +308,7 @@ struct RubricEvaluationView: View {
 
     private func resetSnapshot(rubric: RubricDetail) {
         initialLevels = currentLevels
+        initialMeasured = measuredSeconds
         activeCriterionId = firstUnansweredCriterionId(rubric: rubric)
     }
 
@@ -411,6 +434,7 @@ struct RubricEvaluationView: View {
             emitNotebookRefresh: true,
             onSuccess: {
                 initialLevels = currentLevels
+                initialMeasured = measuredSeconds
                 AppleInteractionFeedback.play(.success)
             }
         )
@@ -731,6 +755,33 @@ struct RubricEvaluationView: View {
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(rubric.criteria, id: \.criterion.id) { criterion in
+                    if Self.isVisual(criterion.criterion) {
+                        let criterionId = criterion.criterion.id
+                        RubricVisualCriterionRow(
+                            item: criterion,
+                            totalWeight: totalWeight,
+                            selectedLevelId: currentLevels[criterionId],
+                            measuredSeconds: measuredSeconds[criterionId],
+                            hidesDescriptions: hidesLevelDescriptions,
+                            isActive: activeCriterionId == criterionId,
+                            onActivate: {
+                                activeCriterionId = criterionId
+                                keysFocused = true
+                            },
+                            onSelectLevel: { levelId in
+                                selectLevel(levelId, for: criterion, rubric: rubric)
+                            },
+                            onMeasure: { seconds in
+                                if bridge.rubricEvaluationViewModel.recordMeasurement(criterionId: criterionId, seconds: seconds) != nil {
+                                    activeCriterionId = criterionId
+                                }
+                            },
+                            onClearMeasure: {
+                                bridge.rubricEvaluationViewModel.clearMeasurement(criterionId: criterionId)
+                            }
+                        )
+                        .id(criterionId)
+                    } else {
                     RubricCriterionRow(
                         item: criterion,
                         totalWeight: totalWeight,
@@ -745,6 +796,7 @@ struct RubricEvaluationView: View {
                         }
                     )
                     .id(criterion.criterion.id)
+                    }
                 }
             }
         }

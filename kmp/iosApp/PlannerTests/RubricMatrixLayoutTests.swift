@@ -19,7 +19,7 @@ final class RubricMatrixLayoutTests: XCTestCase {
 
     private func criterion(_ id: Int64, _ text: String, levels: [(String, Int32, String)]) -> RubricCriterionWithLevels {
         RubricCriterionWithLevels(
-            criterion: RubricCriterion(id: id, rubricId: 1, description: text, weight: 1, order: Int32(id), competencyId: nil, trace: trace),
+            criterion: RubricCriterion(id: id, rubricId: 1, description: text, weight: 1, order: Int32(id), competencyId: nil, trace: trace, visualKey: nil, timingConfig: nil),
             levels: levels.enumerated().map { index, level in
                 RubricLevel(
                     id: id * 10 + Int64(index),

@@ -1,0 +1,42 @@
+-- Migración 48: rúbricas visuales y con cronómetro. Solo aditiva.
+
+-- Algunas bases parciales antiguas no tienen aún estas tablas (se crean en el .sq):
+-- se crean aquí con la forma previa a la 48 para que el ALTER no falle.
+CREATE TABLE IF NOT EXISTS rubric_criteria (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rubric_id INTEGER NOT NULL,
+    description TEXT NOT NULL,
+    weight REAL NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    competency_id INTEGER,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (rubric_id) REFERENCES rubrics(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS rubric_assessments (
+    student_id INTEGER NOT NULL,
+    evaluation_id INTEGER NOT NULL,
+    criterion_id INTEGER NOT NULL,
+    level_id INTEGER NOT NULL,
+    created_at_epoch_ms INTEGER NOT NULL,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (student_id, evaluation_id, criterion_id),
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE CASCADE,
+    FOREIGN KEY (criterion_id) REFERENCES rubric_criteria(id) ON DELETE CASCADE,
+    FOREIGN KEY (level_id) REFERENCES rubric_levels(id) ON DELETE CASCADE
+);
+
+-- visual_key: juego de dibujos por nivel (p. ej. 'hockey.dribble_flat_face'); NULL = solo texto.
+-- timing_config: cortes de cronómetro ('lower;10.0;12.0;15.0'); NULL = sin cronómetro.
+ALTER TABLE rubric_criteria ADD COLUMN visual_key TEXT;
+ALTER TABLE rubric_criteria ADD COLUMN timing_config TEXT;
+
+-- measured_value: marca medida (segundos) que decidió el nivel; NULL si se eligió a mano.
+ALTER TABLE rubric_assessments ADD COLUMN measured_value REAL;

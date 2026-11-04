@@ -577,28 +577,17 @@ struct WebSubmissionImportService {
 
                     // Comprobación de duplicados:
                     // En autoevaluación, no se permiten dos entregas para el mismo alumno.
-                    // En coevaluación, se permiten varias evaluaciones de distintos evaluadores para el mismo alumno evaluado,
-                    // pero no dos entregas del mismo evaluador para el mismo alumno evaluado
-                    // en el mismo partido (con pareja elegida, cada partido cuenta aparte).
+                    // En coevaluación no se rechaza nada aquí: un reenvío del mismo
+                    // evaluador al mismo alumno en el mismo partido es una corrección, y
+                    // `WebPeerEvaluationStore.record` se queda con la más reciente aunque
+                    // las dos lleguen en la misma tanda.
                     // En pasaporte, varios envíos del mismo alumno son lo normal: se
                     // juntan al importar (ver `WebPassportStore`).
-                    if let alumno = borrador.studentId, !borrador.isPassport {
-                        if borrador.isPeerEvaluation {
-                            if resultado.drafts.contains(where: {
-                                $0.formInstanceId == borrador.formInstanceId &&
-                                $0.studentId == alumno &&
-                                $0.alias == borrador.alias &&
-                                $0.round == borrador.round
-                            }) {
-                                throw WebSubmissionImportError.duplicatedStudent(borrador.alias)
-                            }
-                        } else {
-                            if resultado.drafts.contains(where: {
-                                $0.formInstanceId == borrador.formInstanceId && $0.studentId == alumno
-                            }) {
-                                throw WebSubmissionImportError.duplicatedStudent(borrador.alias)
-                            }
-                        }
+                    if let alumno = borrador.studentId, !borrador.isPassport, !borrador.isPeerEvaluation,
+                       resultado.drafts.contains(where: {
+                           $0.formInstanceId == borrador.formInstanceId && $0.studentId == alumno
+                       }) {
+                        throw WebSubmissionImportError.duplicatedStudent(borrador.alias)
                     }
 
                     resultado.drafts.append(borrador)
@@ -688,6 +677,12 @@ struct WebSubmissionImportService {
         if let targets = carga.targets, !targets.isEmpty {
             // Coevaluación con targets
             var borradores: [WebSubmissionDraft] = []
+            let evaluadorId = resolver.studentId(
+                formInstanceId: envelope.formInstanceId,
+                alias: envelope.participantAlias
+            )
+            // Mismo rango que el contrato. Fuera de él, partido 1.
+            let partido = carga.round.flatMap { (1...50).contains($0) ? $0 : nil } ?? 1
             for target in targets {
                 let evaluacion = try resolveAnswers(
                     answers: target.answers,
@@ -715,7 +710,9 @@ struct WebSubmissionImportService {
                         missingRequiredTitles: evaluacion.sinResponderTitulos,
                         targetAlias: target.targetAlias,
                         isPeerEvaluation: true,
-                        round: carga.round ?? 1
+                        // La autoevaluación viaja en cada partido, pero cuenta una sola
+                        // vez: siempre como partido 1, y el último envío la sustituye.
+                        round: targetStudentId != nil && targetStudentId == evaluadorId ? 1 : partido
                     )
                 )
             }

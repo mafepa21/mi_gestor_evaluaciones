@@ -23,6 +23,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - **Menos color en el Cuaderno**: las notas sueltas se leen en negro. El rojo, el ámbar y el verde ya no pintan cada celda. Si se enciende «Colorear la media», el color queda solo en la columna Media. El ajuste nace apagado.
 
+- **Nueva columna en dos pasos**: eliges el tipo, pones el nombre y pulsas Crear. El peso, la rúbrica y la fórmula quedan en Ajustes, abiertos solo cuando hacen falta.
+
 - **Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web**:
   - Modalidad dual pedagógica en la app: **«Autoevaluación»** (evaluación propia individual) y **«Auto + Coevaluación»** (el estudiante se autoevalúa en la primera pestaña destacada *«Mi autoevaluación»* y coevalúa a sus compañeros de equipo en las pestañas siguientes).
   - Detección automática en la app de la SA asociada a la columna del cuaderno y los grupos de trabajo vinculados para generar los pares de evaluación.

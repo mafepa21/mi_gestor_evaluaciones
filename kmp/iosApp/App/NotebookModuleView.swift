@@ -76,7 +76,7 @@ struct NotebookModuleView: View {
     /// Color semántico de nota + heat de celda (rediseño radical del grid).
     /// Toggle propio en el menú de acciones; `NotebookStatefulEditableTableCell`
     /// lee la misma clave con su propio `@AppStorage` (ver `NotebookGridStyle`).
-    @AppStorage(NotebookGridStyle.semanticGradeColorDefaultsKey) var semanticGradeColorEnabled = true
+    @AppStorage(NotebookGridStyle.semanticGradeColorDefaultsKey) var semanticGradeColorEnabled = false
     @State var categoryDraft = ""
     @State var editingCategoryId: String? = nil
     @State var isNotebookTabAlertPresented = false
@@ -774,7 +774,7 @@ struct NotebookModuleView: View {
         }
 
         Toggle(isOn: $semanticGradeColorEnabled) {
-            Label("Colorear notas por banda", systemImage: "paintpalette")
+            Label("Colorear la media", systemImage: "paintpalette")
         }
 
         Menu("Pestañas") {

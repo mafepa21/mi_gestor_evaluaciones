@@ -21,6 +21,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - **Menús del Cuaderno con los mismos textos**: la vista se llama Rejilla en el iPad y en el Mac. El filtro vacío dice Grupo completo y Sin filtrar en todos los sitios. El menú Edición puede decir Deshacer nota de… y Rehacer nota de…
 
+- **Menos color en el Cuaderno**: las notas sueltas se leen en negro. El rojo, el ámbar y el verde ya no pintan cada celda. Si se enciende «Colorear la media», el color queda solo en la columna Media. El ajuste nace apagado.
+
+- **Nueva columna en dos pasos**: eliges el tipo, pones el nombre y pulsas Crear. El peso, la rúbrica y la fórmula quedan en Ajustes, abiertos solo cuando hacen falta.
+
 - **Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web**:
   - Modalidad dual pedagógica en la app: **«Autoevaluación»** (evaluación propia individual) y **«Auto + Coevaluación»** (el estudiante se autoevalúa en la primera pestaña destacada *«Mi autoevaluación»* y coevalúa a sus compañeros de equipo en las pestañas siguientes).
   - Detección automática en la app de la SA asociada a la columna del cuaderno y los grupos de trabajo vinculados para generar los pares de evaluación.
@@ -63,6 +67,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Menos color en el Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se miró la tabla en la app.
 - Menús y Deshacer del Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se abrió el menú Edición en la app.
 - Rango y pegado del Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se pegó una hoja de Numbers en la app.
 - Teclado del Cuaderno en macOS, 23 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se abrió la app para recorrer una columna con el teclado.

@@ -262,9 +262,8 @@ extension NotebookModuleView {
         item.row.averageExplanation?.pendingCells.count ?? 0
     }
 
-    /// La Media como "héroe" del rediseño radical del grid: nota grande
-    /// coloreada por banda (mismo toggle `semanticGradeColorEnabled` que las
-    /// celdas), medidor de completitud y estado — no un badge menudo con icono.
+    /// La Media puede ir coloreada por banda si el menú lo pide. Las notas
+    /// sueltas no: el grid se lee por el número, no por un semáforo.
     func averageBadge(for item: NotebookTableRow) -> some View {
         let state = averageState(for: item)
         let pendingCount = averagePendingCount(for: item)

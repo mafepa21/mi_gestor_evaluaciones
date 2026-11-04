@@ -217,6 +217,10 @@ data class RubricCriterion(
     val order: Int,
     val competencyId: Long? = null,
     val trace: AuditTrace = AuditTrace(),
+    /** Juego de dibujos por nivel (clave de `RubricVisuals` en Apple); null = solo texto. */
+    val visualKey: String? = null,
+    /** Cortes de cronómetro (`RubricTiming`); null = sin cronómetro. */
+    val timingConfig: String? = null,
 )
 
 data class RubricLevel(
@@ -284,6 +288,8 @@ data class RubricAssessment(
     val criterionId: Long,
     val levelId: Long,
     val trace: AuditTrace = AuditTrace(),
+    /** Marca medida (segundos) que decidió el nivel; null si se eligió a mano. */
+    val measuredValue: Double? = null,
 )
 
 data class Evaluation(

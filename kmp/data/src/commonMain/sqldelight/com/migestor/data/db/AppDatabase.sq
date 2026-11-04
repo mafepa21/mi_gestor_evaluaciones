@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS rubric_criteria (
     associated_group_id INTEGER,
     device_id TEXT,
     sync_version INTEGER NOT NULL DEFAULT 0,
+    visual_key TEXT,
+    timing_config TEXT,
     FOREIGN KEY (rubric_id) REFERENCES rubrics(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_rubric_criteria_rubric_sort ON rubric_criteria(rubric_id, sort_order, id);
@@ -174,6 +176,7 @@ CREATE TABLE IF NOT EXISTS rubric_assessments (
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     device_id TEXT,
     sync_version INTEGER NOT NULL DEFAULT 0,
+    measured_value REAL,
     PRIMARY KEY (student_id, evaluation_id, criterion_id),
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
     FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE CASCADE,
@@ -1214,19 +1217,24 @@ deleteRubric:
 DELETE FROM rubrics WHERE id = ?;
 
 selectCriteriaByRubric:
-SELECT id, rubric_id, description, weight, sort_order, updated_at_epoch_ms, device_id, sync_version
+SELECT id, rubric_id, description, weight, sort_order, updated_at_epoch_ms, device_id, sync_version, visual_key, timing_config
 FROM rubric_criteria
 WHERE rubric_id = ?
 ORDER BY sort_order, id;
 
 selectAllCriteria:
-SELECT id, rubric_id, description, weight, sort_order, updated_at_epoch_ms, device_id, sync_version
+SELECT id, rubric_id, description, weight, sort_order, updated_at_epoch_ms, device_id, sync_version, visual_key, timing_config
 FROM rubric_criteria
 ORDER BY rubric_id, sort_order, id;
 
 upsertCriterion:
-INSERT OR REPLACE INTO rubric_criteria(id, rubric_id, description, weight, sort_order, updated_at_epoch_ms, device_id, sync_version)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO rubric_criteria(id, rubric_id, description, weight, sort_order, updated_at_epoch_ms, device_id, sync_version, visual_key, timing_config)
+VALUES (:id, :rubricId, :description, :weight, :sortOrder, :updatedAt, :deviceId, :syncVersion,
+    (SELECT visual_key FROM rubric_criteria WHERE id = :id),
+    (SELECT timing_config FROM rubric_criteria WHERE id = :id));
+
+updateCriterionPresentation:
+UPDATE rubric_criteria SET visual_key = ?, timing_config = ? WHERE id = ?;
 
 deleteCriterion:
 DELETE FROM rubric_criteria WHERE id = ?;
@@ -1250,16 +1258,21 @@ deleteLevel:
 DELETE FROM rubric_levels WHERE id = ?;
 
 upsertRubricAssessment:
-INSERT OR REPLACE INTO rubric_assessments(student_id, evaluation_id, criterion_id, level_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO rubric_assessments(student_id, evaluation_id, criterion_id, level_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version, measured_value)
+VALUES (:studentId, :evaluationId, :criterionId, :levelId, :createdAt, :updatedAt, :deviceId, :syncVersion,
+    (SELECT measured_value FROM rubric_assessments WHERE student_id = :studentId AND evaluation_id = :evaluationId AND criterion_id = :criterionId));
+
+updateRubricAssessmentMeasurement:
+UPDATE rubric_assessments SET measured_value = ?
+WHERE student_id = ? AND evaluation_id = ? AND criterion_id = ?;
 
 selectRubricAssessments:
-SELECT student_id, evaluation_id, criterion_id, level_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+SELECT student_id, evaluation_id, criterion_id, level_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version, measured_value
 FROM rubric_assessments
 WHERE student_id = ? AND evaluation_id = ?;
 
 selectRubricAssessmentsForStudents:
-SELECT student_id, evaluation_id, criterion_id, level_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+SELECT student_id, evaluation_id, criterion_id, level_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version, measured_value
 FROM rubric_assessments
 WHERE evaluation_id = ? AND student_id IN ?;
 

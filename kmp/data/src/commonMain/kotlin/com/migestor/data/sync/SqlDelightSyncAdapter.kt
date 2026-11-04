@@ -677,6 +677,8 @@ class SqlDelightSyncAdapter(
                                             put("description", JsonPrimitive(criterionWithLevels.criterion.description))
                                             put("weight", JsonPrimitive(criterionWithLevels.criterion.weight))
                                             put("order", JsonPrimitive(criterionWithLevels.criterion.order))
+                                            criterionWithLevels.criterion.visualKey?.let { put("visualKey", JsonPrimitive(it)) }
+                                            criterionWithLevels.criterion.timingConfig?.let { put("timingConfig", JsonPrimitive(it)) }
                                             put(
                                                 "levels",
                                                 buildJsonArray {
@@ -733,6 +735,7 @@ class SqlDelightSyncAdapter(
                                             put("evaluationId", JsonPrimitive(assessment.evaluationId))
                                             put("criterionId", JsonPrimitive(assessment.criterionId))
                                             put("levelId", JsonPrimitive(assessment.levelId))
+                                            assessment.measuredValue?.let { put("measuredValue", JsonPrimitive(it)) }
                                         }.toString(),
                                     )
                                 }
@@ -1954,6 +1957,16 @@ class SqlDelightSyncAdapter(
                             deviceId = change.deviceId,
                             syncVersion = 1,
                         )
+                        // Solo si el cambio entrante ganó (la fila quedó con su fecha).
+                        if (payload.containsKey("measuredValue")) {
+                            val stored = container.rubricsRepository.listRubricAssessments(studentId, evaluationId)
+                                .firstOrNull { it.criterionId == criterionId }
+                            if (stored?.trace?.updatedAt?.toEpochMilliseconds() == change.updatedAtEpochMs) {
+                                container.rubricsRepository.saveRubricAssessmentMeasurement(
+                                    studentId, evaluationId, criterionId, payload.double("measuredValue"),
+                                )
+                            }
+                        }
                         applied++
                     }
 
@@ -2332,6 +2345,14 @@ class SqlDelightSyncAdapter(
                                 deviceId = change.deviceId,
                                 syncVersion = 1,
                             )
+                            // Un equipo sin rúbricas visuales no manda las claves: se conserva lo que hay.
+                            if (criterion.containsKey("visualKey") || criterion.containsKey("timingConfig")) {
+                                container.rubricsRepository.saveCriterionPresentation(
+                                    criterionId = savedCriterionId,
+                                    visualKey = if (criterion.containsKey("visualKey")) criterion.string("visualKey") else existingCriterion?.visualKey,
+                                    timingConfig = if (criterion.containsKey("timingConfig")) criterion.string("timingConfig") else existingCriterion?.timingConfig,
+                                )
+                            }
                             if (criterion.containsKey("levels")) criterion.array("levels").forEach { levelElement ->
                                 val level = levelElement.jsonObject
                                 val existingLevel = existingDetail?.criteria

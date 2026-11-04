@@ -354,9 +354,19 @@ struct NotebookFormulaCellDisplay {
     let isError: Bool
 }
 
-struct NotebookCellUndoEntry {
+struct NotebookCellRange: Equatable {
+    let columnId: String
+    let anchorStudentId: Int64
+    let endStudentId: Int64
+}
+
+struct NotebookCellUndoChange {
     let studentId: Int64
     let column: NotebookColumnDefinition
     let previousValue: String
     let previousDisplayLabel: String?
+}
+
+struct NotebookCellUndoEntry {
+    let changes: [NotebookCellUndoChange]
 }

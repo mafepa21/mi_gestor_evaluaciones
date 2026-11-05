@@ -162,6 +162,23 @@ enum AppleAIReadinessFixtures {
         confidenceNote: "Fixture local de Voz de Pista."
     )
 
+    static let rubricSelfAssessmentMapping = RubricSelfAssessmentMappingDraft(
+        rubricTitle: "Rúbrica de Análisis Táctico",
+        sourceInstrumentTitle: "Autoevaluación final",
+        studentName: "Alumno Ejemplo",
+        suggestions: [
+            RubricSelfAssessmentCriterionSuggestion(
+                criterionId: 1,
+                suggestedLevelId: 3,
+                suggestedPosition: 3,
+                rationale: "Marcó 3/4 en análisis táctico e identificó un acierto y un error en superioridades.",
+                evidenceExcerpt: "Análisis táctico: 3/4 · «Identifiqué el pase libre pero tardé en decidir»",
+                confidence: "Alta"
+            )
+        ],
+        confidenceNote: "Fixture local de autocompletado desde autoevaluación."
+    )
+
     static var contractChecks: [String] {
         var checks: [String] = []
         checks.append(earlyWarning.confidence <= 1 ? "confidence.clamped.ok" : "confidence.clamped.failed")
@@ -174,6 +191,7 @@ enum AppleAIReadinessFixtures {
         checks.append(plannerSequence.steps.count == 3 ? "planner.steps.ok" : "planner.steps.failed")
         checks.append(!metacognitionPrompts.exitTicketQuestion.isEmpty ? "metacognition.exitTicket.ok" : "metacognition.exitTicket.failed")
         checks.append(courtVoiceCapture.actions.count == 2 ? "courtVoice.actions.ok" : "courtVoice.actions.failed")
+        checks.append(!rubricSelfAssessmentMapping.suggestions.isEmpty ? "rubricSelfAssessment.suggestions.ok" : "rubricSelfAssessment.suggestions.failed")
         return checks
     }
 }

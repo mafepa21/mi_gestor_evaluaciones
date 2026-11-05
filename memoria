@@ -3,6 +3,34 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-11-05 - Autocompletado Masivo de Rúbricas desde Autoevaluación con Triangulación de Preguntas Cortas (Apple Intelligence + Reglas Locales)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Servicio Pedagógico y Orquestación IA (`AppleFoundationPedagogicalService.swift`, `AppleAIOrchestrator.swift`, `AppleAIReadinessFixtures.swift`):
+     - Nueva capacidad `rubricSelfAssessmentMapping` asignada al `Agente Evaluador`, con salida estructurada `@Generable` (`GeneratedRubricSelfAssessmentMappingDraft`) en iOS/macOS 26 y fallback determinista local (`fallbackRubricSelfAssessmentMapping`).
+     - Triangulación real entre los indicadores de escala (`rub_<n>`, 1-4) y las preguntas cortas de reflexión (`open_<n>`, texto o datos): las preguntas cortas se agrupan semánticamente por criterio (`enrichedSemanticTokens` + reparto proporcional de respaldo) y su completitud y profundidad (`evaluateOpenReflectionEvidence`: datos numéricos como tiempos de slalom, conectores causales, propuestas de mejora y solapamiento con descriptores) modulan la nota sugerida (subiendo el nivel cuando la reflexión aporta evidencias sólidas o rebajándolo cuando el alumno se puntúa 3-4 en escala pero deja las preguntas cortas en blanco o con respuestas telegráficas).
+  2. Puente de Rúbricas e Instrumentos Estructurados (`KmpBridge+Rubrics.swift`):
+     - Nuevos métodos `listSelfAssessmentSourceOptions(classId:preferredTabId:preferredSituationId:)` y `loadSelfAssessmentAnswers(classId:studentId:sourceColumnId:)`.
+     - Cuando un alumno ha respondido al menos un campo del formulario, `loadSelfAssessmentAnswers` devuelve todos los ítems de la plantilla (incluidas las preguntas cortas `open_<n>` dejadas en blanco) para que el evaluador detecte omisiones de reflexión.
+  3. Hoja de Evaluación Masiva de Rúbricas (`RubricBulkEvaluationSheet.swift`):
+     - Botón «Autoevaluación (N)» con estética Liquid Glass (`.glass` en iOS/macOS 26 y `.bordered` como fallback), hoja de configuración `BulkRubricSelfAssessmentAutofillSheet` con `AppleAIStatusBadge`, selector de instrumento origen e interruptor «Completar solo criterios pendientes».
+     - Indicador `✨` en las celdas sugeridas, explicación de la triangulación y extracto de escala + reflexión en `RubricLevelDescriptionPopover`, y barra de resumen con botón «Revertir».
+- Por qué importa:
+  - Permite trasladar en segundos la autoevaluación de toda una clase a cualquier rúbrica docente sin caer en la copia ciega de la escala 1-4 que el alumno se marca a sí mismo, premiando la justificación reflexiva y los datos objetivos (como tiempos medidos o análisis táctico) y penalizando las autoevaluaciones infladas sin reflexión escrita.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/AppleFoundationPedagogicalService.swift`
+  - `kmp/iosApp/App/AppleAIOrchestrator.swift`
+  - `kmp/iosApp/App/AppleAIReadinessFixtures.swift`
+  - `kmp/iosApp/App/Bridge/KmpBridge+Rubrics.swift`
+  - `kmp/iosApp/App/RubricBulkEvaluationSheet.swift`
+  - `docs/CHANGELOG.md`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`: `MiGestorKMPMac` (✓ COMPILADO CORRECTAMENTE) y `MiGestorKMPiOS` (✓ COMPILADO CORRECTAMENTE).
+
+Notas para futuras conversaciones:
+- `loadSelfAssessmentAnswers` devuelve la plantilla completa solo si el alumno tiene al menos una respuesta registrada (`hasAnyResponse == true`), evitando sugerir niveles a alumnos que aún no han entregado la autoevaluación.
+
 ## Avance 2026-11-04 - Actualización Curricular y Test de Importación de Sesión 6 SA 2 Bádminton (Sistema Escalafón Relámpago CLIL)
 
 Resumen:

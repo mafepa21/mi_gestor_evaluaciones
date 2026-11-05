@@ -309,6 +309,10 @@ enum EvaluationSyncMerge {
 }
 
 enum RubricBundleSyncMerge {
+    static func shouldSkipBundle(existingFound: Bool, criteriaNeedPrevious: Bool) -> Bool {
+        criteriaNeedPrevious && !existingFound
+    }
+
     static func optionalText(previous: String?, incoming: String?, keyPresent: Bool) -> String? {
         keyPresent ? incoming : previous
     }
@@ -3746,11 +3750,6 @@ extension KmpBridge {
                             }
                         }()
                 }
-                let needsPrevious =
-                    !descriptionKeyPresent
-                    || !classIdKeyPresent
-                    || !teachingUnitIdKeyPresent
-                    || criteriaNeedPrevious
                 let existingDetail: RubricDetail?
                 if let rubricId {
                     do {
@@ -3761,9 +3760,13 @@ extension KmpBridge {
                 } else {
                     existingDetail = nil
                 }
-                // Sin lectura local no se puede conservar description/classId/teachingUnitId,
-                // peso/orden de criterios ni points/order/description de niveles.
-                if needsPrevious, existingDetail == nil {
+                // Una rúbrica nueva no tiene nada que conservar: sin descripción, clase o
+                // unidad se guarda igual (un Mac antiguo no manda clase ni unidad). Solo se
+                // descarta si faltan peso, orden o puntos, que no se pueden inventar.
+                if RubricBundleSyncMerge.shouldSkipBundle(
+                    existingFound: existingDetail != nil,
+                    criteriaNeedPrevious: criteriaNeedPrevious
+                ) {
                     continue
                 }
                 let existing = existingDetail?.rubric
@@ -5222,7 +5225,12 @@ extension KmpBridge {
                 #if os(macOS)
                 let shouldForceFullPull = false
                 #else
+                // Una sola descarga completa tras actualizar: recupera las rúbricas nuevas
+                // que versiones anteriores descartaron al recibirlas del Mac.
+                let rubricRecoveryKey = "sync.recovery.rubricas-nuevas.v1"
+                let needsRubricRecovery = !UserDefaults.standard.bool(forKey: rubricRecoveryKey)
                 let shouldForceFullPull = forceFullPull
+                    || needsRubricRecovery
                     || now.timeIntervalSince(persistedLastFullPullAt) > Self.fullPullSafetyInterval
                 #endif
                 try await performPullSync(
@@ -5231,6 +5239,10 @@ extension KmpBridge {
                 )
                 if shouldForceFullPull {
                     persistedLastFullPullAt = now
+                    #if !os(macOS)
+                    // Solo aquí: si la descarga falla, se reintenta en la siguiente pasada.
+                    UserDefaults.standard.set(true, forKey: "sync.recovery.rubricas-nuevas.v1")
+                    #endif
                 }
                 lastSuccessfulSyncAt = now
 

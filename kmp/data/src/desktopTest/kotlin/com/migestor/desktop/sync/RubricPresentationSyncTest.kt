@@ -7,6 +7,7 @@ import com.migestor.shared.sync.SyncChange
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class RubricPresentationSyncTest {
     private fun newContainer(): KmpContainer {
@@ -65,5 +66,28 @@ class RubricPresentationSyncTest {
         assertEquals("Slalom 5 conos", kept.description)
         assertEquals("hockey.dribble_flat_face", kept.visualKey)
         assertEquals("lower;10.0;12.0;15.0", kept.timingConfig)
+    }
+
+    @Test
+    fun unaRubricaNuevaViajaConSuClaseYSuUnidad() = runTest {
+        val origin = newContainer()
+        val classId = origin.classesRepository.saveClass(name = "4 ESO A", course = 4)
+        val rubricId = origin.rubricsRepository.saveRubric(name = "Hockey", classId = classId, updatedAtEpochMs = 100L)
+        val sinClaseId = origin.rubricsRepository.saveRubric(name = "General", updatedAtEpochMs = 100L)
+
+        val bundles = SqlDelightSyncAdapter(origin, localDeviceId = "mac").collectLocalChanges(0L)
+            .filter { it.entity == "rubric_bundle" }
+        // El iPad descarta una rúbrica nueva si el paquete no trae estas claves.
+        bundles.forEach { bundle ->
+            assertTrue("\"classId\"" in bundle.payload, bundle.payload)
+            assertTrue("\"teachingUnitId\"" in bundle.payload, bundle.payload)
+        }
+
+        val target = newContainer()
+        target.classesRepository.saveClass(id = classId, name = "4 ESO A", course = 4)
+        SqlDelightSyncAdapter(target, localDeviceId = "ipad").applyIncomingChangesLww(bundles)
+
+        assertEquals(classId, target.rubricsRepository.getRubricDetail(rubricId)?.rubric?.classId)
+        assertEquals(null, target.rubricsRepository.getRubricDetail(sinClaseId)?.rubric?.classId)
     }
 }

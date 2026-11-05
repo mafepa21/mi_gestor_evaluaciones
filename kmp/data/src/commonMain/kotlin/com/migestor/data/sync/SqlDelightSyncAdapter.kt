@@ -667,6 +667,9 @@ class SqlDelightSyncAdapter(
                         put("rubricId", JsonPrimitive(rubric.rubric.id))
                         put("name", JsonPrimitive(rubric.rubric.name))
                         put("description", rubric.rubric.description?.let(::JsonPrimitive) ?: JsonPrimitive(""))
+                        // Siempre presentes: el iPad descartaba una rúbrica nueva si faltaban.
+                        put("classId", JsonPrimitive(rubric.rubric.classId ?: 0L))
+                        put("teachingUnitId", JsonPrimitive(rubric.rubric.teachingUnitId ?: 0L))
                         put(
                             "criteria",
                             buildJsonArray {
@@ -2548,8 +2551,8 @@ class SqlDelightSyncAdapter(
                             id = rubricId?.takeIf { it > 0L },
                             name = name,
                             description = if (payload.containsKey("description")) payload.rawString("description") else existing?.description,
-                            classId = if (payload.containsKey("classId")) payload.long("classId") else existing?.classId,
-                            teachingUnitId = if (payload.containsKey("teachingUnitId")) payload.long("teachingUnitId") else existing?.teachingUnitId,
+                            classId = if (payload.containsKey("classId")) payload.long("classId")?.takeIf { it > 0L } else existing?.classId,
+                            teachingUnitId = if (payload.containsKey("teachingUnitId")) payload.long("teachingUnitId")?.takeIf { it > 0L } else existing?.teachingUnitId,
                             updatedAtEpochMs = change.updatedAtEpochMs,
                             deviceId = change.deviceId,
                             syncVersion = 1,

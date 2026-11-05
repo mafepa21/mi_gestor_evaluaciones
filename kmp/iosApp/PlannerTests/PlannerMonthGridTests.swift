@@ -929,6 +929,12 @@ final class PlannerMonthGridTests: XCTestCase {
         )
     }
 
+    func testRubricBundleNuevaSinClaseNiUnidadNoSeDescarta() {
+        XCTAssertFalse(RubricBundleSyncMerge.shouldSkipBundle(existingFound: false, criteriaNeedPrevious: false))
+        XCTAssertTrue(RubricBundleSyncMerge.shouldSkipBundle(existingFound: false, criteriaNeedPrevious: true))
+        XCTAssertFalse(RubricBundleSyncMerge.shouldSkipBundle(existingFound: true, criteriaNeedPrevious: true))
+    }
+
     func testRubricBundleSyncKeepsClassAndCriterionWeightWhenKeysAreMissing() {
         XCTAssertEqual(
             RubricBundleSyncMerge.optionalText(

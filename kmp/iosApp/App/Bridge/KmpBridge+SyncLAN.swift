@@ -676,6 +676,14 @@ extension KmpBridge {
 
         switch source {
         case .smartMerge:
+            // La fusión cambia datos sin vuelta atrás: sin copia no se empieza.
+            do {
+                _ = try await AppleBackupService.shared.createBackup(note: "Antes de fusionar dispositivos")
+            } catch {
+                throw NSError(domain: "Sync", code: -510, userInfo: [
+                    NSLocalizedDescriptionKey: LanSyncBatchedPushCopy.mergeBackupFailedMessage(error.localizedDescription)
+                ])
+            }
             #if os(iOS)
             await enqueueModuleRecordChanges(force: true)
             #endif
@@ -710,20 +718,22 @@ extension KmpBridge {
                 }
                 return $0.id < $1.id
             }
-            if !outbound.isEmpty {
-                _ = try await lanSyncClient.push(
-                    host: host,
-                    token: token,
-                    deviceId: localDeviceId,
-                    changes: outbound,
-                    lastKnownServerEpochMs: lastSyncCursorEpochMs,
-                    pinnedFingerprint: pairedServerFingerprint
-                )
+            let pushResult = try await pushInBatches(
+                changes: outbound,
+                retryFailedBatches: true
+            )
+            guard pushResult.oversized.isEmpty else {
+                throw NSError(domain: "Sync", code: -511, userInfo: [
+                    NSLocalizedDescriptionKey: LanSyncBatchedPushCopy.oversizedMessage(pushResult.oversized)
+                ])
             }
-            await MainActor.run {
-                self.pendingOutboundChanges.removeAll()
-                self.syncPendingChanges = 0
-                self.persistPendingChangesNow()
+            guard pushResult.failed == 0 else {
+                throw NSError(domain: "Sync", code: -512, userInfo: [
+                    NSLocalizedDescriptionKey: LanSyncBatchedPushCopy.mergeFailedMessage(
+                        failed: pushResult.failed,
+                        total: pushResult.sentTotal
+                    )
+                ])
             }
             try await performPullSync(
                 silent: true,
@@ -973,8 +983,57 @@ extension KmpBridge {
         }
     }
 
+    /// Envía los cambios en paquetes que el helper acepta y suelta de la cola cada
+    /// paquete entregado. Solo quita entradas iguales a lo enviado: una edición más
+    /// nueva hecha durante el envío no es igual y se conserva.
+    private func pushInBatches(
+        changes: [LanSyncChange],
+        retryFailedBatches: Bool
+    ) async throws -> LanSyncBatchedPushResult {
+        guard let token = syncToken, pairedSyncHost != nil else {
+            throw NSError(domain: "Sync", code: -41, userInfo: [NSLocalizedDescriptionKey: "No hay emparejamiento activo"])
+        }
+        return try await LanSyncBatchedPush.run(
+            changes: changes,
+            retryFailedBatches: retryFailedBatches,
+            send: { batch in
+                let host = self.pairedSyncHost ?? ""
+                do {
+                    return try await self.lanSyncClient.push(
+                        host: host,
+                        token: token,
+                        deviceId: self.localDeviceId,
+                        changes: batch,
+                        lastKnownServerEpochMs: self.lastSyncCursorEpochMs,
+                        pinnedFingerprint: self.pairedServerFingerprint
+                    )
+                } catch {
+                    try Task.checkCancellation()
+                    guard self.recoverHostAfterNetworkChange(previousHost: host),
+                          let reboundHost = self.pairedSyncHost else {
+                        throw error
+                    }
+                    return try await self.lanSyncClient.push(
+                        host: reboundHost,
+                        token: token,
+                        deviceId: self.localDeviceId,
+                        changes: batch,
+                        lastKnownServerEpochMs: self.lastSyncCursorEpochMs,
+                        pinnedFingerprint: self.pairedServerFingerprint
+                    )
+                }
+            },
+            onDelivered: { batch in
+                let delivered = Set(batch)
+                self.pendingOutboundChanges.removeAll { delivered.contains($0) }
+                self.syncPendingChanges = self.pendingOutboundChanges.count
+                self.persistPendingChanges()
+            }
+        )
+    }
+
     private func performPushSync(silent: Bool) async throws {
-        guard let host = pairedSyncHost, let token = syncToken else {
+        guard pairedSyncHost != nil, syncToken != nil else {
             throw NSError(domain: "Sync", code: -41, userInfo: [NSLocalizedDescriptionKey: "No hay emparejamiento activo"])
         }
         guard !pendingOutboundChanges.isEmpty else {
@@ -998,44 +1057,13 @@ extension KmpBridge {
         // limpiemos la cola al recibir la respuesta.
         let sentChanges = pendingOutboundChanges
 
-        let ack: LanPushResult
-        do {
-            ack = try await lanSyncClient.push(
-                host: host,
-                token: token,
-                deviceId: localDeviceId,
-                changes: sentChanges,
-                lastKnownServerEpochMs: lastSyncCursorEpochMs,
-                pinnedFingerprint: pairedServerFingerprint
-            )
-        } catch {
-            try Task.checkCancellation()
-            guard recoverHostAfterNetworkChange(previousHost: host), let reboundHost = pairedSyncHost else {
-                throw error
-            }
-            ack = try await lanSyncClient.push(
-                host: reboundHost,
-                token: token,
-                deviceId: localDeviceId,
-                changes: sentChanges,
-                lastKnownServerEpochMs: lastSyncCursorEpochMs,
-                pinnedFingerprint: pairedServerFingerprint
-            )
-        }
+        // Si hubo fallos en un paquete, ese paquete sigue pendiente para el siguiente
+        // sync (sin IDs por cambio en el ack no podemos soltar solo los aplicados).
+        let ack = try await pushInBatches(
+            changes: sentChanges,
+            retryFailedBatches: false
+        )
         try Task.checkCancellation()
-        // Si hubo fallos, el lote enviado sigue pendiente para el siguiente sync.
-        // Sin IDs por cambio en el ack, no podemos soltar solo los aplicados.
-        // Si failed == 0 (aplicados o ignorados por LWW) o el Mac manda, sí
-        // soltamos el snapshot enviado. Solo quitamos entradas iguales a lo
-        // enviado: una edición más nueva durante el await no es Equatable y se
-        // conserva.
-        if SyncLanPushPendingPolicy.shouldClearSentPending(
-            failed: ack.failed,
-            desktopAuthoritative: ack.desktopAuthoritative
-        ) {
-            pendingOutboundChanges.removeAll { sentChanges.contains($0) }
-            persistPendingChanges()
-        }
         if ack.desktopAuthoritative {
             try await performPullSync(
                 silent: true,
@@ -1051,12 +1079,18 @@ extension KmpBridge {
             let statusMessage = SyncLanPushCloseCopy.statusMessage(
                 applied: ack.applied,
                 failed: ack.failed,
-                sentTotal: sentChanges.count,
+                sentTotal: ack.sentTotal,
                 desktopAuthoritative: ack.desktopAuthoritative
             )
             publishSyncState {
                 $0.syncStatusMessage = statusMessage
             }
+        }
+        // El resto ya ha llegado al Mac; estos siguen pendientes y se avisa de ellos.
+        guard ack.oversized.isEmpty else {
+            throw NSError(domain: "Sync", code: -511, userInfo: [
+                NSLocalizedDescriptionKey: LanSyncBatchedPushCopy.oversizedMessage(ack.oversized)
+            ])
         }
     }
 

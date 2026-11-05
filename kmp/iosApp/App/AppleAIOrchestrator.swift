@@ -77,12 +77,13 @@ enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
     case plannerSequence
     case metacognitionPrompts
     case courtVoiceCapture
+    case rubricSelfAssessmentMapping
 
     var id: String { rawValue }
 
     var agent: EducationalIntelligenceAgent {
         switch self {
-        case .studentInsight, .averageExplanation, .rubricDraft, .plannerSequence, .metacognitionPrompts:
+        case .studentInsight, .averageExplanation, .rubricDraft, .plannerSequence, .metacognitionPrompts, .rubricSelfAssessmentMapping:
             return .evaluator
         case .tutorMeetingSummary, .earlyWarning, .weeklyStudentEmail, .duaAdaptation:
             return .tutor
@@ -115,6 +116,8 @@ enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
             return "Metacognición y coevaluación"
         case .courtVoiceCapture:
             return "Voz de Pista"
+        case .rubricSelfAssessmentMapping:
+            return "Autocompletado desde autoevaluación"
         }
     }
 
@@ -142,6 +145,8 @@ enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
             return "Formula preguntas de autorreflexión y evaluación formativa entre iguales."
         case .courtVoiceCapture:
             return "Convierte notas de voz en pista en acciones revisables de asistencia, actitud, notas y lesiones."
+        case .rubricSelfAssessmentMapping:
+            return "Sugiere niveles de rúbrica revisables a partir de las respuestas de autoevaluación del alumnado."
         }
     }
 }
@@ -155,6 +160,7 @@ enum EducationalIntelligenceAgentInput {
     case planner(PlannerSequenceInput)
     case metacognition(MetacognitionPromptsInput)
     case courtVoice(CourtVoiceCaptureInput)
+    case rubricSelfAssessment(RubricSelfAssessmentMappingInput)
 }
 
 enum EducationalIntelligenceAgentError: LocalizedError {
@@ -190,6 +196,7 @@ enum AppleAIRequest {
     case plannerSequence(PlannerSequenceInput)
     case metacognitionPrompts(MetacognitionPromptsInput)
     case courtVoiceCapture(CourtVoiceCaptureInput)
+    case rubricSelfAssessmentMapping(RubricSelfAssessmentMappingInput)
 }
 
 enum AppleAIResult {
@@ -211,6 +218,7 @@ enum AppleAIResult {
     case plannerSequence(PlannerSequenceDraft)
     case metacognitionPrompts(MetacognitionPromptsDraft)
     case courtVoiceCapture(CourtVoiceCaptureDraft)
+    case rubricSelfAssessmentMapping(RubricSelfAssessmentMappingDraft)
 }
 
 struct AppleAIGeneration {
@@ -308,6 +316,8 @@ final class AppleAIOrchestrator {
             return .metacognitionPrompts(try await pedagogical.generateMetacognitionPrompts(from: input))
         case let .courtVoiceCapture(input):
             return .courtVoiceCapture(await courtVoice.parseVoiceCapture(from: input))
+        case let .rubricSelfAssessmentMapping(input):
+            return .rubricSelfAssessmentMapping(try await pedagogical.generateRubricSelfAssessmentMapping(from: input))
         }
     }
 
@@ -330,6 +340,8 @@ final class AppleAIOrchestrator {
             return try await generate(.plannerSequence(input))
         case (.evaluator, .metacognition(let input)):
             return try await generate(.metacognitionPrompts(input))
+        case (.evaluator, .rubricSelfAssessment(let input)):
+            return try await generate(.rubricSelfAssessmentMapping(input))
         case (.physicalEducation, .physical(let evidence)):
             return try await generate(.physicalProgressAnalysis(evidence))
         case (.physicalEducation, .courtVoice(let input)):
@@ -364,6 +376,8 @@ final class AppleAIOrchestrator {
             return try await generate(.metacognitionPrompts(input))
         case (.courtVoiceCapture, .courtVoice(let input)):
             return try await generate(.courtVoiceCapture(input))
+        case (.rubricSelfAssessmentMapping, .rubricSelfAssessment(let input)):
+            return try await generate(.rubricSelfAssessmentMapping(input))
         default:
             throw EducationalIntelligenceAgentError.unsupportedCapability(capability)
         }
@@ -470,6 +484,8 @@ final class AppleAIOrchestrator {
         case .metacognitionPrompts(let draft):
             return draft.appearsToBeRulesFallback
         case .courtVoiceCapture(let draft):
+            return draft.appearsToBeRulesFallback
+        case .rubricSelfAssessmentMapping(let draft):
             return draft.appearsToBeRulesFallback
         }
     }

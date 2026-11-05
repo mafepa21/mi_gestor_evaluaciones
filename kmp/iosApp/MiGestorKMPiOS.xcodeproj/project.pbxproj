@@ -2175,6 +2175,20 @@
 			path = App;
 			sourceTree = "<group>";
 		};
+		"TEMP_24F2177C-DEB8-4DF4-BEDD-E917EB1642F2" /* .claude */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = .claude;
+			sourceTree = "<group>";
+		};
+		"TEMP_F8591328-9A9B-4C98-A80F-1A51C9FA71C1" /* .claude */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = .claude;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */

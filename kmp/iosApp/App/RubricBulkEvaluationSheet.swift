@@ -17,7 +17,21 @@ struct RubricBulkEvaluationSheet: View {
     @State private var localInjuryStatuses: [Int64: Bool] = [:]
     @State private var savingInjuryStudentIds: Set<Int64> = []
     @State private var activePopoverLevel: RubricLevel?
+    @State private var activePopoverStudentId: Int64?
+    @State private var activePopoverCriterionId: Int64?
     @State private var familyReportStudentId: Int64? = nil
+    @State private var selfAssessmentSources: [KmpBridge.SelfAssessmentSourceOption] = []
+    @State private var selectedSelfAssessmentColumnId: String = ""
+    @State private var showingSelfAssessmentSheet = false
+    @State private var isRunningSelfAssessmentAutofill = false
+    @State private var autofillProgressCurrent = 0
+    @State private var autofillProgressTotal = 0
+    @State private var autofillOnlyPending = true
+    @State private var aiSuggestionsByCell: [BulkRubricCellKey: RubricSelfAssessmentCriterionSuggestion] = [:]
+    @State private var aiProvenanceLabel: String?
+    @State private var aiLastSummaryMessage: String?
+    @State private var previousLevelsBeforeAutofill: [BulkRubricCellKey: Int64?]? = nil
+    @State private var aiOrchestrator = AppleAIOrchestrator()
 
     private var state: BulkRubricEvaluationUiState? {
         bridge.bulkRubricEvaluationState
@@ -84,6 +98,9 @@ struct RubricBulkEvaluationSheet: View {
                                 dismiss()
                             }
                         }
+                        .task(id: "\(state.classId)-\(state.evaluationId)-\(state.students.count)") {
+                            await refreshSelfAssessmentSources(state: state)
+                        }
                         #if os(macOS)
                         .focusable()
                         .onMoveCommand { direction in
@@ -131,14 +148,38 @@ struct RubricBulkEvaluationSheet: View {
             .onDisappear {
                 levelHoverTask?.cancel()
                 activePopoverLevel = nil
+                activePopoverStudentId = nil
+                activePopoverCriterionId = nil
             }
             .popover(item: $activePopoverLevel, arrowEdge: .bottom) { level in
-                RubricLevelDescriptionPopover(level: level)
-                    .padding(4)
-                    #if os(iOS)
-                    .presentationDetents([.fraction(0.32), .medium])
-                    .presentationDragIndicator(.visible)
-                    #endif
+                let suggestion = activePopoverSuggestion(for: level)
+                RubricLevelDescriptionPopover(
+                    level: level,
+                    aiSuggestion: suggestion,
+                    aiProvenanceLabel: aiProvenanceLabel
+                )
+                .padding(4)
+                #if os(iOS)
+                .presentationDetents([.fraction(0.38), .medium])
+                .presentationDragIndicator(.visible)
+                #endif
+            }
+            .sheet(isPresented: $showingSelfAssessmentSheet) {
+                if let state, let rubric = state.rubricDetail {
+                    BulkRubricSelfAssessmentAutofillSheet(
+                        rubricName: rubric.rubric.name,
+                        sources: selfAssessmentSources,
+                        selectedSourceColumnId: $selectedSelfAssessmentColumnId,
+                        onlyPendingCriteria: $autofillOnlyPending,
+                        availability: aiOrchestrator.availability(),
+                        onConfirm: {
+                            showingSelfAssessmentSheet = false
+                            Task {
+                                await runBulkSelfAssessmentAutofill(state: state, rubric: rubric)
+                            }
+                        }
+                    )
+                }
             }
             .sheet(
                 isPresented: Binding(
@@ -218,10 +259,50 @@ struct RubricBulkEvaluationSheet: View {
             InstrumentEvaluationChromeSurface(role: .context, padding: 0) {
                 AssessmentCriteriaDisclosureView(rawText: criteriaText, embedded: true)
             }
+
+            if isRunningSelfAssessmentAutofill || aiLastSummaryMessage != nil {
+                selfAssessmentStatusBanner
+            }
         }
     }
 
     private func headerStatus(state: BulkRubricEvaluationUiState, cache: BulkRubricEvaluationCache) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                selfAssessmentHeaderControl
+                pendingAndSaveStatus(state: state, cache: cache)
+            }
+            VStack(alignment: .trailing, spacing: 8) {
+                selfAssessmentHeaderControl
+                pendingAndSaveStatus(state: state, cache: cache)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var selfAssessmentHeaderControl: some View {
+        let totalRespondents = selfAssessmentSources.reduce(0) { max($0, $1.respondentCount) }
+        if !selfAssessmentSources.isEmpty {
+            Button {
+                showingSelfAssessmentSheet = true
+            } label: {
+                Label(
+                    totalRespondents > 0
+                        ? "Autoevaluación (\(totalRespondents))"
+                        : "Autoevaluación",
+                    systemImage: "sparkles"
+                )
+                .font(.footnote.weight(.semibold))
+                .lineLimit(1)
+            }
+            .instrumentEvaluationGlassButton(isProminent: false)
+            .disabled(isRunningSelfAssessmentAutofill)
+            .help("Autocompletar niveles revisables a partir de una autoevaluación de la clase")
+            .accessibilityLabel("Autocompletar desde autoevaluación")
+        }
+    }
+
+    private func pendingAndSaveStatus(state: BulkRubricEvaluationUiState, cache: BulkRubricEvaluationCache) -> some View {
         HStack(spacing: 16) {
             Label(
                 "\(cache.totalPendingCriteria) pendientes",
@@ -230,12 +311,97 @@ struct RubricBulkEvaluationSheet: View {
             .font(.footnote.weight(.semibold))
             .foregroundStyle(cache.totalPendingCriteria == 0 ? EvaluationDesign.success : NotebookStyle.warningTint)
             .lineLimit(1)
-            .fixedSize()
+            .layoutPriority(1)
 
             InstrumentEvaluationStatus(
                 text: state.isSaving ? "Guardando…" : "Cambios guardados",
                 tint: state.isSaving ? EvaluationDesign.accent : EvaluationDesign.success
             )
+        }
+    }
+
+    private var selfAssessmentStatusBanner: some View {
+        InstrumentEvaluationChromeSurface(role: .context, padding: 12) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    bannerLeadingContent
+                    Spacer(minLength: 8)
+                    bannerTrailingActions
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    bannerLeadingContent
+                    bannerTrailingActions
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var bannerLeadingContent: some View {
+        if isRunningSelfAssessmentAutofill {
+            HStack(spacing: 10) {
+                ProgressView(
+                    value: Double(autofillProgressCurrent),
+                    total: Double(max(autofillProgressTotal, 1))
+                )
+                .tint(EvaluationDesign.accent)
+                .frame(maxWidth: 140)
+
+                Text("Analizando autoevaluaciones (\(autofillProgressCurrent)/\(autofillProgressTotal))…")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+        } else if let summary = aiLastSummaryMessage {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(EvaluationDesign.accent)
+
+                Text(summary)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                if let provenance = aiProvenanceLabel {
+                    Text(provenance)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(EvaluationDesign.accent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(EvaluationDesign.accent.opacity(0.12))
+                        )
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var bannerTrailingActions: some View {
+        if !isRunningSelfAssessmentAutofill {
+            HStack(spacing: 12) {
+                if previousLevelsBeforeAutofill != nil {
+                    Button {
+                        revertLastSelfAssessmentAutofill()
+                    } label: {
+                        Label("Revertir", systemImage: "arrow.uturn.backward")
+                            .font(.caption.weight(.bold))
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(EvaluationDesign.danger)
+                }
+
+                Button {
+                    withAnimation(uiFeatureFlags.interactionAnimation) {
+                        aiLastSummaryMessage = nil
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Ocultar aviso de autocompletado")
+            }
         }
     }
 
@@ -571,8 +737,11 @@ struct RubricBulkEvaluationSheet: View {
         width: CGFloat,
         cache: BulkRubricEvaluationCache
     ) -> some View {
+        let cellKey = BulkRubricCellKey(studentId: studentId, criterionId: criterion.criterion.id)
         let selectedLevelId = cache.selectedLevelId(studentId: studentId, criterionId: criterion.criterion.id)
         let selectedLevel = criterion.levels.first { $0.id == selectedLevelId }
+        let aiSuggestion = aiSuggestionsByCell[cellKey]
+        let isAISuggestedSelection = aiSuggestion != nil && aiSuggestion?.suggestedLevelId == selectedLevelId
         let isFocused = focusedBulkStudentId == studentId && focusedBulkCriterionId == criterion.criterion.id
 
         return VStack(spacing: 8) {
@@ -613,11 +782,16 @@ struct RubricBulkEvaluationSheet: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(criterion.criterion.description_), \(level.name), nivel \(index + 1)")
+                    .accessibilityValue(isAISuggestedSelection && isSelected ? "Sugerido desde autoevaluación" : "")
                     .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-                    .help(levelHelpText(level))
+                    .help(levelHelpText(level, suggestion: isSelected ? aiSuggestion : nil))
                     .onHover { isHovering in
                         if isHovering {
-                            scheduleLevelPopover(for: level)
+                            scheduleLevelPopover(
+                                for: level,
+                                studentId: studentId,
+                                criterionId: criterion.criterion.id
+                            )
                         } else {
                             cancelLevelPopover(for: level)
                         }
@@ -625,6 +799,8 @@ struct RubricBulkEvaluationSheet: View {
                     .simultaneousGesture(
                         LongPressGesture(minimumDuration: 0.5)
                             .onEnded { _ in
+                                activePopoverStudentId = studentId
+                                activePopoverCriterionId = criterion.criterion.id
                                 activePopoverLevel = level
                                 #if canImport(UIKit)
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -635,11 +811,19 @@ struct RubricBulkEvaluationSheet: View {
             }
 
             if let selectedLevel {
-                Text(selectedLevel.name)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(levelColor(for: selectedLevel, in: criterion))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                HStack(spacing: 4) {
+                    if isAISuggestedSelection {
+                        Image(systemName: "sparkles")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(EvaluationDesign.accent)
+                            .accessibilityHidden(true)
+                    }
+                    Text(selectedLevel.name)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(levelColor(for: selectedLevel, in: criterion))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
             }
         }
         .padding(8)
@@ -659,19 +843,26 @@ struct RubricBulkEvaluationSheet: View {
         )
     }
 
-    private func levelHelpText(_ level: RubricLevel) -> String {
+    private func levelHelpText(_ level: RubricLevel, suggestion: RubricSelfAssessmentCriterionSuggestion? = nil) -> String {
         let description = level.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !description.isEmpty else { return level.name }
-        return "\(level.name): \(description)"
+        let base = description.isEmpty ? level.name : "\(level.name): \(description)"
+        guard let suggestion else { return base }
+        return "\(base)\n✨ Autoevaluación: \(suggestion.rationale)"
     }
 
-    private func scheduleLevelPopover(for level: RubricLevel) {
+    private func scheduleLevelPopover(
+        for level: RubricLevel,
+        studentId: Int64,
+        criterionId: Int64
+    ) {
         levelHoverTask?.cancel()
         levelHoverTask = Task {
             do {
                 try await Task.sleep(nanoseconds: 600_000_000)
                 await MainActor.run {
                     withAnimation(uiFeatureFlags.interactionAnimation) {
+                        activePopoverStudentId = studentId
+                        activePopoverCriterionId = criterionId
                         activePopoverLevel = level
                     }
                 }
@@ -684,7 +875,22 @@ struct RubricBulkEvaluationSheet: View {
         guard activePopoverLevel?.id == level.id else { return }
         withAnimation(uiFeatureFlags.interactionAnimation) {
             activePopoverLevel = nil
+            activePopoverStudentId = nil
+            activePopoverCriterionId = nil
         }
+    }
+
+    private func activePopoverSuggestion(for level: RubricLevel) -> RubricSelfAssessmentCriterionSuggestion? {
+        guard let studentId = activePopoverStudentId,
+              let criterionId = activePopoverCriterionId else {
+            return nil
+        }
+        let key = BulkRubricCellKey(studentId: studentId, criterionId: criterionId)
+        guard let suggestion = aiSuggestionsByCell[key],
+              suggestion.suggestedLevelId == level.id else {
+            return nil
+        }
+        return suggestion
     }
 
     /// Envoltorio sobre `RubricsStyle.levelColor(points:maxPoints:)` que
@@ -963,6 +1169,179 @@ struct RubricBulkEvaluationSheet: View {
         let last = student.lastName.prefix(1)
         return String(first + last)
     }
+
+    // MARK: - Autocompletado desde Autoevaluación (Apple Intelligence + Fallback)
+
+    @MainActor
+    private func refreshSelfAssessmentSources(state: BulkRubricEvaluationUiState) async {
+        guard state.classId > 0 else { return }
+        let sources = await bridge.listSelfAssessmentSourceOptions(
+            classId: state.classId,
+            rubricColumnId: state.columnId,
+            rubricTabId: state.tabId,
+            students: state.students
+        )
+        selfAssessmentSources = sources
+        if selectedSelfAssessmentColumnId.isEmpty || !sources.contains(where: { $0.columnId == selectedSelfAssessmentColumnId }) {
+            selectedSelfAssessmentColumnId = sources.first?.columnId ?? ""
+        }
+    }
+
+    @MainActor
+    private func runBulkSelfAssessmentAutofill(
+        state: BulkRubricEvaluationUiState,
+        rubric: RubricDetail
+    ) async {
+        guard let source = selfAssessmentSources.first(where: { $0.columnId == selectedSelfAssessmentColumnId })
+                ?? selfAssessmentSources.first else {
+            return
+        }
+        guard !isRunningSelfAssessmentAutofill else { return }
+
+        aiOrchestrator.prewarmIfUseful(for: .studentInsight)
+        let currentAssessments = bridge.bulkAssessmentSnapshot()
+
+        let criteriaInputs: [RubricSelfAssessmentCriterionInput] = rubric.criteria.enumerated().map { idx, item in
+            let levelInputs: [RubricSelfAssessmentCriterionLevelInput] = item.levels.enumerated().map { lIdx, lvl in
+                RubricSelfAssessmentCriterionLevelInput(
+                    levelId: lvl.id,
+                    position: lIdx + 1,
+                    name: lvl.name,
+                    points: Int(lvl.points),
+                    descriptor: lvl.description_ ?? ""
+                )
+            }
+            return RubricSelfAssessmentCriterionInput(
+                criterionId: item.criterion.id,
+                position: idx + 1,
+                title: item.criterion.description_,
+                weight: item.criterion.weight,
+                levels: levelInputs
+            )
+        }
+
+        let targetStudents = state.students.filter { student in
+            guard source.respondentStudentIds.contains(student.id) else { return false }
+            if autofillOnlyPending {
+                let studentMap = currentAssessments[student.id] ?? [:]
+                return rubric.criteria.contains { studentMap[$0.criterion.id] == nil }
+            }
+            return true
+        }
+
+        guard !targetStudents.isEmpty else {
+            withAnimation(uiFeatureFlags.interactionAnimation) {
+                aiLastSummaryMessage = "No hay alumnos con autoevaluación pendiente de aplicar en «\(source.columnTitle)»."
+                aiProvenanceLabel = nil
+            }
+            return
+        }
+
+        isRunningSelfAssessmentAutofill = true
+        autofillProgressCurrent = 0
+        autofillProgressTotal = targetStudents.count
+        var undoBuffer: [BulkRubricCellKey: Int64?] = [:]
+        var appliedStudentsCount = 0
+        var appliedCellsCount = 0
+        var usedRealAIInBatch = false
+
+        for student in targetStudents {
+            let answers = await bridge.loadSelfAssessmentAnswers(
+                classId: state.classId,
+                studentId: student.id,
+                sourceColumnId: source.columnId
+            )
+            guard !answers.isEmpty else {
+                autofillProgressCurrent += 1
+                continue
+            }
+
+            let mappingInput = RubricSelfAssessmentMappingInput(
+                rubricTitle: rubric.rubric.name,
+                sourceInstrumentTitle: source.columnTitle,
+                studentName: "\(student.firstName) \(student.lastName)",
+                criteria: criteriaInputs,
+                answers: answers
+            )
+
+            do {
+                let answeredEvidence = answers.compactMap { ans -> String? in
+                    if let scale = ans.scaleValue {
+                        return "\(ans.questionTitle): \(scale)/4"
+                    }
+                    if let text = ans.textResponse?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                        return "\(ans.questionTitle): \(text)"
+                    }
+                    return nil
+                }
+                let generation = try await aiOrchestrator.generateWithTrace(
+                    capability: .rubricSelfAssessmentMapping,
+                    input: .rubricSelfAssessment(mappingInput),
+                    dataSource: source.columnTitle,
+                    includedEvidence: Array(answeredEvidence.prefix(8))
+                )
+                if generation.metadata.audit.usedRealAI {
+                    usedRealAIInBatch = true
+                }
+                if case let .rubricSelfAssessmentMapping(draft) = generation.result {
+                    var studentChanged = false
+                    let existingStudentLevels = bridge.bulkAssessmentSnapshot()[student.id] ?? [:]
+                    for suggestion in draft.suggestions {
+                        let cellKey = BulkRubricCellKey(studentId: student.id, criterionId: suggestion.criterionId)
+                        if autofillOnlyPending, existingStudentLevels[suggestion.criterionId] != nil {
+                            continue
+                        }
+                        if undoBuffer[cellKey] == nil {
+                            undoBuffer[cellKey] = existingStudentLevels[suggestion.criterionId]
+                        }
+                        aiSuggestionsByCell[cellKey] = suggestion
+                        bridge.bulkSelectLevel(
+                            studentId: student.id,
+                            criterionId: suggestion.criterionId,
+                            levelId: suggestion.suggestedLevelId
+                        )
+                        appliedCellsCount += 1
+                        studentChanged = true
+                    }
+                    if studentChanged {
+                        appliedStudentsCount += 1
+                    }
+                }
+            } catch {
+                aiOrchestrator.recordFailure(error)
+            }
+
+            autofillProgressCurrent += 1
+        }
+
+        isRunningSelfAssessmentAutofill = false
+        if appliedCellsCount > 0 {
+            previousLevelsBeforeAutofill = undoBuffer
+            aiProvenanceLabel = usedRealAIInBatch ? "Apple Intelligence" : "Reglas locales"
+            aiLastSummaryMessage = "Completados \(appliedCellsCount) criterios en \(appliedStudentsCount) alumnos desde «\(source.columnTitle)»."
+            AppleInteractionFeedback.play(.success)
+        } else {
+            aiProvenanceLabel = nil
+            aiLastSummaryMessage = "No se encontraron criterios pendientes para rellenar desde «\(source.columnTitle)»."
+        }
+    }
+
+    @MainActor
+    private func revertLastSelfAssessmentAutofill() {
+        guard let undoBuffer = previousLevelsBeforeAutofill else { return }
+        for (cellKey, previousLevelId) in undoBuffer {
+            aiSuggestionsByCell.removeValue(forKey: cellKey)
+            if let previousLevelId {
+                bridge.bulkSelectLevel(
+                    studentId: cellKey.studentId,
+                    criterionId: cellKey.criterionId,
+                    levelId: previousLevelId
+                )
+            }
+        }
+        previousLevelsBeforeAutofill = nil
+        aiLastSummaryMessage = "Se han revertido las sugerencias aplicadas."
+    }
     
     private struct BulkScrollOffsetKey: PreferenceKey {
         static var defaultValue: CGFloat = 0
@@ -1040,6 +1419,8 @@ private struct BulkRubricEvaluationCache {
 
 struct RubricLevelDescriptionPopover: View {
     let level: RubricLevel
+    var aiSuggestion: RubricSelfAssessmentCriterionSuggestion? = nil
+    var aiProvenanceLabel: String? = nil
 
     private var trimmedDescription: String {
         level.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -1085,8 +1466,197 @@ struct RubricLevelDescriptionPopover: View {
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            if let aiSuggestion {
+                Rectangle()
+                    .fill(NotebookGridStyle.gridLine)
+                    .frame(height: 1)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Label("Evidencia de autoevaluación", systemImage: "sparkles")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(EvaluationDesign.accent)
+
+                        Spacer(minLength: 4)
+
+                        if let aiProvenanceLabel {
+                            Text(aiProvenanceLabel)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Text(aiSuggestion.rationale)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if !aiSuggestion.evidenceExcerpt.isEmpty {
+                        Text(aiSuggestion.evidenceExcerpt)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(EvaluationDesign.accent.opacity(0.08))
+                            )
+                    }
+                }
+            }
         }
         .padding(20)
-        .frame(minWidth: 280, maxWidth: 360)
+        .frame(minWidth: 280, maxWidth: 380)
+    }
+}
+
+private struct BulkRubricSelfAssessmentAutofillSheet: View {
+    let rubricName: String
+    let sources: [KmpBridge.SelfAssessmentSourceOption]
+    @Binding var selectedSourceColumnId: String
+    @Binding var onlyPendingCriteria: Bool
+    let availability: AppleAIAvailability
+    let onConfirm: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var selectedSource: KmpBridge.SelfAssessmentSourceOption? {
+        sources.first { $0.columnId == selectedSourceColumnId } ?? sources.first
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    AppleAIStatusBadge(
+                        state: availability.generationState,
+                        message: availability.isAvailable
+                            ? "Apple Intelligence analizará las respuestas y sugerirá el nivel más acorde con cada descriptor."
+                            : "Se aplicará emparejamiento determinista local sobre los indicadores y reflexiones."
+                    )
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Instrumento de origen")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+
+                        Text("Elige la autoevaluación o formulario del Cuaderno cuyas respuestas quieres cruzar con «\(rubricName)».")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        VStack(spacing: 8) {
+                            ForEach(sources) { source in
+                                sourceOptionRow(source)
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Modo de aplicación")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+
+                        Toggle(isOn: $onlyPendingCriteria) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Completar solo criterios pendientes")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                Text("Respeta cualquier nivel que ya hayas puntuado manualmente en la tabla.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(16)
+                        .background(
+                            RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
+                                .fill(appCardBackground(for: colorScheme))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
+                                .stroke(EvaluationDesign.border, lineWidth: 1)
+                        )
+                    }
+                }
+                .padding(24)
+            }
+            .background(RubricEvaluationBackdrop())
+            .navigationTitle("Autocompletar rúbrica")
+            .appInlineNavigationBarTitleDisplayMode()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        onConfirm()
+                    } label: {
+                        Label("Aplicar sugerencias", systemImage: "sparkles")
+                    }
+                    .disabled(selectedSource == nil || (selectedSource?.respondentCount ?? 0) == 0)
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 520, minHeight: 460)
+        #else
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        #endif
+    }
+
+    private func sourceOptionRow(_ source: KmpBridge.SelfAssessmentSourceOption) -> some View {
+        let isSelected = (selectedSource?.columnId == source.columnId)
+        return Button {
+            selectedSourceColumnId = source.columnId
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(isSelected ? EvaluationDesign.accent : .secondary.opacity(0.5))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(source.columnTitle)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+
+                        if source.isSameContextAsRubric {
+                            Text("Misma SA")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(EvaluationDesign.accent)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(EvaluationDesign.accent.opacity(0.12))
+                                )
+                        }
+                    }
+
+                    Text("\(source.respondentCount) con respuestas · \(source.itemCount) preguntas")
+                        .font(.caption)
+                        .foregroundStyle(source.respondentCount > 0 ? .secondary : EvaluationDesign.danger)
+                }
+
+                Spacer(minLength: 8)
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
+                    .fill(isSelected ? EvaluationDesign.accent.opacity(0.08) : appCardBackground(for: colorScheme))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
+                    .stroke(isSelected ? EvaluationDesign.accent : EvaluationDesign.border, lineWidth: isSelected ? 1.5 : 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }

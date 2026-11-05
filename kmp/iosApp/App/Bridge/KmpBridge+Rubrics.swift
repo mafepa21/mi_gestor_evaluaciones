@@ -805,4 +805,131 @@ extension KmpBridge {
         }
     }
 
+    // MARK: - Autocompletado universal desde Autoevaluación / Formulario estructurado
+
+    struct SelfAssessmentSourceOption: Identifiable, Hashable {
+        var id: String { columnId }
+        let columnId: String
+        let columnTitle: String
+        let templateTitle: String
+        let unitOrSituation: String?
+        let tabIds: [String]
+        let itemCount: Int
+        let respondentStudentIds: Set<Int64>
+        let isSameContextAsRubric: Bool
+
+        var respondentCount: Int { respondentStudentIds.count }
+    }
+
+    /// Descubre todas las columnas con instrumento estructurado (autoevaluación, coevaluación,
+    /// formulario de reflexión) de la clase y cuenta cuántos alumnos de la lista tienen respuestas
+    /// registradas, priorizando las que comparten pestaña o Situación de Aprendizaje con la rúbrica.
+    func listSelfAssessmentSourceOptions(
+        classId: Int64,
+        rubricColumnId: String?,
+        rubricTabId: String?,
+        students: [Student]
+    ) async -> [SelfAssessmentSourceOption] {
+        guard let columns = try? await container.notebookConfigRepository.listColumns(classId: classId) else {
+            return []
+        }
+        let rubricColumn = rubricColumnId.flatMap { id in columns.first { $0.id == id } }
+        let rubricUnit = rubricColumn?.unitOrSituation?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let rubricTabs = Set(rubricColumn?.tabIds ?? (rubricTabId.map { [$0] } ?? []))
+
+        var options: [SelfAssessmentSourceOption] = []
+        for column in columns where column.id != rubricColumnId {
+            guard let detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: column.id),
+                  !detail.items.isEmpty else {
+                continue
+            }
+            var respondents = Set<Int64>()
+            for student in students {
+                if let responses = try? await container.notebookInstrumentsRepository.listResponsesForCell(
+                    classId: classId,
+                    studentId: student.id,
+                    columnId: column.id
+                ), responses.contains(where: { Self.hasMeaningfulInstrumentResponse($0) }) {
+                    respondents.insert(student.id)
+                }
+            }
+
+            let colUnit = column.unitOrSituation?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            let sharesTab = !rubricTabs.isEmpty && !rubricTabs.isDisjoint(with: Set(column.tabIds))
+            let sharesUnit = rubricUnit != nil && colUnit == rubricUnit
+            let looksLikeSelfAssessment = column.title.localizedCaseInsensitiveContains("autoeval")
+                || detail.template_.title.localizedCaseInsensitiveContains("autoeval")
+                || detail.items.contains { $0.key.hasPrefix("rub_") || $0.key.hasPrefix("open_") }
+
+            options.append(
+                SelfAssessmentSourceOption(
+                    columnId: column.id,
+                    columnTitle: column.title,
+                    templateTitle: detail.template_.title,
+                    unitOrSituation: colUnit,
+                    tabIds: column.tabIds,
+                    itemCount: detail.items.count,
+                    respondentStudentIds: respondents,
+                    isSameContextAsRubric: (sharesTab || sharesUnit) && looksLikeSelfAssessment
+                )
+            )
+        }
+
+        return options.sorted { lhs, rhs in
+            if lhs.isSameContextAsRubric != rhs.isSameContextAsRubric {
+                return lhs.isSameContextAsRubric && !rhs.isSameContextAsRubric
+            }
+            if lhs.respondentCount != rhs.respondentCount {
+                return lhs.respondentCount > rhs.respondentCount
+            }
+            return lhs.columnTitle.localizedCaseInsensitiveCompare(rhs.columnTitle) == .orderedAscending
+        }
+    }
+
+    func loadSelfAssessmentAnswers(
+        classId: Int64,
+        studentId: Int64,
+        sourceColumnId: String
+    ) async -> [RubricSelfAssessmentAnswerInput] {
+        guard let detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: sourceColumnId),
+              let responses = try? await container.notebookInstrumentsRepository.listResponsesForCell(
+                classId: classId,
+                studentId: studentId,
+                columnId: sourceColumnId
+              ),
+              responses.contains(where: { Self.hasMeaningfulInstrumentResponse($0) }) else {
+            return []
+        }
+        let responseByItemId = Dictionary(uniqueKeysWithValues: responses.map { ($0.itemId, $0) })
+        // Devolvemos todos los ítems de la plantilla (incluidas las preguntas de reflexión
+        // abiertas que el alumno haya dejado en blanco) para que tanto Apple Intelligence como
+        // el motor determinista valoren también las omisiones de evidencia frente a la nota
+        // que el alumno se autopone en los indicadores 1-4.
+        return detail.items
+            .sorted { $0.order < $1.order }
+            .map { item in
+                let response = responseByItemId[item.id]
+                let scaleVal = response?.numberValue.map { Int(round($0.doubleValue)) }
+                let textVal = response?.textValue?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                let boolVal = response?.boolValue?.boolValue
+                return RubricSelfAssessmentAnswerInput(
+                    itemKey: item.key,
+                    questionTitle: item.title,
+                    helpText: item.helpText,
+                    scaleValue: scaleVal,
+                    textResponse: textVal,
+                    boolResponse: boolVal
+                )
+            }
+    }
+
+    private static func hasMeaningfulInstrumentResponse(_ response: NotebookInstrumentResponse) -> Bool {
+        if response.numberValue != nil { return true }
+        if let text = response.textValue?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            return true
+        }
+        if response.boolValue?.boolValue == true { return true }
+        return false
+    }
+
 }

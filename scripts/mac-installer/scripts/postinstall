@@ -1,0 +1,87 @@
+#!/bin/bash
+# Posinstalación del .pkg de Cuaderno Vivo (se ejecuta como root).
+#
+# Cuando la instalación termina, expulsa el volumen .dmg del instalador si
+# estaba montado y envía a la Papelera el archivo de instalación (.dmg o .pkg)
+# descargado por el usuario para no dejar archivos sobrantes en Descargas.
+
+PKG_PATH="${1:-}"
+VOL_NAME="Cuaderno Vivo"
+PKG_NAME="Instalar Cuaderno Vivo.pkg"
+DMG_PATTERN="CuadernoVivo-*.dmg"
+
+console_user="$(stat -f '%Su' /dev/console 2>/dev/null || echo "")"
+console_home=""
+if [ -n "${console_user}" ] && [ "${console_user}" != "root" ]; then
+  console_home="$(dscl . -read "/Users/${console_user}" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+  [ -z "${console_home}" ] && console_home="/Users/${console_user}"
+fi
+
+move_to_trash() {
+  local target="$1"
+  [ -e "${target}" ] || return 0
+  if [ -n "${console_home}" ] && [ -d "${console_home}/.Trash" ]; then
+    local base
+    base="$(basename "${target}")"
+    local dest="${console_home}/.Trash/${base}"
+    if [ -e "${dest}" ]; then
+      dest="${console_home}/.Trash/${base%.*}-$(date +%s).${base##*.}"
+    fi
+    mv -f "${target}" "${dest}" 2>/dev/null && chown -R "${console_user}" "${dest}" 2>/dev/null || rm -rf "${target}" 2>/dev/null || true
+  else
+    rm -rf "${target}" 2>/dev/null || true
+  fi
+}
+
+# Ejecutar en segundo plano unos segundos después de que Installer.app cierre
+# los descriptores del paquete para poder desmontar el .dmg y borrar el archivo.
+(
+  sleep 2
+
+  # 1. Si el .pkg se abrió desde un .dmg montado (/Volumes/Cuaderno Vivo*),
+  #    localizar la imagen de disco original antes de expulsar el volumen.
+  if command -v hdiutil >/dev/null 2>&1; then
+    dmg_images="$(hdiutil info | awk '
+      /^image-path[[:space:]]*:/ {
+        sub(/^image-path[[:space:]]*:[[:space:]]*/, "", $0)
+        img = $0
+      }
+      /\/Volumes\/Cuaderno Vivo/ {
+        if (img != "") print img
+      }
+    ')"
+    for vol in "/Volumes/${VOL_NAME}"*; do
+      if [ -d "${vol}" ]; then
+        hdiutil detach "${vol}" -quiet 2>/dev/null || hdiutil detach "${vol}" -force -quiet 2>/dev/null || true
+      fi
+    done
+    if [ -n "${dmg_images}" ]; then
+      while IFS= read -r img_path; do
+        [ -n "${img_path}" ] || continue
+        case "${img_path}" in
+          */build/release-mac/*) ;;
+          *) move_to_trash "${img_path}" ;;
+        esac
+      done <<< "${dmg_images}"
+    fi
+  fi
+
+  # 2. Si el .pkg se ejecutó directamente desde el disco (fuera de /Volumes),
+  #    enviar ese .pkg a la Papelera.
+  if [ -n "${PKG_PATH}" ] && [ -e "${PKG_PATH}" ]; then
+    case "${PKG_PATH}" in
+      /Volumes/*|*/build/release-mac/*) ;;
+      *.pkg) move_to_trash "${PKG_PATH}" ;;
+    esac
+  fi
+
+  # 3. Limpiar también instaladores descargados en ~/Downloads.
+  if [ -n "${console_home}" ] && [ -d "${console_home}/Downloads" ]; then
+    for f in "${console_home}/Downloads/"${DMG_PATTERN} \
+             "${console_home}/Downloads/${PKG_NAME}"; do
+      [ -e "${f}" ] && move_to_trash "${f}"
+    done
+  fi
+) >/dev/null 2>&1 &
+
+exit 0

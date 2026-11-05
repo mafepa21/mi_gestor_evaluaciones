@@ -2227,6 +2227,27 @@ final class PlannerMonthGridTests: XCTestCase {
         XCTAssertEqual(delivered, changes)
     }
 
+    /// En iPad y Mac `/var` es un alias de `/private/var`: el recorrido de la carpeta
+    /// devuelve la ruta real y la copia de seguridad fallaba con «/private<hash>.docx».
+    func testBackupRelativePathsSurviveThePrivateVarAlias() throws {
+        let root = URL(fileURLWithPath: "/var/folders")
+            .appendingPathComponent(FileManager.default.temporaryDirectory.path
+                .replacingOccurrences(of: "/private/var/folders/", with: "")
+                .replacingOccurrences(of: "/var/folders/", with: ""))
+            .appendingPathComponent("backup-paths-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("sub"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("a".utf8).write(to: root.appendingPathComponent("abc.docx"))
+        try Data("b".utf8).write(to: root.appendingPathComponent("sub/def.docx"))
+
+        let paths = try LibretaBackupPackager.regularFileRelativePaths(in: root)
+
+        XCTAssertEqual(paths, ["abc.docx", "sub/def.docx"])
+        for path in paths {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path))
+        }
+    }
+
     func testSyncLanPushCloseIsNotSuccessWhenAckReportsFailures() {
         let ok = SyncLanPushCloseCopy.statusMessage(
             applied: 4,

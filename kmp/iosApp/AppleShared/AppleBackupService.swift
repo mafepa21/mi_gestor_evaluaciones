@@ -282,12 +282,12 @@ public final class AppleBackupService: ObservableObject {
             }
             
             // Add attachment files to checksum map
-            let attachmentFiles = try getRelativeFiles(in: destinationAttachmentsURL)
+            let attachmentFiles = try LibretaBackupPackager.regularFileRelativePaths(in: destinationAttachmentsURL, fileManager: fileManager)
             for relativePath in attachmentFiles {
                 let fileURL = destinationAttachmentsURL.appendingPathComponent(relativePath)
                 checksumMap["attachments/\(relativePath)"] = try calculateSHA256(for: fileURL)
             }
-            let situationFiles = try getRelativeFiles(in: destinationLearningSituationsURL)
+            let situationFiles = try LibretaBackupPackager.regularFileRelativePaths(in: destinationLearningSituationsURL, fileManager: fileManager)
             for relativePath in situationFiles {
                 let fileURL = destinationLearningSituationsURL.appendingPathComponent(relativePath)
                 checksumMap["learning-situations/\(relativePath)"] = try calculateSHA256(for: fileURL)
@@ -963,17 +963,6 @@ public final class AppleBackupService: ObservableObject {
             }
             try fileManager.copyItem(at: item, to: destItem)
         }
-    }
-
-    private func getRelativeFiles(in rootURL: URL) throws -> [String] {
-        var files: [String] = []
-        guard fileManager.fileExists(atPath: rootURL.path) else { return [] }
-        let enumerator = fileManager.enumerator(at: rootURL, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles])
-        while let fileURL = enumerator?.nextObject() as? URL {
-            let relativePath = fileURL.path.replacingOccurrences(of: rootURL.path + "/", with: "")
-            files.append(relativePath)
-        }
-        return files
     }
 
     private func countRows(in dbPath: String, table: String) -> Int {

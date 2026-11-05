@@ -347,12 +347,33 @@ class SchoolRecordsSync(
 
     private suspend fun delete(change: SyncChange): Boolean {
         val id = change.id.toLongOrNull() ?: return false
+        val updatedAt = change.updatedAtEpochMs
         when (change.entity) {
-            SUBJECT -> container.subjectsRepository.deleteSubject(id)
-            MEETINGS -> container.meetingRepository.deleteMeeting(id)
-            MEETING_AGREEMENTS -> container.meetingRepository.deleteAgreement(id)
-            SUPPORT_MEASURES -> container.studentSupportMeasureRepository.delete(id)
-            TUTORING_SESSIONS -> container.studentTutoringSessionRepository.delete(id)
+            SUBJECT -> {
+                val existing = container.subjectsRepository.listSubjects().firstOrNull { it.id == id }
+                if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() > updatedAt) return false
+                container.subjectsRepository.deleteSubject(id)
+            }
+            MEETINGS -> {
+                val existing = container.meetingRepository.getById(id)
+                if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() > updatedAt) return false
+                container.meetingRepository.deleteMeeting(id)
+            }
+            MEETING_AGREEMENTS -> {
+                val existing = agreements()[id]
+                if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() > updatedAt) return false
+                container.meetingRepository.deleteAgreement(id)
+            }
+            SUPPORT_MEASURES -> {
+                val existing = measures()[id]
+                if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() > updatedAt) return false
+                container.studentSupportMeasureRepository.delete(id)
+            }
+            TUTORING_SESSIONS -> {
+                val existing = tutoring()[id]
+                if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() > updatedAt) return false
+                container.studentTutoringSessionRepository.delete(id)
+            }
             else -> return false
         }
         return true

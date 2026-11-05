@@ -199,7 +199,7 @@ class SqlDelightSyncAdapter(
                     changes += SyncChange(
                         entity = "weekly_slot",
                         id = slot.id.toString(),
-                        updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: Clock.System.now().toEpochMilliseconds(),
+                        updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: 1L,
                         deviceId = localDeviceId,
                         payload = buildJsonObject {
                             put("id", JsonPrimitive(slot.id))
@@ -769,6 +769,7 @@ class SqlDelightSyncAdapter(
 
         // ── Planner: Teaching Units y Sessions ────────────────────────────────
         val teachingUnits = container.plannerRepository.listAllTeachingUnits()
+        val teachingUnitRowsById = container.database.plannerQueries.selectAllTeachingUnits().executeAsList().associateBy { it.id }
         val teachingUnitScope = "global:teaching_unit"
         val teachingUnitSignatures = teachingUnits.associate { unit ->
             unit.id.toString() to listOf(
@@ -782,13 +783,15 @@ class SqlDelightSyncAdapter(
             ).joinToString("|")
         }
         teachingUnits.forEach { unit ->
-            val updatedAt = syntheticUpdatedAt(teachingUnitScope, unit.id.toString(), teachingUnitSignatures.getValue(unit.id.toString()))
+            val dbRow = teachingUnitRowsById[unit.id]
+            val dbUpdatedAt = dbRow?.updated_at_epoch_ms?.takeIf { it > 0L }
+            val updatedAt = dbUpdatedAt ?: syntheticUpdatedAt(teachingUnitScope, unit.id.toString(), teachingUnitSignatures.getValue(unit.id.toString()))
             if (sinceEpochMs == 0L || updatedAt > sinceEpochMs) {
                 changes += SyncChange(
                     entity = "teaching_unit",
                     id = unit.id.toString(),
-                    updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: Clock.System.now().toEpochMilliseconds(),
-                    deviceId = localDeviceId,
+                    updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: 1L,
+                    deviceId = dbRow?.device_id?.takeIf { it.isNotBlank() } ?: localDeviceId,
                     payload = buildJsonObject {
                         put("id", JsonPrimitive(unit.id))
                         put("name", JsonPrimitive(unit.name))
@@ -812,6 +815,7 @@ class SqlDelightSyncAdapter(
         syncSignatureSnapshotByScope[teachingUnitScope] = teachingUnitSignatures
 
         val plannerSessions = container.plannerRepository.listAllSessions()
+        val plannerSessionRowsById = container.database.plannerQueries.selectAllSessions().executeAsList().associateBy { it.id }
         val plannerSessionScope = "global:planning_session"
         val plannerSessionSignatures = plannerSessions.associate { session ->
             session.id.toString() to listOf(
@@ -833,13 +837,15 @@ class SqlDelightSyncAdapter(
             ).joinToString("|")
         }
         plannerSessions.forEach { session ->
-            val updatedAt = syntheticUpdatedAt(plannerSessionScope, session.id.toString(), plannerSessionSignatures.getValue(session.id.toString()))
+            val dbRow = plannerSessionRowsById[session.id]
+            val dbUpdatedAt = dbRow?.updated_at_epoch_ms?.takeIf { it > 0L }
+            val updatedAt = dbUpdatedAt ?: syntheticUpdatedAt(plannerSessionScope, session.id.toString(), plannerSessionSignatures.getValue(session.id.toString()))
             if (sinceEpochMs == 0L || updatedAt > sinceEpochMs) {
                 changes += SyncChange(
                     entity = "planning_session",
                     id = session.id.toString(),
-                    updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: Clock.System.now().toEpochMilliseconds(),
-                    deviceId = localDeviceId,
+                    updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: 1L,
+                    deviceId = dbRow?.device_id?.takeIf { it.isNotBlank() } ?: localDeviceId,
                     payload = buildJsonObject {
                         put("id", JsonPrimitive(session.id))
                         put("teachingUnitId", JsonPrimitive(session.teachingUnitId))
@@ -887,7 +893,7 @@ class SqlDelightSyncAdapter(
                 changes += SyncChange(
                     entity = "session_journal",
                     id = journalId,
-                    updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: Clock.System.now().toEpochMilliseconds(),
+                    updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: 1L,
                     deviceId = localDeviceId,
                     payload = SessionJournalSyncCodec.encode(aggregate),
                 )
@@ -951,7 +957,7 @@ class SqlDelightSyncAdapter(
                     changes += SyncChange(
                         entity = "teacher_schedule_slot",
                         id = slot.id.toString(),
-                        updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: Clock.System.now().toEpochMilliseconds(),
+                        updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: 1L,
                         deviceId = localDeviceId,
                         payload = buildJsonObject {
                             put("id", JsonPrimitive(slot.id))
@@ -996,7 +1002,7 @@ class SqlDelightSyncAdapter(
                     changes += SyncChange(
                         entity = "planner_evaluation_period",
                         id = period.id.toString(),
-                        updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: Clock.System.now().toEpochMilliseconds(),
+                        updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: 1L,
                         deviceId = localDeviceId,
                         payload = buildJsonObject {
                             put("id", JsonPrimitive(period.id))
@@ -1250,6 +1256,27 @@ class SqlDelightSyncAdapter(
         }
     }
 
+    private fun shouldApplyIncoming(
+        existingUpdatedAtEpochMs: Long?,
+        existingDeviceId: String?,
+        incomingUpdatedAtEpochMs: Long,
+        incomingDeviceId: String?,
+    ): Boolean {
+        val existing = existingUpdatedAtEpochMs ?: return true
+        if (existing <= 0L) return true
+        if (existingDeviceId == null && existing >= 1_000_000_000_000L && incomingUpdatedAtEpochMs in 1L until 1_000_000_000L) {
+            return true
+        }
+        if (incomingUpdatedAtEpochMs > existing) return true
+        if (incomingUpdatedAtEpochMs < existing) return false
+        return (incomingDeviceId ?: "") >= (existingDeviceId ?: "")
+    }
+
+    private fun recordSyntheticUpdatedAt(scope: String, id: String, updatedAtEpochMs: Long) {
+        if (updatedAtEpochMs <= 0L) return
+        syncSyntheticUpdatedAtByScope.getOrPut(scope) { mutableMapOf() }[id] = updatedAtEpochMs
+    }
+
     private suspend fun appendDeletesByScope(
         scope: String,
         entity: String,
@@ -1390,6 +1417,10 @@ class SqlDelightSyncAdapter(
                         val id = payload.long("id") ?: return@forEach
                         val name = payload.string("name") ?: return@forEach
                         val existing = container.academicYearsRepository.listAcademicYears().firstOrNull { it.id == id }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         val startEpochMs = if (payload.containsKey("startEpochMs")) payload.long("startEpochMs") ?: existing?.startAt?.toEpochMilliseconds() ?: return@forEach else existing?.startAt?.toEpochMilliseconds() ?: return@forEach
                         val endEpochMs = if (payload.containsKey("endEpochMs")) payload.long("endEpochMs") ?: existing?.endAt?.toEpochMilliseconds() ?: return@forEach else existing?.endAt?.toEpochMilliseconds() ?: return@forEach
                         val centerId = if (payload.containsKey("centerId")) payload.long("centerId") ?: existing?.centerId ?: 1L else existing?.centerId ?: 1L
@@ -1416,7 +1447,11 @@ class SqlDelightSyncAdapter(
                         val name = payload.string("name") ?: return@forEach
                         val incomingId = id?.takeIf { it > 0L }
                         val existing = incomingId?.let { classId ->
-                            container.classesRepository.listClasses().firstOrNull { it.id == classId }
+                            container.classesRepository.listAllClasses().firstOrNull { it.id == classId }
+                        }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
                         }
                         val course = if (payload.containsKey("course")) payload.int("course") ?: existing?.course ?: return@forEach else existing?.course ?: return@forEach
                         container.classesRepository.saveClass(
@@ -1442,6 +1477,7 @@ class SqlDelightSyncAdapter(
                         val existing = id?.takeIf { it > 0L }?.let { container.studentsRepository.getStudent(it) }
                         // Si el mensaje no trae un campo, se conserva el que ya había.
                         // Un apellido nuevo no puede borrar el correo, la lesión ni la fecha de nacimiento.
+                        // El guard LWW vive dentro de upsertStudent (ver SqlDelightSyncAdapterStudentFieldsTest).
                         container.studentsRepository.upsertStudent(
                             id = id?.takeIf { it > 0L },
                             firstName = firstName,
@@ -1472,8 +1508,13 @@ class SqlDelightSyncAdapter(
                     }
 
                     "student_deleted" -> {
-                        payload.long("id")?.let {
-                            container.studentsRepository.deleteStudent(it)
+                        payload.long("id")?.let { studentId ->
+                            val existing = container.studentsRepository.getStudent(studentId)
+                            if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                                conflicts++
+                                return@forEach
+                            }
+                            container.studentsRepository.deleteStudent(studentId)
                             applied++
                         }
                     }
@@ -1517,6 +1558,10 @@ class SqlDelightSyncAdapter(
                         val existing = incomingId?.let { evalId ->
                             container.evaluationsRepository.listClassEvaluations(classId).firstOrNull { it.id == evalId }
                         }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         container.evaluationsRepository.saveEvaluation(
                             id = incomingId,
                             classId = classId,
@@ -1544,6 +1589,10 @@ class SqlDelightSyncAdapter(
                         val existingGrade = container.database.appDatabaseQueries
                             .selectGradeByStudentClassAndColumn(classId, studentId, columnId)
                             .executeAsOneOrNull()
+                        if (!shouldApplyIncoming(existingGrade?.updated_at_epoch_ms, existingGrade?.device_id, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         val value = if (payload.containsKey("value")) payload.double("value") else existingGrade?.value_
                         container.gradesRepository.upsertGrade(
                             classId = classId,
@@ -1567,6 +1616,14 @@ class SqlDelightSyncAdapter(
                         val startTime = payload.string("startTime") ?: return@forEach
                         val endTime = payload.string("endTime") ?: return@forEach
                         val id = payload.long("id")
+                        val weeklySlotScope = "class:$classId:weekly_slot"
+                        val existingUpdatedAt = id?.takeIf { it > 0L }?.let {
+                            syncSyntheticUpdatedAtByScope[weeklySlotScope]?.get(it.toString())
+                        }
+                        if (!shouldApplyIncoming(existingUpdatedAt, localDeviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         container.weeklyTemplateRepository.insert(
                             WeeklySlotTemplate(
                                 id = id ?: 0L,
@@ -1576,6 +1633,9 @@ class SqlDelightSyncAdapter(
                                 endTime = endTime,
                             ),
                         )
+                        id?.takeIf { it > 0L }?.let {
+                            recordSyntheticUpdatedAt(weeklySlotScope, it.toString(), change.updatedAtEpochMs)
+                        }
                         applied++
                     }
 
@@ -1584,6 +1644,10 @@ class SqlDelightSyncAdapter(
                         val tabId = payload.string("id") ?: return@forEach
                         val title = payload.string("title") ?: return@forEach
                         val existing = container.notebookConfigRepository.listTabs(classId).firstOrNull { it.id == tabId }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         val parentTabId = if (payload.containsKey("parentTabId")) payload.string("parentTabId") else existing?.parentTabId
                         val description = if (payload.containsKey("description")) payload.string("description") else existing?.description
                         container.notebookConfigRepository.saveTab(
@@ -1611,6 +1675,10 @@ class SqlDelightSyncAdapter(
                         val tabId = payload.string("tabId") ?: payload.string("tab_id") ?: return@forEach
                         val name = payload.string("name") ?: return@forEach
                         val existing = container.notebookRepository.listWorkGroups(classId).firstOrNull { it.id == groupId }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         container.notebookRepository.saveWorkGroup(
                             classId = classId,
                             workGroup = com.migestor.shared.domain.NotebookWorkGroup(
@@ -1635,6 +1703,12 @@ class SqlDelightSyncAdapter(
                         val tabId = payload.string("tabId") ?: payload.string("tab_id") ?: return@forEach
                         val groupId = payload.long("groupId") ?: payload.long("group_id") ?: return@forEach
                         val studentId = payload.long("studentId") ?: payload.long("student_id") ?: return@forEach
+                        val existing = container.notebookConfigRepository.listWorkGroupMembers(classId, tabId)
+                            .firstOrNull { it.studentId == studentId }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         container.notebookConfigRepository.assignStudentsToWorkGroup(
                             classId = classId,
                             tabId = tabId,
@@ -1650,6 +1724,11 @@ class SqlDelightSyncAdapter(
                         val id = payload.string("id") ?: change.id.takeIf { it.isNotBlank() } ?: return@forEach
                         val tabId = payload.string("tabId") ?: return@forEach
                         val name = payload.rawString("name") ?: return@forEach
+                        val existing = container.notebookRepository.listColumnCategories(classId).firstOrNull { it.id == id }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
                         container.notebookRepository.saveColumnCategory(
                             classId = classId,
@@ -1658,8 +1737,8 @@ class SqlDelightSyncAdapter(
                                 classId = classId,
                                 tabId = tabId,
                                 name = name,
-                                order = payload.int("order") ?: 0,
-                                isCollapsed = payload.bool("isCollapsed") ?: payload.bool("is_collapsed") ?: false,
+                                order = payload.int("order") ?: existing?.order ?: 0,
+                                isCollapsed = payload.bool("isCollapsed") ?: payload.bool("is_collapsed") ?: existing?.isCollapsed ?: false,
                                 trace = AuditTrace(createdAt = updatedAt, updatedAt = updatedAt, deviceId = change.deviceId, syncVersion = 1),
                             ),
                         )
@@ -1671,6 +1750,10 @@ class SqlDelightSyncAdapter(
                         val columnId = payload.string("id") ?: return@forEach
                         val title = payload.string("title") ?: return@forEach
                         val existing = container.notebookConfigRepository.listColumns(classId).firstOrNull { it.id == columnId }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         val type = if (payload.containsKey("type") || payload.containsKey("column_type")) {
                             (payload.string("type") ?: payload.string("column_type"))
                                 ?.let { runCatching { NotebookColumnType.valueOf(it) }.getOrNull() }
@@ -1758,6 +1841,13 @@ class SqlDelightSyncAdapter(
                         val classId = payload.long("classId") ?: return@forEach
                         val studentId = payload.long("studentId") ?: return@forEach
                         val columnId = payload.string("columnId") ?: return@forEach
+                        val existing = container.database.appDatabaseQueries
+                            .selectNotebookCellEntry(classId, studentId, columnId)
+                            .executeAsOneOrNull()
+                        if (!shouldApplyIncoming(existing?.updated_at_epoch_ms, existing?.device_id, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         container.notebookCellsRepository.saveCell(
                             classId = classId,
                             studentId = studentId,
@@ -1787,6 +1877,10 @@ class SqlDelightSyncAdapter(
                             .selectInstrumentTemplateByColumn(columnId)
                             .executeAsOneOrNull()
                             ?.takeIf { it.id == id }
+                        if (!shouldApplyIncoming(existing?.updated_at_epoch_ms, existing?.device_id, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         val kind = if (payload.containsKey("kind")) payload.string("kind") ?: existing?.kind ?: "observation" else existing?.kind ?: "observation"
                         val inputKind = if (payload.containsKey("inputKind")) payload.string("inputKind") ?: existing?.input_kind ?: "structuredObservation" else existing?.input_kind ?: "structuredObservation"
                         val source = if (payload.containsKey("source")) payload.string("source") else existing?.source
@@ -1819,6 +1913,10 @@ class SqlDelightSyncAdapter(
                             .selectInstrumentItemsByTemplate(templateId)
                             .executeAsList()
                             .firstOrNull { it.id == id }
+                        if (!shouldApplyIncoming(existing?.updated_at_epoch_ms, existing?.device_id, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         val itemType = if (payload.containsKey("itemType")) payload.string("itemType") ?: existing?.item_type ?: "scale14" else existing?.item_type ?: "scale14"
                         val optionsCsv = if (payload.containsKey("optionsCsv")) payload.string("optionsCsv").orEmpty() else existing?.options_csv.orEmpty()
                         val required = if (payload.containsKey("required")) payload.bool("required") ?: (existing?.required == 1L) else existing?.required != 0L
@@ -1851,6 +1949,10 @@ class SqlDelightSyncAdapter(
                             .selectInstrumentResponsesForCell(classId, studentId, columnId)
                             .executeAsList()
                             .firstOrNull { it.item_id == itemId }
+                        if (!shouldApplyIncoming(existing?.updated_at_epoch_ms, existing?.device_id, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         val valueText = if (payload.containsKey("valueText")) payload.rawString("valueText") else existing?.value_text
                         val valueBool = if (payload.containsKey("valueBool")) payload.bool("valueBool")?.let { if (it) 1L else 0L } else existing?.value_bool
                         val valueNumber = if (payload.containsKey("valueNumber")) payload.string("valueNumber")?.toDoubleOrNull() else existing?.value_number
@@ -1879,6 +1981,10 @@ class SqlDelightSyncAdapter(
                         val status = payload.string("status") ?: return@forEach
                         val existing = container.attendanceRepository.listAttendanceByDate(classId, dateEpochMs)
                             .firstOrNull { it.studentId == studentId }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         container.attendanceRepository.saveAttendance(
                             id = payload.long("id")?.takeIf { it > 0L } ?: existing?.id,
                             studentId = studentId,
@@ -1904,6 +2010,10 @@ class SqlDelightSyncAdapter(
                         val existing = incomingId?.let { id ->
                             container.incidentsRepository.listIncidents(classId).firstOrNull { it.id == id }
                         }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         container.incidentsRepository.saveIncident(
                             id = incomingId,
                             classId = classId,
@@ -1927,6 +2037,10 @@ class SqlDelightSyncAdapter(
                         val existing = incomingId?.let { eventId ->
                             container.calendarRepository.listEvents(null).firstOrNull { it.id == eventId }
                         }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         container.calendarRepository.saveEvent(
                             id = incomingId,
                             classId = if (payload.containsKey("classId")) payload.long("classId")?.takeIf { it > 0L } else existing?.classId,
@@ -1948,6 +2062,13 @@ class SqlDelightSyncAdapter(
                         val evaluationId = payload.long("evaluationId") ?: return@forEach
                         val criterionId = payload.long("criterionId") ?: return@forEach
                         val levelId = payload.long("levelId") ?: return@forEach
+                        val existingAssessment = container.database.appDatabaseQueries
+                            .selectRubricAssessmentByKey(studentId, evaluationId, criterionId)
+                            .executeAsOneOrNull()
+                        if (!shouldApplyIncoming(existingAssessment?.updated_at_epoch_ms, existingAssessment?.device_id, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         container.rubricsRepository.saveRubricAssessment(
                             studentId = studentId,
                             evaluationId = evaluationId,
@@ -1973,25 +2094,47 @@ class SqlDelightSyncAdapter(
                     "teaching_unit" -> {
                         val name = payload.string("name") ?: return@forEach
                         val incomingId = payload.long("id") ?: 0L
+                        val existingRow = incomingId.takeIf { it > 0L }?.let { unitId ->
+                            container.database.plannerQueries.selectAllTeachingUnits().executeAsList().firstOrNull { it.id == unitId }
+                        }
+                        val existingUpdatedAt = existingRow?.updated_at_epoch_ms?.takeIf { it > 0L }
+                            ?: incomingId.takeIf { it > 0L }?.let { syncSyntheticUpdatedAtByScope["global:teaching_unit"]?.get(it.toString()) }
+                        if (!shouldApplyIncoming(existingUpdatedAt, existingRow?.device_id, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         val existing = incomingId.takeIf { it > 0L }?.let { unitId ->
                             container.plannerRepository.listAllTeachingUnits().firstOrNull { it.id == unitId }
                         }
-                        container.plannerRepository.upsertTeachingUnit(
-                            TeachingUnit(
-                                id = incomingId,
-                                name = name,
-                                description = if (payload.containsKey("description")) payload.rawString("description").orEmpty() else existing?.description.orEmpty(),
-                                colorHex = if (payload.containsKey("colorHex")) payload.string("colorHex") ?: existing?.colorHex ?: "#4A90D9" else existing?.colorHex ?: "#4A90D9",
-                                groupId = if (payload.containsKey("groupId")) payload.long("groupId")?.takeIf { it > 0L } else existing?.groupId,
-                                schoolClassId = if (payload.containsKey("schoolClassId")) payload.long("schoolClassId")?.takeIf { it > 0L } else existing?.schoolClassId,
-                                startDate = if (payload.containsKey("startDate")) {
-                                    payload.string("startDate")?.let { runCatching { kotlinx.datetime.LocalDate.parse(it) }.getOrNull() }
-                                } else existing?.startDate,
-                                endDate = if (payload.containsKey("endDate")) {
-                                    payload.string("endDate")?.let { runCatching { kotlinx.datetime.LocalDate.parse(it) }.getOrNull() }
-                                } else existing?.endDate,
-                            ),
+                        val unitToSave = TeachingUnit(
+                            id = incomingId,
+                            name = name,
+                            description = if (payload.containsKey("description")) payload.rawString("description").orEmpty() else existing?.description.orEmpty(),
+                            colorHex = if (payload.containsKey("colorHex")) payload.string("colorHex") ?: existing?.colorHex ?: "#4A90D9" else existing?.colorHex ?: "#4A90D9",
+                            groupId = if (payload.containsKey("groupId")) payload.long("groupId")?.takeIf { it > 0L } else existing?.groupId,
+                            schoolClassId = if (payload.containsKey("schoolClassId")) payload.long("schoolClassId")?.takeIf { it > 0L } else existing?.schoolClassId,
+                            startDate = if (payload.containsKey("startDate")) {
+                                payload.string("startDate")?.let { runCatching { kotlinx.datetime.LocalDate.parse(it) }.getOrNull() }
+                            } else existing?.startDate,
+                            endDate = if (payload.containsKey("endDate")) {
+                                payload.string("endDate")?.let { runCatching { kotlinx.datetime.LocalDate.parse(it) }.getOrNull() }
+                            } else existing?.endDate,
                         )
+                        val savedUnitId = container.plannerRepository.upsertTeachingUnit(unitToSave)
+                        container.database.plannerQueries.upsertTeachingUnit(
+                            id = savedUnitId,
+                            group_id = unitToSave.groupId,
+                            school_class_id = unitToSave.schoolClassId,
+                            name = unitToSave.name,
+                            description = unitToSave.description,
+                            color_hex = unitToSave.colorHex,
+                            start_date = unitToSave.startDate?.toString(),
+                            end_date = unitToSave.endDate?.toString(),
+                            updated_at_epoch_ms = change.updatedAtEpochMs,
+                            device_id = change.deviceId,
+                            sync_version = 1L,
+                        )
+                        recordSyntheticUpdatedAt("global:teaching_unit", savedUnitId.toString(), change.updatedAtEpochMs)
                         applied++
                     }
 
@@ -2000,6 +2143,10 @@ class SqlDelightSyncAdapter(
                         val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
                         val incomingId = payload.long("id") ?: 0L
                         val existing = incomingId.takeIf { it > 0L }?.let { container.learningSituationsRepository.getSituation(it) }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         container.learningSituationsRepository.saveSituation(
                             LearningSituation(
                                 id = incomingId,
@@ -2035,6 +2182,10 @@ class SqlDelightSyncAdapter(
                         val incomingId = payload.long("id")?.takeIf { it > 0L }
                         val existing = container.learningSituationsRepository.listVersions(situationId)
                             .firstOrNull { it.id == incomingId || it.sha256 == sha256 }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         container.learningSituationsRepository.saveVersion(
                             LearningSituationVersion(
                                 id = incomingId ?: existing?.id ?: 0L,
@@ -2064,6 +2215,10 @@ class SqlDelightSyncAdapter(
                         val incomingId = payload.long("id")?.takeIf { it > 0L }
                         val existing = container.learningSituationsRepository.listSessionSequenceVersions(situationId)
                             .firstOrNull { it.id == incomingId || it.sha256 == sha256 }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         container.learningSituationsRepository.saveSessionSequenceVersion(
                             LearningSituationSessionSequenceVersion(
                                 id = incomingId ?: existing?.id ?: 0L,
@@ -2088,6 +2243,10 @@ class SqlDelightSyncAdapter(
                         val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
                         val incomingId = payload.long("id") ?: 0L
                         val existing = incomingId.takeIf { it > 0L }?.let { container.learningSituationsRepository.getSessionPlan(it) }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         container.learningSituationsRepository.saveSessionPlan(
                             LearningSituationSessionPlan(
                                 id = incomingId,
@@ -2119,7 +2278,8 @@ class SqlDelightSyncAdapter(
                         val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
                         val existing = container.learningSituationsRepository.getTournament(tournamentId)
                         // Last-write-wins: un cambio más antiguo que lo local no pisa el torneo.
-                        if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() > change.updatedAtEpochMs) {
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
                             return@forEach
                         }
                         container.learningSituationsRepository.saveTournamentFromSync(
@@ -2157,6 +2317,10 @@ class SqlDelightSyncAdapter(
                         val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
                         val existing = container.learningSituationsRepository.listLinkedResources(situationId)
                             .firstOrNull { it.resourceId == resourceId }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         container.learningSituationsRepository.saveLinkedResource(
                             LearningSituationLinkedResource(
                                 learningSituationId = situationId,
@@ -2183,6 +2347,15 @@ class SqlDelightSyncAdapter(
 
                     "planning_session" -> {
                         val sessionId = payload.long("id") ?: 0L
+                        val existingRow = sessionId.takeIf { it > 0L }?.let { id ->
+                            container.database.plannerQueries.selectSessionById(id).executeAsOneOrNull()
+                        }
+                        val existingUpdatedAt = existingRow?.updated_at_epoch_ms?.takeIf { it > 0L }
+                            ?: sessionId.takeIf { it > 0L }?.let { syncSyntheticUpdatedAtByScope["global:planning_session"]?.get(it.toString()) }
+                        if (!shouldApplyIncoming(existingUpdatedAt, existingRow?.device_id, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         val existing = sessionId.takeIf { it > 0L }?.let { id ->
                             container.plannerRepository.listAllSessions().firstOrNull { it.id == id }
                         }
@@ -2221,13 +2394,42 @@ class SqlDelightSyncAdapter(
                                 it.name == payload.string("status")
                             } ?: existing?.status ?: SessionStatus.PLANNED,
                         )
-                        container.plannerRepository.upsertSession(session)
+                        val savedSessionId = container.plannerRepository.upsertSession(session)
+                        val updatedRow = container.database.plannerQueries.selectSessionById(savedSessionId).executeAsOneOrNull()
+                        if (updatedRow != null) {
+                            container.database.plannerQueries.updateSessionById(
+                                date = updatedRow.date,
+                                group_id = updatedRow.group_id,
+                                period = updatedRow.period,
+                                unit_id = updatedRow.unit_id,
+                                objectives = updatedRow.objectives,
+                                activities = updatedRow.activities,
+                                evaluation = updatedRow.evaluation,
+                                linked_assessment_ids_csv = updatedRow.linked_assessment_ids_csv,
+                                teacher_schedule_slot_id = updatedRow.teacher_schedule_slot_id,
+                                start_time = updatedRow.start_time,
+                                end_time = updatedRow.end_time,
+                                learning_situation_session_plan_id = updatedRow.learning_situation_session_plan_id,
+                                status = updatedRow.status,
+                                updated_at_epoch_ms = change.updatedAtEpochMs,
+                                device_id = change.deviceId,
+                                sync_version = 1L,
+                                id = savedSessionId,
+                            )
+                        }
+                        recordSyntheticUpdatedAt("global:planning_session", savedSessionId.toString(), change.updatedAtEpochMs)
                         applied++
                     }
 
                     "session_journal" -> {
                         val sessionId = SessionJournalSyncCodec.planningSessionId(change.payload)
                         val existing = sessionId?.let { container.sessionJournalRepository.getJournalForSession(it) }
+                        val journalScope = "global:session_journal"
+                        val existingUpdatedAt = sessionId?.let { syncSyntheticUpdatedAtByScope[journalScope]?.get(it.toString()) }
+                        if (existing != null && !shouldApplyIncoming(existingUpdatedAt, localDeviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         val decoded = SessionJournalSyncCodec.decodeKeepingAbsent(change.payload, existing)
                         if (decoded == null) {
                             ignored++
@@ -2236,6 +2438,7 @@ class SqlDelightSyncAdapter(
                         container.sessionJournalRepository.saveJournalAggregate(
                             decoded.copy(journal = decoded.journal.copy(id = existing?.journal?.id ?: 0L))
                         )
+                        sessionId?.let { recordSyntheticUpdatedAt(journalScope, it.toString(), change.updatedAtEpochMs) }
                         applied++
                     }
 
@@ -2244,6 +2447,10 @@ class SqlDelightSyncAdapter(
                         val incomingId = payload.long("id") ?: 0L
                         val existing = incomingId.takeIf { it > 0L }?.let { id ->
                             container.teacherScheduleRepository.getOrCreatePrimarySchedule().takeIf { it.id == id }
+                        }
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
                         }
                         container.teacherScheduleRepository.saveSchedule(
                             TeacherSchedule(
@@ -2272,14 +2479,20 @@ class SqlDelightSyncAdapter(
                     "teacher_schedule_slot" -> {
                         val scheduleId = payload.long("teacherScheduleId") ?: return@forEach
                         val incomingId = payload.long("id") ?: 0L
+                        val slotScope = "teacher_schedule:$scheduleId:slot"
                         val existing = incomingId.takeIf { it > 0L }?.let { slotId ->
                             container.teacherScheduleRepository.listScheduleSlots(scheduleId).firstOrNull { it.id == slotId }
+                        }
+                        val existingUpdatedAt = incomingId.takeIf { it > 0L }?.let { syncSyntheticUpdatedAtByScope[slotScope]?.get(it.toString()) }
+                        if (existing != null && !shouldApplyIncoming(existingUpdatedAt, localDeviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
                         }
                         val schoolClassId = if (payload.containsKey("schoolClassId")) payload.long("schoolClassId") else existing?.schoolClassId
                         val startTime = if (payload.containsKey("startTime")) payload.string("startTime") else existing?.startTime
                         val endTime = if (payload.containsKey("endTime")) payload.string("endTime") else existing?.endTime
                         if (schoolClassId == null || startTime == null || endTime == null) return@forEach
-                        container.teacherScheduleRepository.saveScheduleSlot(
+                        val savedSlotId = container.teacherScheduleRepository.saveScheduleSlot(
                             TeacherScheduleSlot(
                                 id = incomingId,
                                 teacherScheduleId = scheduleId,
@@ -2292,16 +2505,23 @@ class SqlDelightSyncAdapter(
                                 weeklyTemplateId = if (payload.containsKey("weeklyTemplateId")) payload.long("weeklyTemplateId")?.takeIf { it > 0L } else existing?.weeklyTemplateId,
                             ),
                         )
+                        recordSyntheticUpdatedAt(slotScope, (incomingId.takeIf { it > 0L } ?: savedSlotId).toString(), change.updatedAtEpochMs)
                         applied++
                     }
 
                     "planner_evaluation_period" -> {
                         val scheduleId = payload.long("teacherScheduleId") ?: return@forEach
                         val incomingId = payload.long("id") ?: 0L
+                        val periodScope = "teacher_schedule:$scheduleId:evaluation_period"
                         val existing = incomingId.takeIf { it > 0L }?.let { periodId ->
                             container.teacherScheduleRepository.listEvaluationPeriods(scheduleId).firstOrNull { it.id == periodId }
                         }
-                        container.teacherScheduleRepository.saveEvaluationPeriod(
+                        val existingUpdatedAt = incomingId.takeIf { it > 0L }?.let { syncSyntheticUpdatedAtByScope[periodScope]?.get(it.toString()) }
+                        if (existing != null && !shouldApplyIncoming(existingUpdatedAt, localDeviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
+                        val savedPeriodId = container.teacherScheduleRepository.saveEvaluationPeriod(
                             PlannerEvaluationPeriod(
                                 id = incomingId,
                                 teacherScheduleId = scheduleId,
@@ -2311,6 +2531,7 @@ class SqlDelightSyncAdapter(
                                 sortOrder = if (payload.containsKey("sortOrder")) payload.int("sortOrder") ?: existing?.sortOrder ?: 0 else existing?.sortOrder ?: 0,
                             ),
                         )
+                        recordSyntheticUpdatedAt(periodScope, (incomingId.takeIf { it > 0L } ?: savedPeriodId).toString(), change.updatedAtEpochMs)
                         applied++
                     }
 
@@ -2319,6 +2540,10 @@ class SqlDelightSyncAdapter(
                         val name = payload.string("name") ?: return@forEach
                         val existingDetail = rubricId?.takeIf { it > 0L }?.let { container.rubricsRepository.getRubricDetail(it) }
                         val existing = existingDetail?.rubric
+                        if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) {
+                            conflicts++
+                            return@forEach
+                        }
                         val savedRubricId = container.rubricsRepository.saveRubric(
                             id = rubricId?.takeIf { it > 0L },
                             name = name,
@@ -2402,34 +2627,65 @@ class SqlDelightSyncAdapter(
         val payload = runCatching { json.parseToJsonElement(change.payload).jsonObject }.getOrNull() ?: return false
         return when (change.entity) {
             "academic_year" -> {
-                payload.long("id")?.let {
-                    runCatching { container.academicYearsRepository.deleteArchivedAcademicYear(it) }.isSuccess
+                payload.long("id")?.let { id ->
+                    val existing = container.academicYearsRepository.listAcademicYears().firstOrNull { it.id == id }
+                    if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) return false
+                    runCatching { container.academicYearsRepository.deleteArchivedAcademicYear(id) }.isSuccess
                 } ?: false
             }
             "student_deleted", "student" -> {
-                payload.long("id")?.let { container.studentsRepository.deleteStudent(it); true } ?: false
+                payload.long("id")?.let { id ->
+                    val existing = container.studentsRepository.getStudent(id)
+                    if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) return false
+                    container.studentsRepository.deleteStudent(id)
+                    true
+                } ?: false
             }
             "evaluation" -> {
-                payload.long("id")?.let { container.evaluationsRepository.deleteEvaluation(it); true } ?: false
+                payload.long("id")?.let { id ->
+                    val existing = container.evaluationsRepository.getEvaluation(id)
+                    if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) return false
+                    container.evaluationsRepository.deleteEvaluation(id)
+                    true
+                } ?: false
             }
             "weekly_slot" -> {
-                payload.long("id")?.let { container.weeklyTemplateRepository.delete(it); true } ?: false
+                payload.long("id")?.let { id ->
+                    val classId = payload.long("schoolClassId") ?: payload.long("classId")
+                    val existingUpdatedAt = classId?.let { syncSyntheticUpdatedAtByScope["class:$it:weekly_slot"]?.get(id.toString()) }
+                    if (!shouldApplyIncoming(existingUpdatedAt, localDeviceId, change.updatedAtEpochMs, change.deviceId)) return false
+                    container.weeklyTemplateRepository.delete(id)
+                    true
+                } ?: false
             }
             "notebook_tab" -> {
-                (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let {
-                    container.notebookRepository.deleteTab(it)
+                (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let { tabId ->
+                    val classId = payload.long("classId")?.takeIf { it > 0L }
+                    val existing = if (classId != null) {
+                        container.notebookConfigRepository.listTabs(classId).firstOrNull { it.id == tabId }
+                    } else {
+                        container.classesRepository.listAllClasses().firstNotNullOfOrNull { schoolClass ->
+                            container.notebookConfigRepository.listTabs(schoolClass.id).firstOrNull { it.id == tabId }
+                        }
+                    }
+                    if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) return false
+                    container.notebookRepository.deleteTab(tabId)
                     true
                 } ?: false
             }
             "notebook_column" -> {
-                (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let {
-                    container.notebookRepository.deleteColumn(it)
+                (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let { columnId ->
+                    val existingRow = container.database.appDatabaseQueries.selectColumnById(columnId).executeAsOneOrNull()
+                    if (!shouldApplyIncoming(existingRow?.updated_at_epoch_ms, existingRow?.device_id, change.updatedAtEpochMs, change.deviceId)) return false
+                    container.notebookRepository.deleteColumn(columnId)
                     true
                 } ?: false
             }
             "notebook_column_category" -> {
                 val categoryId = (payload.string("id") ?: change.id).takeIf { it.isNotBlank() } ?: return false
                 val classId = payload.long("classId")?.takeIf { it > 0L } ?: return false
+                val existing = container.notebookRepository.listColumnCategories(classId).firstOrNull { it.id == categoryId }
+                if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) return false
                 container.notebookRepository.deleteColumnCategory(
                     classId = classId,
                     categoryId = categoryId,
@@ -2438,14 +2694,36 @@ class SqlDelightSyncAdapter(
                 true
             }
             "notebook_instrument_template" -> {
-                (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let {
-                    container.database.appDatabaseQueries.deleteInstrumentTemplateById(it)
+                (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let { templateId ->
+                    val existing = container.classesRepository.listClasses()
+                        .asSequence()
+                        .flatMap { schoolClass ->
+                            container.database.appDatabaseQueries.selectAllInstrumentTemplatesByClass(schoolClass.id).executeAsList().asSequence()
+                        }
+                        .firstOrNull { it.id == templateId }
+                    if (!shouldApplyIncoming(existing?.updated_at_epoch_ms, existing?.device_id, change.updatedAtEpochMs, change.deviceId)) return false
+                    container.database.appDatabaseQueries.deleteInstrumentTemplateById(templateId)
                     true
                 } ?: false
             }
             "notebook_instrument_item" -> {
-                (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let {
-                    container.database.appDatabaseQueries.deleteInstrumentItemById(it)
+                (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let { itemId ->
+                    val templateId = payload.string("templateId")?.takeIf { it.isNotBlank() }
+                    val existing = if (templateId != null) {
+                        container.database.appDatabaseQueries.selectInstrumentItemsByTemplate(templateId).executeAsList().firstOrNull { it.id == itemId }
+                    } else {
+                        container.classesRepository.listClasses()
+                            .asSequence()
+                            .flatMap { schoolClass ->
+                                container.database.appDatabaseQueries.selectAllInstrumentTemplatesByClass(schoolClass.id).executeAsList().asSequence()
+                            }
+                            .flatMap { template ->
+                                container.database.appDatabaseQueries.selectInstrumentItemsByTemplate(template.id).executeAsList().asSequence()
+                            }
+                            .firstOrNull { it.id == itemId }
+                    }
+                    if (!shouldApplyIncoming(existing?.updated_at_epoch_ms, existing?.device_id, change.updatedAtEpochMs, change.deviceId)) return false
+                    container.database.appDatabaseQueries.deleteInstrumentItemById(itemId)
                     true
                 } ?: false
             }
@@ -2455,18 +2733,32 @@ class SqlDelightSyncAdapter(
                 val columnId = payload.string("columnId")
                 val itemId = payload.string("itemId")
                 if (classId != null && studentId != null && columnId != null && itemId != null) {
+                    val existing = container.database.appDatabaseQueries
+                        .selectInstrumentResponsesForCell(classId, studentId, columnId)
+                        .executeAsList()
+                        .firstOrNull { it.item_id == itemId }
+                    if (!shouldApplyIncoming(existing?.updated_at_epoch_ms, existing?.device_id, change.updatedAtEpochMs, change.deviceId)) return false
                     container.database.appDatabaseQueries.deleteInstrumentResponseById(classId, studentId, columnId, itemId)
                     true
                 } else false
             }
             "learning_situation_tournament" -> {
-                (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let {
-                    container.learningSituationsRepository.deleteTournament(it)
+                (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let { tournamentId ->
+                    val existing = container.learningSituationsRepository.getTournament(tournamentId)
+                    if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) return false
+                    container.learningSituationsRepository.deleteTournament(tournamentId)
                     true
                 } ?: false
             }
             "notebook_group" -> {
-                payload.long("id")?.let { container.notebookRepository.deleteWorkGroup(it); true } ?: false
+                payload.long("id")?.let { groupId ->
+                    val existing = container.classesRepository.listAllClasses().firstNotNullOfOrNull { schoolClass ->
+                        container.notebookRepository.listWorkGroups(schoolClass.id).firstOrNull { it.id == groupId }
+                    }
+                    if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) return false
+                    container.notebookRepository.deleteWorkGroup(groupId)
+                    true
+                } ?: false
             }
             "notebook_group_member" -> {
                 val parts = if (change.id.contains("|")) change.id.split("|") else change.id.split("-")
@@ -2479,6 +2771,9 @@ class SqlDelightSyncAdapter(
                 val studentId = payload.long("studentId") ?: payload.long("student_id")
                     ?: (if (parts.size >= 1) parts.last().toLongOrNull() else null)
                     ?: return false
+                val existing = container.notebookConfigRepository.listWorkGroupMembers(classId, tabId)
+                    .firstOrNull { it.studentId == studentId }
+                if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) return false
                 container.notebookConfigRepository.clearStudentsFromWorkGroup(
                     classId = classId,
                     tabId = tabId,
@@ -2487,14 +2782,28 @@ class SqlDelightSyncAdapter(
                 true
             }
             "rubric_bundle" -> {
-                payload.long("rubricId")?.let { container.rubricsRepository.deleteRubric(it); true } ?: false
+                payload.long("rubricId")?.let { rubricId ->
+                    val existing = container.rubricsRepository.getRubricDetail(rubricId)?.rubric
+                    if (!shouldApplyIncoming(existing?.trace?.updatedAt?.toEpochMilliseconds(), existing?.trace?.deviceId, change.updatedAtEpochMs, change.deviceId)) return false
+                    container.rubricsRepository.deleteRubric(rubricId)
+                    true
+                } ?: false
             }
             "planning_session" -> {
-                payload.long("id")?.let { container.plannerRepository.deleteSession(it); true } ?: false
+                payload.long("id")?.let { id ->
+                    val existingRow = container.database.plannerQueries.selectSessionById(id).executeAsOneOrNull()
+                    val existingUpdatedAt = existingRow?.updated_at_epoch_ms?.takeIf { it > 0L }
+                        ?: syncSyntheticUpdatedAtByScope["global:planning_session"]?.get(id.toString())
+                    if (!shouldApplyIncoming(existingUpdatedAt, existingRow?.device_id, change.updatedAtEpochMs, change.deviceId)) return false
+                    container.plannerRepository.deleteSession(id)
+                    true
+                } ?: false
             }
             "session_journal" -> {
                 val sessionId = payload.long("planningSessionId") ?: change.id.toLongOrNull()
                 if (sessionId != null && sessionId > 0L) {
+                    val existingUpdatedAt = syncSyntheticUpdatedAtByScope["global:session_journal"]?.get(sessionId.toString())
+                    if (!shouldApplyIncoming(existingUpdatedAt, localDeviceId, change.updatedAtEpochMs, change.deviceId)) return false
                     container.sessionJournalRepository.deleteJournalForSession(sessionId)
                     true
                 } else {
@@ -2502,13 +2811,32 @@ class SqlDelightSyncAdapter(
                 }
             }
             "teaching_unit" -> {
-                payload.long("id")?.let { container.plannerRepository.deleteTeachingUnit(it); true } ?: false
+                payload.long("id")?.let { id ->
+                    val existingRow = container.database.plannerQueries.selectAllTeachingUnits().executeAsList().firstOrNull { it.id == id }
+                    val existingUpdatedAt = existingRow?.updated_at_epoch_ms?.takeIf { it > 0L }
+                        ?: syncSyntheticUpdatedAtByScope["global:teaching_unit"]?.get(id.toString())
+                    if (!shouldApplyIncoming(existingUpdatedAt, existingRow?.device_id, change.updatedAtEpochMs, change.deviceId)) return false
+                    container.plannerRepository.deleteTeachingUnit(id)
+                    true
+                } ?: false
             }
             "teacher_schedule_slot" -> {
-                payload.long("id")?.let { container.teacherScheduleRepository.deleteScheduleSlot(it); true } ?: false
+                payload.long("id")?.let { id ->
+                    val scheduleId = payload.long("teacherScheduleId")
+                    val existingUpdatedAt = scheduleId?.let { syncSyntheticUpdatedAtByScope["teacher_schedule:$it:slot"]?.get(id.toString()) }
+                    if (!shouldApplyIncoming(existingUpdatedAt, localDeviceId, change.updatedAtEpochMs, change.deviceId)) return false
+                    container.teacherScheduleRepository.deleteScheduleSlot(id)
+                    true
+                } ?: false
             }
             "planner_evaluation_period" -> {
-                payload.long("id")?.let { container.teacherScheduleRepository.deleteEvaluationPeriod(it); true } ?: false
+                payload.long("id")?.let { id ->
+                    val scheduleId = payload.long("teacherScheduleId")
+                    val existingUpdatedAt = scheduleId?.let { syncSyntheticUpdatedAtByScope["teacher_schedule:$it:evaluation_period"]?.get(id.toString()) }
+                    if (!shouldApplyIncoming(existingUpdatedAt, localDeviceId, change.updatedAtEpochMs, change.deviceId)) return false
+                    container.teacherScheduleRepository.deleteEvaluationPeriod(id)
+                    true
+                } ?: false
             }
             else -> false
         }

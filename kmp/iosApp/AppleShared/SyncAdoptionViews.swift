@@ -91,13 +91,14 @@ public struct SyncAdoptionSheet: View {
 
     @State private var localFp: LanDatasetFingerprint?
     @State private var remoteFp: LanDatasetFingerprint?
-    @State private var selectedSource: KmpBridge.SyncAdoptionSource? = nil
+    @State private var selectedSource: KmpBridge.SyncAdoptionSource? = .smartMerge
     @State private var step: AdoptionStep = .compare
     @State private var isProcessing = false
     @State private var progressMessage = ""
     @State private var errorMessage: String? = nil
     @State private var backupPathResult: String? = nil
     @State private var needsRestartHint: String? = nil
+    @State private var mergedInPlaceCompleted = false
 
     private enum AdoptionStep {
         case compare
@@ -332,17 +333,25 @@ public struct SyncAdoptionSheet: View {
     private var chooseStepView: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("¿Qué datos deseas mantener?")
+                Text("¿Cómo deseas igualar los dispositivos?")
                     .font(.title2.weight(.bold))
-                Text("Selecciona el dispositivo que actuará como fuente maestra. Sus datos sustituirán por completo a los del otro dispositivo.")
+                Text("Puedes fusionar automáticamente conservando la última modificación de cada apartado o sustituir un dispositivo por completo.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
             VStack(spacing: 14) {
                 selectionCard(
+                    source: .smartMerge,
+                    title: "Fusionar conservando la última modificación (Recomendado)",
+                    description: "Compara fecha y hora en todos los apartados (cuaderno, asistencia, planificación, rúbricas, alumnado, actas, EF…) y conserva siempre el cambio más reciente de cada dispositivo sin borrar el resto.",
+                    icon: "arrow.triangle.merge",
+                    tint: .green
+                )
+
+                selectionCard(
                     source: .thisDevice,
-                    title: "Conservar los datos de \(thisDeviceTitle)",
+                    title: "Conservar solo los datos de \(thisDeviceTitle)",
                     description: "Los datos de este dispositivo se copiarán íntegramente al otro equipo. Los datos que existieran en el otro equipo se sobrescribirán tras crear una copia de seguridad.",
                     icon: thisDeviceIcon,
                     tint: .blue
@@ -350,7 +359,7 @@ public struct SyncAdoptionSheet: View {
 
                 selectionCard(
                     source: .pairedMac,
-                    title: "Conservar los datos de \(pairedDeviceTitle)",
+                    title: "Conservar solo los datos de \(pairedDeviceTitle)",
                     description: "Se adoptará la base de datos completa del equipo emparejado. Los datos actuales de este dispositivo se reemplazarán tras crear un respaldo automático.",
                     icon: pairedDeviceIcon,
                     tint: .purple
@@ -409,40 +418,71 @@ public struct SyncAdoptionSheet: View {
     // MARK: - Paso 3: Confirmación
 
     private var confirmStepView: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        let isSmartMerge = selectedSource == .smartMerge
+        return VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Confirmación de adopción")
+                Text(isSmartMerge ? "Confirmación de fusión inteligente" : "Confirmación de adopción")
                     .font(.title2.weight(.bold))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(isSmartMerge ? Color.green : Color.red)
 
-                Text("Esta operación igualará ambos dispositivos sustituyendo la base de datos del equipo receptor.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                Text(
+                    isSmartMerge
+                        ? "Ambos dispositivos intercambiarán sus cambios y conservarán la modificación más reciente de cada registro en todos los apartados."
+                        : "Esta operación igualará ambos dispositivos sustituyendo la base de datos del equipo receptor."
+                )
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                Label {
-                    Text("Se realizará una copia de seguridad automática y obligatoria antes de sobrescribir cualquier dato.")
-                        .font(.subheadline)
-                } icon: {
-                    Image(systemName: "shield.checkmark.fill")
-                        .foregroundStyle(.green)
-                }
+                if isSmartMerge {
+                    Label {
+                        Text("Si modificaste el cuaderno en un dispositivo y la asistencia o planificación en el otro, ambos cambios se conservarán.")
+                            .font(.subheadline)
+                    } icon: {
+                        Image(systemName: "arrow.triangle.merge")
+                            .foregroundStyle(.green)
+                    }
 
-                Label {
-                    Text("Los contadores y registros del dispositivo adoptado serán exactamente idénticos a los del dispositivo fuente.")
-                        .font(.subheadline)
-                } icon: {
-                    Image(systemName: "equal.circle.fill")
-                        .foregroundStyle(.blue)
-                }
+                    Label {
+                        Text("En caso de que el mismo registro se haya editado en los dos equipos, prevalecerá siempre la última modificación por fecha y hora.")
+                            .font(.subheadline)
+                    } icon: {
+                        Image(systemName: "clock.badge.checkmark.fill")
+                            .foregroundStyle(.blue)
+                    }
 
-                Label {
-                    Text("Para garantizar la integridad y evitar bloqueos en la base de datos SQLite, la aplicación se reiniciará para aplicar los cambios.")
-                        .font(.subheadline)
-                } icon: {
-                    Image(systemName: "arrow.clockwise.circle.fill")
-                        .foregroundStyle(.orange)
+                    Label {
+                        Text("No requiere reiniciar la aplicación: las pantallas activas se actualizarán al terminar.")
+                            .font(.subheadline)
+                    } icon: {
+                        Image(systemName: "bolt.circle.fill")
+                            .foregroundStyle(.teal)
+                    }
+                } else {
+                    Label {
+                        Text("Se realizará una copia de seguridad automática y obligatoria antes de sobrescribir cualquier dato.")
+                            .font(.subheadline)
+                    } icon: {
+                        Image(systemName: "shield.checkmark.fill")
+                            .foregroundStyle(.green)
+                    }
+
+                    Label {
+                        Text("Los contadores y registros del dispositivo adoptado serán exactamente idénticos a los del dispositivo fuente.")
+                            .font(.subheadline)
+                    } icon: {
+                        Image(systemName: "equal.circle.fill")
+                            .foregroundStyle(.blue)
+                    }
+
+                    Label {
+                        Text("Para garantizar la integridad y evitar bloqueos en la base de datos SQLite, la aplicación se reiniciará para aplicar los cambios.")
+                            .font(.subheadline)
+                    } icon: {
+                        Image(systemName: "arrow.clockwise.circle.fill")
+                            .foregroundStyle(.orange)
+                    }
                 }
             }
             .padding(16)
@@ -472,7 +512,7 @@ public struct SyncAdoptionSheet: View {
                 .font(.system(size: 56))
                 .foregroundStyle(.green)
 
-            Text("Adopción preparada")
+            Text(mergedInPlaceCompleted ? "Fusión completada" : "Adopción preparada")
                 .font(.title.weight(.bold))
 
             Text(completionExplanation)
@@ -501,7 +541,9 @@ public struct SyncAdoptionSheet: View {
     }
 
     private var completionExplanation: String {
-        if selectedSource == .thisDevice {
+        if mergedInPlaceCompleted || selectedSource == .smartMerge {
+            return "Se han fusionado todos los apartados conservando la última modificación de cada dispositivo."
+        } else if selectedSource == .thisDevice {
             return "La base de datos se ha enviado al Mac emparejado. El Mac aplicará la adopción al reiniciarse."
         } else {
             return "La base de datos se ha descargado y preparado en este dispositivo. Reinicia la aplicación para que el cambio surta efecto."
@@ -542,30 +584,50 @@ public struct SyncAdoptionSheet: View {
                         step = .choose
                     }
                     Spacer()
-                    Button(role: .destructive) {
-                        Task {
-                            await executeAdoption()
+                    if selectedSource == .smartMerge {
+                        Button {
+                            Task {
+                                await executeAdoption()
+                            }
+                        } label: {
+                            Text("Fusionar datos ahora")
+                                .fontWeight(.bold)
                         }
-                    } label: {
-                        Text("Igualar dispositivos")
-                            .fontWeight(.bold)
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+                    } else {
+                        Button(role: .destructive) {
+                            Task {
+                                await executeAdoption()
+                            }
+                        } label: {
+                            Text("Igualar dispositivos")
+                                .fontWeight(.bold)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
 
                 case .completed:
                     Spacer()
-                    #if os(macOS)
-                    Button("Reiniciar app ahora") {
-                        MacCommandCenterCoordinator.relaunchApp()
+                    if mergedInPlaceCompleted {
+                        Button("Listo") {
+                            dismiss()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        #if os(macOS)
+                        Button("Reiniciar app ahora") {
+                            MacCommandCenterCoordinator.relaunchApp()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        #else
+                        Button("Entendido") {
+                            dismiss()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        #endif
                     }
-                    .buttonStyle(.borderedProminent)
-                    #else
-                    Button("Entendido") {
-                        dismiss()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    #endif
                 }
             }
         }
@@ -591,17 +653,24 @@ public struct SyncAdoptionSheet: View {
         guard let source = selectedSource else { return }
         isProcessing = true
         errorMessage = nil
-        progressMessage = "Preparando adopción de datos..."
+        progressMessage = source == .smartMerge
+            ? "Fusionando cambios recientes de ambos dispositivos..."
+            : "Preparando adopción de datos..."
 
         do {
             let outcome = try await bridge.adoptDataset(from: source)
             await MainActor.run {
                 isProcessing = false
                 switch outcome {
+                case .mergedInPlace:
+                    self.mergedInPlaceCompleted = true
+                    self.backupPathResult = nil
                 case let .needsRestart(hint):
+                    self.mergedInPlaceCompleted = false
                     self.needsRestartHint = hint
                     self.backupPathResult = hint
                 case .stagedOnMac:
+                    self.mergedInPlaceCompleted = false
                     self.backupPathResult = "Mac (Application Support/backups)"
                 }
                 self.step = .completed
@@ -609,7 +678,7 @@ public struct SyncAdoptionSheet: View {
         } catch {
             await MainActor.run {
                 isProcessing = false
-                self.errorMessage = "Error durante la adopción: \(error.localizedDescription)"
+                self.errorMessage = "Error durante la operación: \(error.localizedDescription)"
             }
         }
     }

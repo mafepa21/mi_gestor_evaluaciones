@@ -45,3 +45,4 @@
 - Estado «iPad conectado» en el Mac: el helper emite `State: peer|online=0/1` según haya una conexión SSE no-loopback.
 - **Regla para pantallas nuevas**: si una vista carga sus datos en `.task`/`.task(id:)` y los guarda en `@State` o en un store propio, tiene que llevar `.reloadOnLanSync(.pantalla) { … }` con la misma carga. Si no, lo llegado del otro dispositivo no se ve hasta tocar la sección. Las hojas de edición abiertas no deben recargarse solas.
 - El POST `/sync/local-changes` solo se acepta desde loopback (decisión de seguridad, no tocar).
+- Si un paquete de Mac a iPad deja sin una clave un dato opcional, el iPad no debe descartar la entidad nueva: no hay nada que conservar. Pasó con `rubric_bundle` (sin `classId`/`teachingUnitId`): la columna llegaba y la rúbrica no («No se pudo abrir la rúbrica»). `sync.recovery.rubricas-nuevas.v1` fuerza una descarga completa única para recuperarlas.

@@ -74,18 +74,32 @@ enum ScheduleAnalytics {
     ) -> [ScheduledMatchSlot] {
         let roundDuration = TimeInterval(tournament.roundDurationMinutes * 60)
         let matchDuration = TimeInterval(tournament.matchDurationMinutes * 60)
+        // Liguilla + puestos: la clasificación se calcula una vez, no por cada hueco.
+        let placementNames = tournament.format == .leaguePlacement
+            ? PlacementResolver.resolvedNames(
+                rounds: rounds,
+                ranking: tournament.placementStandings.map(\.teamName),
+                results: tournament.savedKnockoutResults
+            )
+            : [:]
 
         return rounds.flatMap { round in
             let startDate = tournament.startDate.addingTimeInterval(
                 TimeInterval(max(round.number - 1, 0)) * roundDuration
             )
 
-            return round.matches.map { match in
-                let match = resolvedMatch(
-                    match,
-                    tournament: tournament,
-                    rounds: rounds
-                )
+            return round.matches.map { original in
+                let match: ScheduledMatch
+                if let names = placementNames[original.id] {
+                    match = ScheduledMatch(
+                        id: original.id,
+                        homeTeam: names.home,
+                        awayTeam: names.away,
+                        venueNumber: original.venueNumber
+                    )
+                } else {
+                    match = resolvedMatch(original, tournament: tournament, rounds: rounds)
+                }
 
                 return ScheduledMatchSlot(
                     match: match,
@@ -168,6 +182,8 @@ enum ScheduleAnalytics {
         let resultIDs = Set(results.compactMap(\.matchID))
         let resultPairs = Set(results.map { pair(home: $0.homeTeam, away: $0.awayTeam) })
         let knockoutResultIDs = Set(tournament.savedKnockoutResults.map(\.matchID))
+        // En esta modalidad dos parejas pueden repetir partido: solo vale el id.
+        let matchesByIDOnly = tournament.format == .leaguePlacement
 
         return Set(
             slots.compactMap { slot in
@@ -175,7 +191,8 @@ enum ScheduleAnalytics {
                     return knockoutResultIDs.contains(slot.id) ? slot.id : nil
                 }
 
-                if resultIDs.contains(slot.id) || resultPairs.contains(pair(for: slot.match)) {
+                if resultIDs.contains(slot.id)
+                    || (!matchesByIDOnly && resultPairs.contains(pair(for: slot.match))) {
                     return slot.id
                 }
                 return nil
@@ -200,9 +217,9 @@ enum ScheduleAnalytics {
 
         let results = tournament.savedResults
         let result = results.first(where: { $0.matchID == slot.id })
-            ?? results.first(where: {
+            ?? (tournament.format == .leaguePlacement ? nil : results.first(where: {
                 pair(home: $0.homeTeam, away: $0.awayTeam) == pair(for: slot.match)
-            })
+            }))
 
         guard let result else { return nil }
 
@@ -273,7 +290,8 @@ enum ScheduleAnalytics {
         tournament: TournamentPlan
     ) -> Bool {
         tournament.format == .knockout || (
-            tournament.format == .groupStageKnockout && slot.stage == .knockout
+            (tournament.format == .groupStageKnockout || tournament.format == .leaguePlacement)
+                && slot.stage == .knockout
         )
     }
 }

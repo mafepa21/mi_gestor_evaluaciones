@@ -29,6 +29,7 @@ struct SdaTournamentRegistrationSheet: View {
     @State private var isCollecting = false
     @State private var inboxFingerprint: String? = WebSubmissionInbox.accountKey.map(WebSubmissionInbox.fingerprint)
     @State private var isConfirmingCreate = false
+    @State private var placementDraft: PlacementPlanInput?
 
     private var registration: TournamentRegistration? { store.plan.registration }
 
@@ -39,6 +40,9 @@ struct SdaTournamentRegistrationSheet: View {
                     sendSection(registration)
                     responsesSection(registration)
                     pairsSection
+                    if store.plan.format == .leaguePlacement, let pairing {
+                        placementPlan(pairCount: pairing.pairs.count)
+                    }
                 } else {
                     publishSection
                 }
@@ -240,11 +244,15 @@ struct SdaTournamentRegistrationSheet: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(pairing.pairs.count < 2)
+                .disabled(!canCreateTeams(pairCount: pairing.pairs.count))
             } header: {
                 Text("Parejas (\(pairing.pairs.count))")
             } footer: {
-                Text("Toca un nombre para cambiarlo por otro inscrito.")
+                if store.plan.format == .leaguePlacement, !canCreateTeams(pairCount: pairing.pairs.count) {
+                    Text("Con estas parejas no da tiempo. Abajo tienes qué puedes cambiar.")
+                } else {
+                    Text("Toca un nombre para cambiarlo por otro inscrito.")
+                }
             }
         } else if let registration, registration.entries.values.contains(where: \.participates) {
             Section {
@@ -259,6 +267,42 @@ struct SdaTournamentRegistrationSheet: View {
                 Text("Se respetan las parejas que se eligieron mutuamente. El resto se sortea.")
             }
         }
+    }
+
+    private func canCreateTeams(pairCount: Int) -> Bool {
+        guard store.plan.format == .leaguePlacement else { return pairCount >= 2 }
+        var input = placementInput
+        input.teamCount = pairCount
+        return PlacementPlanner.calculate(input)?.fits == true
+    }
+
+    /// Ajustes en curso. No se guardan hasta crear los equipos: el calendario que ya exista
+    /// se hizo con los anteriores y cambiarlos sin regenerarlo descuadraría el cuadro.
+    private var placementInput: PlacementPlanInput {
+        placementDraft ?? store.plan.placementInput
+    }
+
+    private func placementBinding<Value>(_ keyPath: WritableKeyPath<PlacementPlanInput, Value>) -> Binding<Value> {
+        Binding(
+            get: { placementInput[keyPath: keyPath] },
+            set: { value in
+                var draft = placementInput
+                draft[keyPath: keyPath] = value
+                placementDraft = draft
+            }
+        )
+    }
+
+    /// Liguilla + puestos: se recalcula con las parejas que se han apuntado de verdad.
+    private func placementPlan(pairCount: Int) -> some View {
+        SdaPlacementPlanSections(
+            fixedTeamCount: pairCount,
+            matchMinutes: placementBinding(\.matchMinutes),
+            totalMinutes: placementBinding(\.totalMinutes),
+            venueCount: placementBinding(\.venueCount),
+            transitionMinutes: placementBinding(\.transitionMinutes),
+            placementRounds: placementBinding(\.placementRounds)
+        )
     }
 
     /// Cambiar a un alumno por otro inscrito: si el otro ya está en una pareja, se intercambian.
@@ -442,14 +486,14 @@ struct SdaTournamentRegistrationSheet: View {
         do {
             try store.mutateThrowing { plan in
                 plan.replaceTeams(teams)
-                let rounds = try TournamentScheduleGenerator.generate(
-                    format: plan.format,
-                    teamNames: plan.teamNames,
-                    venueCount: plan.venueCount,
-                    groupCount: plan.format == .groupStageKnockout ? plan.groupCount : nil,
-                    qualifiedTeamsPerGroup: plan.qualifiedTeamsPerGroup
-                )
-                plan.persistSchedule(rounds)
+                if plan.format == .leaguePlacement, let draft = placementDraft {
+                    plan.matchDurationMinutes = draft.matchMinutes
+                    plan.transitionMinutes = draft.transitionMinutes
+                    plan.venueCount = draft.venueCount
+                    plan.totalTimeMinutes = draft.totalMinutes
+                    plan.placementRounds = draft.placementRounds
+                }
+                plan.persistSchedule(try plan.generatedRounds())
             }
             dismiss()
         } catch {

@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Liguilla y puestos</title>
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--fg:#1c1c1e;--mut:#636366;--line:#e5e5ea;--acc:#0063cc;--ok:#1f7a38;--warn-bg:#fff6e0;--warn-fg:#6f4900;--err:#c20012;--chip:#e8f2ff}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#000;--card:#1c1c1e;--fg:#f2f2f7;--mut:#a1a1a6;--line:#38383a;--acc:#4da3ff;--ok:#5fd07f;--warn-bg:#3a2c00;--warn-fg:#ffd77a;--err:#ff6b6b;--chip:#0a2a4d}}
+:root[data-theme="dark"]{--bg:#000;--card:#1c1c1e;--fg:#f2f2f7;--mut:#a1a1a6;--line:#38383a;--acc:#4da3ff;--ok:#5fd07f;--warn-bg:#3a2c00;--warn-fg:#ffd77a;--err:#ff6b6b;--chip:#0a2a4d}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.4 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header{padding:24px 16px 8px;max-width:1120px;margin:auto}
+header h1{margin:0;font-size:24px}header p{margin:4px 0 0;color:var(--mut)}
+main{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:16px;padding:16px;max-width:1120px;margin:auto;align-items:start}
+.state{background:var(--card);border-radius:16px;padding:16px;border:1px solid var(--line);min-width:0}
+.state.wide{grid-column:1/-1}
+.state>h2{margin:0 0 4px;font-size:12px;letter-spacing:.06em;color:var(--mut);text-transform:uppercase;font-weight:600}
+.state>.note{margin:0 0 16px;font-size:13px;color:var(--mut)}
+h3{margin:0 0 8px;font-size:17px}
+.step{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:48px;border-top:1px solid var(--line)}
+.step:first-of-type{border-top:0}
+.stepper{display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums}
+.stepper b{min-width:64px;text-align:center;font-weight:600}
+.stepper button{width:44px;padding:0;font-size:20px}
+button{min-height:44px;padding:0 16px;border-radius:12px;border:0;background:var(--line);color:var(--fg);font:inherit;font-weight:600;cursor:pointer}
+button.p{background:var(--acc);color:#fff}
+:root[data-theme="dark"] button.p{color:#00203f}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) button.p{color:#00203f}}
+button.block{width:100%;margin-top:16px}
+button:focus-visible,[role=tab]:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.big{font-size:32px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.sum{background:var(--bg);border-radius:12px;padding:16px;margin-top:16px}
+.phases{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.phases .t{font-weight:600}.phases .s,.s{font-size:13px;color:var(--mut)}
+.warn{background:var(--warn-bg);color:var(--warn-fg);border-radius:12px;padding:12px;font-size:13px;margin-top:16px}
+.warn:empty{display:none}
+.tabs{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;margin-bottom:8px}
+.tabs button{flex:none;font-weight:500}
+.tabs button[aria-selected=true]{background:var(--acc);color:#fff;font-weight:600}
+:root[data-theme="dark"] .tabs button[aria-selected=true]{color:#00203f}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .tabs button[aria-selected=true]{color:#00203f}}
+.bands{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:24px}
+.band h4{margin:0 0 8px;font-size:15px}
+.match{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:8px 0;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+.match .w{font-weight:600}.match .sc{text-align:right}
+.free{font-size:13px;color:var(--mut);padding:8px 0;border-top:1px solid var(--line)}
+.court{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));gap:8px}
+.cell{display:block;width:100%;min-height:88px;text-align:left;font-weight:500;background:none;border:1px solid var(--line);border-radius:12px;padding:12px;font-size:16px}
+.cell .s{display:block;margin-bottom:4px}
+button.live{min-height:56px}
+button.sg{display:block;width:100%;text-align:left;padding:12px 16px;margin-bottom:8px;min-height:56px;background:var(--chip)}
+button.sg strong{display:block;color:var(--acc)}button.sg .s{font-weight:400}
+details{border-top:1px solid var(--line)}summary{min-height:48px;display:flex;align-items:center;cursor:pointer;color:var(--acc);font-weight:600}
+[hidden]{display:none!important}
+.stepper{gap:12px}
+.rest{margin-top:16px;font-size:14px}
+.timer{font-size:40px;font-weight:700;font-variant-numeric:tabular-nums}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{font-size:12px;text-align:left;color:var(--mut);font-weight:600;padding:8px 8px 8px 0}
+td{padding:8px 8px 8px 0;border-top:1px solid var(--line)}
+.num{text-align:right}
+.tabla{columns:2 300px;column-gap:32px}.tabla .row{display:grid;grid-template-columns:32px 1fr auto;gap:8px;padding:8px 0;border-top:1px solid var(--line);break-inside:avoid}
+.tabla .pos{font-weight:700}.tabla .row:nth-child(-n+3) .pos{color:var(--acc)}
+.sk{height:14px;margin:12px 0;border-radius:6px;background:var(--line);animation:p 1.2s infinite alternate}@keyframes p{to{opacity:.4}}
+@media(prefers-reduced-motion:reduce){.sk{animation:none}}
+.empty{text-align:center;padding:16px 8px}.empty p{color:var(--mut);margin:8px 0 16px}
+.err{color:var(--err);font-weight:600;margin:0 0 4px}
+dialog{border:0;border-radius:20px;padding:24px;width:min(460px,calc(100% - 32px));background:var(--card);color:var(--fg)}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+dialog h3{margin-bottom:8px}dialog p{margin:0 0 16px;color:var(--mut)}
+.acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+</style></head><body>
+<header><h1>Liguilla y cuadro de puestos</h1>
+<p>Maqueta con datos inventados. Las cuentas, los descansos y el cuadro se calculan de verdad con la regla propuesta.</p></header>
+<main>
+
+<section class="state"><h2>1 · Crear el torneo</h2><p class="note">Tú decides tres cosas. La app calcula el resto o te propone cambios.</p>
+<div class="step"><span>Parejas</span><div class="stepper"><button aria-label="Menos parejas" data-k="n" data-d="-1">−</button><b id="v-n"></b><button aria-label="Más parejas" data-k="n" data-d="1">+</button></div></div>
+<div class="step"><span>Minutos por partido</span><div class="stepper"><button aria-label="Menos minutos" data-k="m" data-d="-1">−</button><b id="v-m"></b><button aria-label="Más minutos" data-k="m" data-d="1">+</button></div></div>
+<div class="step"><span>Tiempo total</span><div class="stepper"><button aria-label="Menos tiempo" data-k="total" data-d="-5">−</button><b id="v-total"></b><button aria-label="Más tiempo" data-k="total" data-d="5">+</button></div></div>
+<details><summary>Más ajustes</summary>
+<div class="step"><span>Pistas</span><div class="stepper"><button aria-label="Menos pistas" data-k="c" data-d="-1">−</button><b id="v-c"></b><button aria-label="Más pistas" data-k="c" data-d="1">+</button></div></div>
+<div class="step"><span>Cambio entre partidos</span><div class="stepper"><button aria-label="Menos cambio" data-k="t" data-d="-1">−</button><b id="v-t"></b><button aria-label="Más cambio" data-k="t" data-d="1">+</button></div></div>
+<div class="step"><span>Rondas del cuadro</span><div class="stepper"><button aria-label="Menos rondas" data-k="r" data-d="-1">−</button><b id="v-r"></b><button aria-label="Más rondas" data-k="r" data-d="1">+</button></div></div>
+</details>
+<div class="sum" aria-live="polite"><div class="big" id="total"></div><div class="s" id="sub"></div>
+<div class="phases"><div><div class="t">Liguilla</div><div class="s" id="s-liga"></div></div><div><div class="t">Cuadro de puestos</div><div class="s" id="s-cuadro"></div></div></div>
+<div class="warn" id="aviso"></div></div>
+<div id="sug"></div>
+<button class="p block" id="crear">Crear calendario</button>
+</section>
+
+<section class="state"><h2>2 · Liguilla en marcha</h2><p class="note">Modo directo. Ocho pistas ocupadas y el resto descansa.</p>
+<div class="bar"><div><div class="t" style="font-weight:600">Tanda 3 de 6</div><div class="s">Liguilla · 24 de 48 partidos</div></div><div class="timer" role="timer" aria-label="Quedan 5 minutos 42 segundos">05:42</div></div>
+<div class="bar" style="justify-content:flex-start;gap:12px"><button class="live">Pausar</button><button class="live">Siguiente tanda</button></div>
+<div class="court" id="pistas"></div>
+<p class="rest"><strong>Descansan:</strong> <span id="descansan"></span></p>
+<button class="block" onclick="cerrar.showModal()">Pasar al cuadro de puestos</button>
+</section>
+
+<section class="state wide"><h2>Con 17 parejas</h2><p class="note">Calculado con 8 pistas y 6 tandas de liguilla. Todas entran en el cuadro.</p>
+<div class="bands"><div class="band"><h4>Liguilla: quién descansa</h4><div id="r17"></div></div><div class="band"><h4>Cuadro: quién pasa directo</h4><div id="b17"></div></div></div>
+<div id="g17" class="sum"></div>
+</section>
+
+<section class="state wide"><h2>3 · Cuadro de puestos</h2><p class="note">Con 24 parejas, el cuadro se va partiendo por la mitad. Quien pierde sigue jugando por puestos más bajos.</p>
+<div class="tabs" role="tablist" id="tabs" aria-label="Rondas del cuadro"></div>
+<div class="bands" id="bands" role="tabpanel"></div>
+</section>
+
+<section class="state wide"><h2>4 · Tabla final</h2><p class="note">Sale sola al terminar el último partido.</p>
+<div class="bar"><h3 style="margin:0">Clasificación</h3><button>Exportar</button></div>
+<div class="tabla" id="tabla"></div>
+</section>
+
+<section class="state"><h2>5 · Liguilla sin terminar</h2><p class="note">El cuadro aún no tiene nombres: enseña los huecos.</p>
+<div class="match"><span>Puesto 1 en liguilla</span><span class="sc">-</span><span>Puesto 24 en liguilla</span><span class="sc">-</span></div>
+<div class="match"><span>Puesto 12 en liguilla</span><span class="sc">-</span><span>Puesto 13 en liguilla</span><span class="sc">-</span></div>
+<p class="s" style="margin:16px 0 0">Quedan 7 partidos de liguilla.</p>
+</section>
+
+<section class="state"><h2>6 · Cargando</h2><p class="note">Mientras se abre el torneo.</p>
+<div role="status" aria-label="Cargando torneo"><div class="sk"></div><div class="sk" style="width:70%"></div><div class="sk"></div><div class="sk" style="width:55%"></div></div>
+</section>
+
+<section class="state"><h2>7 · Sin parejas</h2><p class="note">Torneo recién creado desde la inscripción.</p>
+<div class="empty"><h3>Aún no hay parejas</h3><p>Hacen falta al menos 4 para crear el calendario.</p><button class="p">Abrir inscripción</button></div>
+</section>
+
+<section class="state"><h2>8 · Error al guardar</h2><p class="note">Sin red no pasa nada: esto se guarda en el dispositivo. Este error es del guardado local.</p>
+<p class="err" role="alert">⚠︎ No se pudo guardar el resultado.</p><p class="s" style="margin:0 0 16px">Sigue en pantalla. Tus datos no se han perdido.</p><button>Reintentar</button>
+</section>
+
+</main>
+
+<dialog id="cerrar" aria-labelledby="cerrar-t"><h3 id="cerrar-t">¿Pasar al cuadro de puestos?</h3>
+<p>Quedan 7 partidos de liguilla sin jugar y no contarán. El orden se calcula con los partidos jugados, por porcentaje de victorias.</p>
+<div class="acts"><button class="p" onclick="cerrar.close()">Seguir la liguilla</button><button style="color:var(--err)" onclick="cerrar.close()">Pasar y descartar 7 partidos</button></div></dialog>
+
+<script>
+const cerrar=document.getElementById('cerrar');
+const $=id=>document.getElementById(id);
+const st={n:24,m:8,total:60,c:8,t:2,r:0};
+const lim={n:[4,40],c:[1,12],m:[4,30],t:[0,10],total:[10,300]};
+const unit={n:'',c:'',m:' min',t:' min',total:' min'};
+
+// Regla del cuadro: el grupo se ordena por liguilla y juega mejor contra peor.
+// Si es impar, pasa directo la mejor pareja que aún no haya pasado directo.
+// Ganadores arriba, perdedores abajo.
+function bracket(n,win){
+  const all=[],byes=[];
+  function rec(players,from,round){
+    if(players.length<2) return players.length?[[from,players[0]]]:[];
+    let up=[],rest=players;
+    if(players.length%2){
+      const i=players.findIndex(p=>!p.bye),k=i<0?0:i;
+      up=[{...players[k],bye:(players[k].bye||0)+1}];
+      byes.push({round,from,to:from+players.length-1,s:players[k].s});
+      rest=players.filter((_,j)=>j!==k);
+    }
+    const low=[];
+    for(let i=0;i<rest.length/2;i++){
+      const a=rest[i],b=rest[rest.length-1-i],id=all.length;
+      const ws=win&&win(a.s,b.s)===b.s?b:a,ls=ws===a?b:a;
+      all.push({id,round,from,to:from+players.length-1,a,b,winner:ws,loser:ls,deps:[a.src,b.src].filter(x=>x!=null)});
+      up.push({...ws,src:id});low.push({...ls,src:id});
+    }
+    const ord=(x,y)=>x.s-y.s;up.sort(ord);low.sort(ord);
+    return [...rec(up,from,round+1),...rec(low,from+up.length,round+1)];
+  }
+  const final=rec([...Array(n)].map((_,i)=>({s:i+1,src:null})),1,1);
+  return {matches:all,final,byes};
+}
+function tandas(ms,c){
+  const done=new Set();let s=0;
+  while(done.size<ms.length){
+    const ready=ms.filter(x=>!done.has(x.id)&&x.deps.every(d=>done.has(d))).slice(0,c);
+    ready.forEach(x=>done.add(x.id));s++;
+  }
+  return s;
+}
+// Liguilla: descansa quien más ha jugado y menos ha descansado. Se evita repetir rival.
+function liga(n,c,T){
+  const ce=Math.min(c,Math.floor(n/2)),pl=Array(n).fill(0),re=Array(n).fill(0);
+  const met=[...Array(n)].map(()=>Array(n).fill(0)),rounds=[];
+  for(let t=0;t<T;t++){
+    const ord=[...Array(n).keys()].sort((a,b)=>re[a]-re[b]||pl[b]-pl[a]||b-a);
+    const rest=ord.slice(0,n-2*ce),play=ord.slice(n-2*ce).sort((a,b)=>a-b);
+    rest.forEach(i=>re[i]++);
+    let steps=0;
+    const dfs=(left,cap)=>{
+      if(!left.length)return[];
+      if(++steps>20000)return null;
+      const[a,...others]=left;
+      for(const b of others){
+        if(met[a][b]>cap)continue;
+        const r=dfs(others.filter(x=>x!==b),cap);
+        if(r)return[[a,b],...r];
+      }
+      return null;
+    };
+    let pairs=null;
+    for(let cap=Math.min(...met.flatMap((r,i)=>r.filter((_,j)=>j!==i)));!pairs&&cap<=T;cap++){steps=0;pairs=dfs(play,cap)}
+    pairs.forEach(([a,b])=>{met[a][b]++;met[b][a]++;pl[a]++;pl[b]++});
+    rounds.push({rest,pairs});
+  }
+  return{rounds,pl,re,met};
+}
+function calc(s){
+  const step=s.m+s.t,N=Math.floor((s.total+s.t)/step),ce=Math.min(s.c,Math.floor(s.n/2));
+  const b=bracket(s.n),maxR=Math.max(...b.matches.map(x=>x.round)),r=s.r?Math.min(s.r,maxR):maxR;
+  const ms=b.matches.filter(x=>x.round<=r),Tc=tandas(ms,s.c),minL=Math.ceil(s.n/ce),L=N-Tc;
+  const fits=L>=minL,used=fits?(L+Tc)*step-s.t:(minL+Tc)*step-s.t;
+  const cp=Array(s.n+1).fill(0);ms.forEach(x=>{cp[x.a.s]++;cp[x.b.s]++});
+  const cv=cp.slice(1);
+  return{step,N,ce,r,maxR,ms,Tc,minL,L,fits,used,cmin:Math.min(...cv),cmax:Math.max(...cv)};
+}
+function sugerencias(s){
+  const out=[],k=calc(s);if(k.fits)return out;
+  const needed=Math.ceil(k.used/5)*5;
+  out.push({t:`Ampliar a ${hm(needed)}`,d:`Se juega todo lo previsto.`,set:{total:needed}});
+  for(let m=s.m-1;m>=lim.m[0];m--){if(calc({...s,m}).fits){out.push({t:`Partidos de ${m} min`,d:`Mismo tiempo total, partidos más cortos.`,set:{m}});break}}
+  for(let r=k.r-1;r>=1;r--){if(calc({...s,r}).fits){const g=Math.ceil(s.n/2**r);out.push({t:`Cuadro de ${r} ${r===1?'ronda':'rondas'}`,d:`Quedan grupos de unas ${g} parejas y la liguilla decide el orden dentro de cada grupo.`,set:{r}});break}}
+  if(k.ce<Math.floor(s.n/2)){for(let c=s.c+1;c<=lim.c[1];c++){if(calc({...s,c}).fits){out.push({t:`Usar ${c} pistas`,d:`Solo si tienes esas pistas libres.`,set:{c}});break}}}
+  return out;
+}
+function hm(min){const h=Math.floor(min/60),m=min%60;return h?`${h} h${m?` ${m} min`:''}`:`${m} min`}
+function rango(a,b){return a===b?`${a}`:`${a} o ${b}`}
+function render(){
+  for(const k in unit)$('v-'+k).textContent=st[k]+unit[k];
+  const k=calc(st);
+  $('v-r').textContent=st.r&&st.r<k.maxR?st.r:'Todas';
+  const cuad=`${k.Tc*k.step} min · ${k.Tc} tandas · ${k.ms.length} partidos · ${rango(k.cmin,k.cmax)} por pareja`;
+  $('s-cuadro').textContent=cuad;
+  if(k.fits){
+    const l=liga(st.n,st.c,k.L),a=Math.min(...l.pl),b=Math.max(...l.pl),sobra=st.total-k.used;
+    $('total').textContent='Da tiempo';
+    $('sub').textContent=`Se usan ${hm(k.used)} de ${hm(st.total)}${sobra?`. Sobran ${sobra} min`:''}.`;
+    $('s-liga').textContent=`${k.L*k.step} min · ${k.L} tandas · ${k.L*k.ce} partidos · ${rango(a,b)} por pareja`;
+  }else{
+    $('total').textContent='No da tiempo';
+    $('sub').textContent=`Hacen falta al menos ${hm(k.used)} y tienes ${hm(st.total)}.`;
+    $('s-liga').textContent=`Mínimo ${k.minL} tandas para que todas jueguen 2 partidos`;
+  }
+  let a='';
+  const descansan=st.n-2*k.ce;
+  if(st.n<st.c*2)a=`Con ${st.n} parejas se usan ${k.ce} de las ${st.c} pistas.`;
+  else if(descansan)a=`${descansan===1?'Descansa 1 pareja':`Descansan ${descansan} parejas`} en cada tanda de liguilla, por turnos.`;
+  $('aviso').textContent=a;
+  const su=sugerencias(st);
+  $('sug').innerHTML=su.length?`<h3 style="margin:16px 0 8px">Puedes cambiar</h3>`+su.map((x,i)=>`<button class="sg" data-i="${i}"><strong>${x.t}</strong><span class="s">${x.d}</span></button>`).join(''):'';
+  $('sug').querySelectorAll?.('button').forEach(b=>b.onclick=()=>{Object.assign(st,su[+b.dataset.i].set);render()});
+  $('crear').hidden=!k.fits;
+}
+document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
+  const k=b.dataset.k,d=+b.dataset.d;
+  if(k==='r'){const c=calc(st),n=Math.min(c.maxR,Math.max(1,c.r+d));st.r=n===c.maxR?0:n}
+  else st[k]=Math.min(lim[k][1],Math.max(lim[k][0],st[k]+d));
+  render();
+});
+render();
+
+// Datos inventados
+const nombres=['Ana y Leo','Noa y Iker','Vega y Teo','Lola y Bruno','Mar y Hugo','Sara y Nil','Alba y Saúl','Irene y Gael','Paula y Eric','Nora y Iván','Julia y Dani','Elsa y Marc','Carla y Rubén','Olga y Luis','Rocío y Pau','Lucía y Abel','Marta y Omar','Inés y Joel','Aina y Rai','Laura y Yago','Eva y Unai','Clara y Max','Sofía y Enzo','Celia y Aitor'];
+const name=s=>nombres[s-1];
+const gana=(a,b)=>((a+b)%11===0?Math.max(a,b):Math.min(a,b));
+const {matches:ms,final}=bracket(24,gana);
+const rounds=Math.max(...ms.map(x=>x.round));
+function score(x){const h=11+((x.a.s*7+x.b.s*3)%6);return [h+3,h]}
+function band(r){
+  const by={};ms.filter(x=>x.round===r).forEach(x=>{const k=x.from+'-'+x.to;(by[k]=by[k]||[]).push(x)});
+  return Object.entries(by).map(([k,list])=>{
+    const[f,t]=k.split('-');
+    const rows=list.map(x=>{const[w,l]=score(x);const wn=x.winner,ln=x.loser;return `<div class="match" role="group" aria-label="${name(wn.s)} gana ${w} a ${l} a ${name(ln.s)}"><span class="w">✓ ${name(wn.s)}</span><span class="sc w">${w}</span><span>${name(ln.s)}</span><span class="sc">${l}</span></div>`}).join('');
+    const free=(+t-+f+1)%2?`<div class="free">Pasa directo: ${name(ms.filter(x=>x.from==+f&&x.round===r).length?byeOf(r,+f,+t):1)}</div>`:'';
+    return `<div class="band"><h4>Puestos ${f} a ${t}</h4>${rows}${free}</div>`;
+  }).join('');
+}
+function byeOf(r,f,t){
+  const list=ms.filter(x=>x.round===r&&x.from===f&&x.to===t);
+  const playing=new Set(list.flatMap(x=>[x.a.s,x.b.s]));
+  const prev=ms.filter(x=>x.round===r-1);
+  const cand=prev.flatMap(x=>[x.a.s,x.b.s]).filter(s=>!playing.has(s));
+  const pool=final.filter(([pos])=>pos>=f&&pos<=t).map(p=>p[1].s).filter(s=>!playing.has(s));
+  return pool[0]||cand[0]||1;
+}
+function tab(r){
+  $('tabs').querySelectorAll('button').forEach(b=>b.setAttribute('aria-selected',b.dataset.r==r));
+  $('bands').innerHTML=band(r);
+}
+$('tabs').innerHTML=[...Array(rounds)].map((_,i)=>`<button role="tab" data-r="${i+1}">Ronda ${i+1}</button>`).join('');
+$('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>tab(+b.dataset.r));
+tab(2);
+
+const l17=liga(17,8,6),b17=bracket(17);
+const nom=s=>nombres[s]||`Pareja ${s+1}`;
+$('r17').innerHTML=l17.rounds.map((r,i)=>`<div class="free">Tanda ${i+1}: ${r.rest.map(nom).join(', ')}</div>`).join('');
+$('b17').innerHTML=b17.byes.map(x=>`<div class="free">Ronda ${x.round}, puestos ${x.from} a ${x.to}: ${nom(x.s-1)} (${x.s}ª en liguilla)</div>`).join('');
+const c17=Array(18).fill(0);b17.matches.forEach(x=>{c17[x.a.s]++;c17[x.b.s]++});
+$('g17').innerHTML=`<strong>Garantías</strong><ul style="margin:8px 0 0;padding-left:20px"><li>Nadie repite descanso hasta que hayan descansado todas.</li><li>En liguilla cada pareja juega ${rango(Math.min(...l17.pl),Math.max(...l17.pl))} partidos.</li><li>El orden va por porcentaje de victorias, así descansar no resta.</li><li>En el cuadro pasa directo la mejor pareja que aún no lo haya hecho. Solo se repite si no queda otra.</li><li>Cada pareja juega entre 3 y 5 partidos en el cuadro, según sus resultados.</li></ul>`;
+
+const orden=[...final].sort((x,y)=>x[0]-y[0]);
+$('tabla').innerHTML=orden.map(([pos,p])=>`<div class="row"><span class="pos">${pos}º</span><span>${name(p.s)}</span><span class="s">Liguilla ${p.s}º</span></div>`).join('');
+
+$('pistas').innerHTML=[...Array(8)].map((_,i)=>`<button class="cell" aria-label="Pista ${i+1}, ${nombres[i*2]} contra ${nombres[i*2+1]}, anotar resultado"><span class="s">Pista ${i+1}</span>${nombres[i*2]}<br>${nombres[i*2+1]}</button>`).join('');
+$('descansan').textContent=nombres.slice(16).join(', ');
+
+// Comprobación: cada puesto sale una sola vez
+const pos=orden.map(o=>o[0]);console.assert(new Set(pos).size===24&&pos[0]===1&&pos[23]===24,'tabla incorrecta');
+window.__check={total:ms.length,posOk:pos.join()===[...Array(24)].map((_,i)=>i+1).join(),tandas:tandas(ms,8),byRound:[...Array(rounds)].map((_,i)=>ms.filter(x=>x.round===i+1).length),plays:[...new Set(Object.values(ms.reduce((c,x)=>(c[x.a.s]=(c[x.a.s]||0)+1,c[x.b.s]=(c[x.b.s]||0)+1,c),{})))]};
+</script>
+</body></html>

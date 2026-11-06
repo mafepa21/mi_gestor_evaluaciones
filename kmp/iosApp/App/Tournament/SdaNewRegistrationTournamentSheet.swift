@@ -18,6 +18,9 @@ struct SdaNewRegistrationTournamentSheet: View {
     @State private var venueCount = 2
     @State private var matchMinutes = 8
     @State private var transitionMinutes = 2
+    @State private var expectedPairs = 24
+    @State private var totalMinutes = 60
+    @State private var placementRounds: Int?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -42,10 +45,21 @@ struct SdaNewRegistrationTournamentSheet: View {
                 } footer: {
                     Text(format.shortSubtitle)
                 }
-                Section("Partidos") {
-                    SdaStepperRow(title: "Pistas", value: $venueCount, range: 1...12, unit: "pistas")
-                    SdaStepperRow(title: "Minutos por partido", value: $matchMinutes, range: 1...90, unit: "minutos")
-                    SdaStepperRow(title: "Cambio entre partidos", value: $transitionMinutes, range: 0...15, unit: "minutos")
+                if format == .leaguePlacement {
+                    SdaPlacementPlanSections(
+                        editableTeamCount: $expectedPairs,
+                        matchMinutes: $matchMinutes,
+                        totalMinutes: $totalMinutes,
+                        venueCount: $venueCount,
+                        transitionMinutes: $transitionMinutes,
+                        placementRounds: $placementRounds
+                    )
+                } else {
+                    Section("Partidos") {
+                        SdaStepperRow(title: "Pistas", value: $venueCount, range: 1...12, unit: "pistas")
+                        SdaStepperRow(title: "Minutos por partido", value: $matchMinutes, range: 1...90, unit: "minutos")
+                        SdaStepperRow(title: "Cambio entre partidos", value: $transitionMinutes, range: 0...15, unit: "minutos")
+                    }
                 }
                 Section {
                     Label("Después envías el formulario a \(className) y los equipos salen de las parejas inscritas.", systemImage: "envelope")
@@ -59,6 +73,10 @@ struct SdaNewRegistrationTournamentSheet: View {
                 }
             }
             .formStyle(.grouped)
+            .onChange(of: format) { _, newFormat in
+                // Esta modalidad está pensada para muchas pistas a la vez.
+                if newFormat == .leaguePlacement, venueCount == 2 { venueCount = 8 }
+            }
             .navigationTitle("Torneo con inscripción")
             .appInlineNavigationBarTitleDisplayMode()
             .toolbar {
@@ -84,7 +102,7 @@ struct SdaNewRegistrationTournamentSheet: View {
         errorMessage = nil
         defer { isSaving = false }
         do {
-            let plan = TournamentPlan(
+            var plan = TournamentPlan(
                 name: trimmedName,
                 format: format,
                 teams: [],
@@ -92,6 +110,10 @@ struct SdaNewRegistrationTournamentSheet: View {
                 matchDurationMinutes: matchMinutes,
                 transitionMinutes: transitionMinutes
             )
+            if format == .leaguePlacement {
+                plan.totalTimeMinutes = totalMinutes
+                plan.placementRounds = placementRounds
+            }
             let record = try TournamentRecord(plan: plan, learningSituationId: nil, classId: classId, tabId: nil)
             let saved = try await bridge.saveTournament(record)
             onCreated(saved)

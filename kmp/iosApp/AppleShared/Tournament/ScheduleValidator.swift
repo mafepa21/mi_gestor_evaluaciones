@@ -208,6 +208,7 @@ struct ScheduleValidator {
 
     private static func isBracketPlaceholder(_ name: String) -> Bool {
         name.hasPrefix("ganador p")
+            || name.hasPrefix("perdedor p")
             || name.hasPrefix("clasificado ")
     }
 
@@ -216,7 +217,7 @@ struct ScheduleValidator {
         round: ScheduledRound
     ) -> Bool {
         format == .knockout || (
-            format == .groupStageKnockout && round.stage == .knockout
+            (format == .groupStageKnockout || format == .leaguePlacement) && round.stage == .knockout
         )
     }
 

@@ -71,6 +71,7 @@ enum ScheduleGenerationError: LocalizedError {
     case notEnoughTeams
     case noVenues
     case invalidGroupConfiguration
+    case notEnoughTime
 
     var errorDescription: String? {
         switch self {
@@ -80,6 +81,8 @@ enum ScheduleGenerationError: LocalizedError {
             "Necesitas al menos una pista o zona disponible."
         case .invalidGroupConfiguration:
             "La configuración de grupos no permite generar una fase eliminatoria válida."
+        case .notEnoughTime:
+            "No da tiempo con estos ajustes."
         }
     }
 }

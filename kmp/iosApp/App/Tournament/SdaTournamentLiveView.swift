@@ -61,7 +61,9 @@ struct SdaTournamentLiveView: View {
     }
 
     private var restingTeams: [String] {
-        guard currentRound?.stage == .league else { return [] }
+        guard currentRound?.stage == .league
+            || (plan.format == .leaguePlacement && currentRound?.stage == .groupStage)
+        else { return [] }
         let playing = Set(roundSlots.flatMap { [$0.match.homeTeam, $0.match.awayTeam] })
         return plan.teamNames.filter { !playing.contains($0) }
     }
@@ -70,6 +72,8 @@ struct SdaTournamentLiveView: View {
         let slots = plan.slots
         let done = ScheduleAnalytics.completedMatchIDs(tournament: plan, slots: slots)
         for (index, round) in plan.savedSchedule.enumerated() {
+            // Liguilla cerrada a mano: sus partidos sin jugar ya no están pendientes.
+            if plan.leagueClosedEarly == true, round.stage == .groupStage { continue }
             let pending = slots.contains { $0.roundNumber == round.number && !done.contains($0.id) }
             if pending { return index }
         }
@@ -95,6 +99,9 @@ struct SdaTournamentLiveView: View {
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityElement(children: .combine)
+                }
+                if plan.format == .leaguePlacement, currentRound?.stage == .groupStage, !plan.placementLeagueIsClosed {
+                    SdaCloseLeagueButton(store: store)
                 }
                 if hasKnockoutDraw {
                     LearningSituationInlineNotice(
@@ -272,9 +279,7 @@ struct SdaTournamentLiveView: View {
                     }
                 }
                 if !canScore {
-                    Text(plan.format == .groupStageKnockout && slot.stage == .knockout
-                        ? "Se abre al terminar la fase de grupos."
-                        : "Aún no se conocen los dos equipos.")
+                    Text(unavailableText(for: slot))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 } else if score == nil {
@@ -287,6 +292,17 @@ struct SdaTournamentLiveView: View {
                 }
             }
         }
+    }
+
+    private func unavailableText(for slot: ScheduledMatchSlot) -> String {
+        if plan.format == .leaguePlacement {
+            if slot.stage != .knockout { return "La liguilla ya está cerrada." }
+            if !plan.placementLeagueIsClosed { return "Se abre al terminar la liguilla." }
+        }
+        if plan.format == .groupStageKnockout, slot.stage == .knockout {
+            return "Se abre al terminar la fase de grupos."
+        }
+        return "Aún no se conocen las dos parejas."
     }
 
     private func side(_ slot: ScheduledMatchSlot, name: String, score: Int?, isHome: Bool, enabled: Bool) -> some View {

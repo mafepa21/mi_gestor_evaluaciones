@@ -31,6 +31,9 @@ struct TournamentScheduleGenerator {
                 teamNames: teamNames,
                 venueCount: venueCount
             )
+        case .leaguePlacement:
+            // Necesita el tiempo total: se genera con `TournamentPlan.generatedRounds()`.
+            throw ScheduleGenerationError.notEnoughTime
         }
     }
 }

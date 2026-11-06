@@ -38,6 +38,7 @@ struct SdaTournamentDetailView: View {
     @State private var isLive = false
     @State private var contentWidth: CGFloat = 0
     @State private var showingRegistration = false
+    @State private var placementRound = 1
 
     /// Ancho a partir del cual la clasificación de una liga se muestra al lado del calendario.
     private static let wideLayoutWidth: CGFloat = 820
@@ -106,6 +107,7 @@ struct SdaTournamentDetailView: View {
             return showsStandingsBeside ? [.calendar, .teams] : [.calendar, .standings, .teams]
         case .knockout: return [.calendar, .bracket, .teams]
         case .groupStageKnockout: return [.calendar, .groups, .bracket, .teams]
+        case .leaguePlacement: return [.calendar, .standings, .bracket, .teams]
         }
     }
 
@@ -474,9 +476,11 @@ struct SdaTournamentDetailView: View {
             } else {
                 calendarContent
             }
-        case .standings: standingsContent
+        case .standings:
+            if plan.format == .leaguePlacement { placementStandingsContent } else { standingsContent }
         case .groups: groupsContent
-        case .bracket: bracketContent
+        case .bracket:
+            if plan.format == .leaguePlacement { placementBracketContent } else { bracketContent }
         case .teams: teamsContent
         }
     }
@@ -489,7 +493,9 @@ struct SdaTournamentDetailView: View {
                 let roundSlots = (slotsByRound[round.number] ?? []).sorted { $0.venueNumber < $1.venueNumber }
                 let showsStage = index == 0 || plan.savedSchedule[index - 1].stage != round.stage
                 VStack(alignment: .leading, spacing: 8) {
-                    if showsStage, let stageTitle = round.stage.sdaTitle {
+                    if showsStage, let stageTitle = plan.format == .leaguePlacement
+                        ? (round.stage == .knockout ? "Cuadro de puestos" : "Liguilla")
+                        : round.stage.sdaTitle {
                         Text(stageTitle)
                             .font(.title3.weight(.semibold))
                             .accessibilityAddTraits(.isHeader)
@@ -501,9 +507,26 @@ struct SdaTournamentDetailView: View {
                             if matchIndex > 0 { Divider() }
                             matchRow(slot)
                         }
+                        if plan.format == .leaguePlacement, round.stage == .groupStage {
+                            restingLine(roundSlots)
+                        }
                     }
                 }
             }
+        }
+    }
+
+    /// Quién descansa en una tanda de liguilla.
+    @ViewBuilder
+    private func restingLine(_ roundSlots: [ScheduledMatchSlot]) -> some View {
+        let playing = Set(roundSlots.flatMap(\.teamNames))
+        let resting = plan.teamNames.filter { !playing.contains($0) }
+        if !resting.isEmpty {
+            Divider()
+            Label("Descansan: \(resting.joined(separator: ", "))", systemImage: "pause.circle")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         }
     }
 
@@ -542,6 +565,76 @@ struct SdaTournamentDetailView: View {
                     .foregroundStyle(.secondary)
             }
             SdaStandingsTable(standings: plan.leagueStandings)
+        }
+    }
+
+    private var placementStandingsContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let table = plan.placementFinalTable {
+                LearningSituationCard(title: "Tabla final") {
+                    SdaPlacementFinalTable(rows: table)
+                }
+            }
+            LearningSituationCard(title: "Liguilla") {
+                if plan.savedResults.isEmpty {
+                    Text("Aún no hay resultados. La tabla se llena al anotarlos en el calendario.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                SdaPlacementLeagueTable(rows: plan.placementStandings)
+            }
+        }
+    }
+
+    private var placementBracketContent: some View {
+        let stages = plan.placementStages
+        let slotsByID = Dictionary(plan.slots.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let selected = stages.first { $0.round == placementRound } ?? stages.first
+        return VStack(alignment: .leading, spacing: 16) {
+            if !plan.placementLeagueIsClosed {
+                LearningSituationInlineNotice(
+                    kind: .info,
+                    message: "Quedan \(sdaPlural(plan.pendingLeagueMatchCount, "partido", "partidos")) de liguilla. El cuadro se abre al terminar."
+                )
+                SdaCloseLeagueButton(store: store)
+            } else if plan.leagueClosedEarly == true, plan.savedKnockoutResults.isEmpty {
+                Button {
+                    store.mutate { $0.reopenLeague() }
+                } label: {
+                    Label("Volver a la liguilla", systemImage: "arrow.uturn.backward")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+            }
+            if stages.count > 1 {
+                Picker("Ronda del cuadro", selection: $placementRound) {
+                    ForEach(stages) { stage in
+                        Text("Ronda \(stage.round)").tag(stage.round)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            if let selected {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
+                    ForEach(selected.groups) { group in
+                        LearningSituationCard(title: "Puestos \(group.positions.lowerBound) a \(group.positions.upperBound)") {
+                            ForEach(Array(group.matchIDs.enumerated()), id: \.element) { index, matchID in
+                                if index > 0 { Divider() }
+                                if let slot = slotsByID[matchID] {
+                                    matchRow(slot)
+                                }
+                            }
+                            if let byeName = group.byeName {
+                                Divider()
+                                Label("Pasa directo: \(byeName)", systemImage: "arrow.up.forward.circle")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -729,6 +822,8 @@ struct SdaTournamentDetailView: View {
         actionError = nil
         do {
             try store.mutateThrowing { try $0.updateTeams(from: currentTeams.filter { $0.classId == store.record.classId }) }
+        } catch ScheduleGenerationError.notEnoughTime {
+            actionError = "Con estos equipos no da tiempo. No se ha cambiado nada."
         } catch {
             actionError = "No se pudo actualizar. Hacen falta al menos dos grupos en el curso."
         }

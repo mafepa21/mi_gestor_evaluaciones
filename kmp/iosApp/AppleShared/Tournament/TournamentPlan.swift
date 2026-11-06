@@ -5,6 +5,7 @@ enum TournamentFormat: String, CaseIterable, Codable, Identifiable, Sendable {
     case knockout
     case groupStageKnockout
     case rotation
+    case leaguePlacement
 
     var id: String { rawValue }
 
@@ -18,6 +19,8 @@ enum TournamentFormat: String, CaseIterable, Codable, Identifiable, Sendable {
             "Liguilla + eliminatorias"
         case .rotation:
             "Rotaciones"
+        case .leaguePlacement:
+            "Liguilla + puestos"
         }
     }
 
@@ -31,11 +34,13 @@ enum TournamentFormat: String, CaseIterable, Codable, Identifiable, Sendable {
             "Se forman grupos, los mejores pasan y se cruzan en un cuadro eliminatorio."
         case .rotation:
             "Rondas rápidas para repartir equipos y pistas."
+        case .leaguePlacement:
+            "Liguilla con tiempo fijo y un cuadro donde nadie queda eliminado: se juega por cada puesto."
         }
     }
 
     var includesKnockoutPhase: Bool {
-        self == .knockout || self == .groupStageKnockout
+        self == .knockout || self == .groupStageKnockout || self == .leaguePlacement
     }
 
 }
@@ -112,6 +117,12 @@ struct TournamentPlan: Identifiable, Equatable, Codable, Sendable {
     var legacyExtras: TournamentLegacyExtras?
     /// Formulario de inscripción por entregas web, si el torneo lo usa.
     var registration: TournamentRegistration?
+    /// Liguilla + puestos: tiempo total del torneo en minutos.
+    var totalTimeMinutes: Int?
+    /// Liguilla + puestos: rondas del cuadro. `nil` son todas.
+    var placementRounds: Int?
+    /// Liguilla + puestos: `true` si se pasó al cuadro con partidos de liguilla sin jugar.
+    var leagueClosedEarly: Bool?
 
     init(
         id: UUID = UUID(),

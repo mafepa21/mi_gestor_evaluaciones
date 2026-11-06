@@ -131,14 +131,7 @@ extension TournamentPlan {
     mutating func updateTeams(from groups: [TournamentWorkGroupTeam]) throws {
         var copy = self
         copy.replaceTeams(SdaTournamentTeams.refreshed(snapshot: teams, current: groups))
-        let rounds = try TournamentScheduleGenerator.generate(
-            format: copy.format,
-            teamNames: copy.teamNames,
-            venueCount: copy.venueCount,
-            groupCount: copy.format == .groupStageKnockout ? copy.groupCount : nil,
-            qualifiedTeamsPerGroup: copy.qualifiedTeamsPerGroup
-        )
-        copy.persistSchedule(rounds)
+        copy.persistSchedule(try copy.generatedRounds())
         self = copy
     }
 }
@@ -152,7 +145,8 @@ extension TournamentPlan {
     }
 
     func isKnockoutSlot(_ slot: ScheduledMatchSlot) -> Bool {
-        format == .knockout || (format == .groupStageKnockout && slot.stage == .knockout)
+        format == .knockout
+            || ((format == .groupStageKnockout || format == .leaguePlacement) && slot.stage == .knockout)
     }
 
     func result(for slot: ScheduledMatchSlot) -> ScheduleMatchScore? {
@@ -168,12 +162,15 @@ extension TournamentPlan {
         return ScheduleAnalytics.completedMatchIDs(tournament: self, slots: all).count
     }
 
+    /// Los partidos de una liguilla cerrada a mano que no se jugaron ya no cuentan.
     var totalMatchCount: Int {
-        savedSchedule.reduce(0) { $0 + $1.matches.count }
+        let scheduled = savedSchedule.reduce(0) { $0 + $1.matches.count }
+        return leagueClosedEarly == true ? scheduled - pendingLeagueMatchCount : scheduled
     }
 
     /// En liguilla + eliminatorias los cruces solo se juegan al terminar la fase de grupos.
     var groupStageIsComplete: Bool {
+        if format == .leaguePlacement { return placementLeagueIsClosed }
         guard format == .groupStageKnockout else { return true }
         let all = slots
         let done = ScheduleAnalytics.completedMatchIDs(tournament: self, slots: all)
@@ -188,6 +185,10 @@ extension TournamentPlan {
         if format == .groupStageKnockout, slot.stage == .knockout {
             return groupStageIsComplete
         }
+        if format == .leaguePlacement {
+            // La liguilla cerrada a mano ya no admite resultados: cambiaría el orden del cuadro.
+            return slot.stage == .knockout ? placementLeagueIsClosed : leagueClosedEarly != true
+        }
         return true
     }
 
@@ -197,6 +198,13 @@ extension TournamentPlan {
         if format == .groupStageKnockout, slot.stage == .knockout, !groupStageIsComplete,
            let raw = savedSchedule.flatMap(\.matches).first(where: { $0.id == slot.id }) {
             return (raw.homeTeam, raw.awayTeam)
+        }
+        if format == .leaguePlacement, slot.stage == .knockout, !placementLeagueIsClosed,
+           let raw = savedSchedule.flatMap(\.matches).first(where: { $0.id == slot.id }) {
+            return (
+                PlacementResolver.displayName(forPlaceholder: raw.homeTeam),
+                PlacementResolver.displayName(forPlaceholder: raw.awayTeam)
+            )
         }
         return (slot.match.homeTeam, slot.match.awayTeam)
     }
@@ -309,6 +317,7 @@ extension TournamentPlan {
     }
 
     var champion: String? {
+        if format == .leaguePlacement { return placementFinalTable?.first?.teamName }
         guard format.includesKnockoutPhase else { return nil }
         return KnockoutBracketResolver.champion(rounds: savedSchedule, results: savedKnockoutResults)
     }
@@ -332,6 +341,21 @@ extension TournamentPlan {
                         results: savedKnockoutResults
                     )
                 )
+            }
+        case .leaguePlacement:
+            if !savedResults.isEmpty {
+                var lines = ["", "Liguilla: \(name)"]
+                for (offset, row) in placementStandings.enumerated() {
+                    lines.append("\(offset + 1). \(row.teamName): \(row.wins) V, \(row.draws) E, \(row.losses) D, \(row.pointDifference) dif.")
+                }
+                parts.append(lines.joined(separator: "\n"))
+            }
+            if let table = placementFinalTable {
+                var lines = ["", "Tabla final: \(name)"]
+                for row in table {
+                    lines.append("\(row.position). \(row.teamName)")
+                }
+                parts.append(lines.joined(separator: "\n"))
             }
         case .groupStageKnockout:
             if !savedResults.isEmpty {
@@ -368,6 +392,7 @@ extension TournamentFormat {
         case .knockout: return "Eliminatoria"
         case .groupStageKnockout: return "Liguilla + cruces"
         case .rotation: return "Rotaciones"
+        case .leaguePlacement: return "Liguilla + puestos"
         }
     }
 
@@ -377,6 +402,7 @@ extension TournamentFormat {
         case .knockout: return "Quien pierde, fuera"
         case .groupStageKnockout: return "Grupos y final"
         case .rotation: return "Rondas rápidas"
+        case .leaguePlacement: return "Nadie queda eliminado"
         }
     }
 
@@ -386,6 +412,7 @@ extension TournamentFormat {
         case .knockout: return "arrow.triangle.branch"
         case .groupStageKnockout: return "square.grid.2x2"
         case .rotation: return "arrow.triangle.2.circlepath"
+        case .leaguePlacement: return "list.number"
         }
     }
 }

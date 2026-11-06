@@ -57,6 +57,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Copias de seguridad: ya no fallan en iPad al haber documentos de Situaciones de Aprendizaje o adjuntos** (`AppleBackupService`): la ruta relativa se calculaba cortando texto y, si el sistema devolvía `/private/var/...`, salía un nombre inexistente («private<huella>.docx»). Eso bloqueaba las copias y la fusión inteligente.
+
 - **Sync LAN: las rúbricas creadas en el Mac ya llegan al iPad** (`SqlDelightSyncAdapter`, `KmpBridge+SyncLAN`): el paquete no llevaba clase ni unidad didáctica y el iPad descartaba la rúbrica nueva sin avisar, mientras su columna sí llegaba («No se pudo abrir la rúbrica»). El Mac envía ahora esos datos, el iPad acepta paquetes antiguos y una descarga completa única tras actualizar recupera las perdidas.
 
 - Sync LAN: «Igualar dispositivos» ya no falla con el error 413 `request_too_large` cuando hay más de 2 MB de datos. El iPad envía por paquetes (hasta 1 MB y 500 cambios), en la fusión y en la sincronización normal, y suelta de la cola solo lo entregado.

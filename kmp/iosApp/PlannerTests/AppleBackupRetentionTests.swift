@@ -168,4 +168,22 @@ final class AppleAutomaticBackupScheduleTests: XCTestCase {
         XCTAssertFalse(due(.daily, lastBackupHoursAgo: -1), "Mismo día aunque sea una hora después")
         XCTAssertTrue(due(.daily, lastBackupHoursAgo: -30))
     }
+
+    func testRutasDeLaCopiaNoDependenDeSiElSistemaAnadePrivate() throws {
+        let fileManager = FileManager.default
+        let real = URL(fileURLWithPath: "/private/var/tmp", isDirectory: true)
+            .appendingPathComponent("copia-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: real) }
+        try fileManager.createDirectory(at: real.appendingPathComponent("sub"), withIntermediateDirectories: true)
+        try Data("a".utf8).write(to: real.appendingPathComponent("abc.docx"))
+        try Data("b".utf8).write(to: real.appendingPathComponent("sub/def.docx"))
+        let viaVar = URL(fileURLWithPath: String(real.path.dropFirst("/private".count)), isDirectory: true)
+
+        for root in [real, viaVar] {
+            XCTAssertEqual(
+                try LibretaBackupPackager.regularFileRelativePaths(in: root),
+                ["abc.docx", "sub/def.docx"]
+            )
+        }
+    }
 }

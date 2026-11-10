@@ -1169,7 +1169,7 @@ struct NotebookModuleView: View {
 
     func copySelectedCell(data: NotebookUiStateData) {
         guard let selected = selectedNotebookCell(data: data) else { return }
-        if selected.column.inputKind.isStructuredInstrument {
+        if selected.column.inputKind.isStructuredInstrument || selected.column.type == .rubric {
             copyStructuredCells(column: selected.column, data: data)
             return
         }
@@ -1195,6 +1195,10 @@ struct NotebookModuleView: View {
               let rawClipboard = clipboardText() else { return }
         if selected.column.inputKind.isStructuredInstrument {
             pasteStructuredCells(into: selected.column, rawClipboard: rawClipboard, data: data)
+            return
+        }
+        if selected.column.type == .rubric {
+            pasteRubricCells(into: selected.column, rawClipboard: rawClipboard, data: data)
             return
         }
         guard isToolbarEditableCellColumn(selected.column) else {

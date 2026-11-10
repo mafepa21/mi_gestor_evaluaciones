@@ -1064,23 +1064,16 @@ private struct NotebookStatefulEditableTableCell: View {
                     }
                 }
             case .rubric:
+                // El menú contextual (evaluar, copiar, pegar) lo pone la celda contenedora.
                 Button {
                     onSelect()
+                    // Mayús + clic amplía la selección para copiar/pegar: no abre la rúbrica.
+                    guard !NotebookModifierKeys.isShiftDown else { return }
                     onOpenRubricIndividual()
                 } label: {
                     NotebookRubricValueLabel(rubricText: displaySnapshot.rubricText)
                 }
                 .buttonStyle(.plain)
-                .contextMenu {
-                    Button("Evaluar alumno…") {
-                        onSelect()
-                        onOpenRubricIndividual()
-                    }
-                    Button("Evaluar grupo…") {
-                        onSelect()
-                        onOpenRubricBulk()
-                    }
-                }
             default:
                 HStack(spacing: 6) {
                     if isNotebookIndividualSummaryColumn(column) {
@@ -2012,23 +2005,16 @@ private struct NotebookRubricCell: View, Equatable {
             isSelected: isSelected,
             onSelect: onSelect
         ) {
+            // El menú contextual (evaluar, copiar, pegar) lo pone la celda contenedora.
             Button {
                 onSelect()
+                // Mayús + clic amplía la selección para copiar/pegar: no abre la rúbrica.
+                guard !NotebookModifierKeys.isShiftDown else { return }
                 onOpenRubricIndividual()
             } label: {
                 NotebookRubricValueLabel(rubricText: displaySnapshot.rubricText)
             }
             .buttonStyle(.plain)
-            .contextMenu {
-                Button("Evaluar alumno…") {
-                    onSelect()
-                    onOpenRubricIndividual()
-                }
-                Button("Evaluar grupo…") {
-                    onSelect()
-                    onOpenRubricBulk()
-                }
-            }
         }
     }
 
@@ -2060,6 +2046,12 @@ private struct NotebookReadOnlyCell: View, Equatable {
         item.lookup.cellsByColumnId[column.id]
     }
 
+    /// Nota derivada que Kotlin guarda en la celda; sin ella se ve solo el estado ("Completo").
+    private var structuredGrade: NotebookStructuredGrade? {
+        NotebookStructuredGrade.parse(displaySnapshot.numericText)
+            .map { NotebookStructuredGrade(value: $0, column: column) }
+    }
+
     private var displayText: String {
         let snapshotText = displaySnapshot.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !snapshotText.isEmpty {
@@ -2089,7 +2081,7 @@ private struct NotebookReadOnlyCell: View, Equatable {
                 guard !NotebookModifierKeys.isShiftDown else { return }
                 onOpenStructuredInstrument()
             } label: {
-                NotebookStructuredValueLabel(text: displayText)
+                NotebookStructuredValueLabel(text: displayText, grade: structuredGrade)
             }
             .buttonStyle(.plain)
             .help("Abrir instrumento")

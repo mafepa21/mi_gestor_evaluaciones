@@ -372,8 +372,18 @@ class NotebookInstrumentsRepositorySqlDelight(
         responsesByItem: Map<String, NotebookInstrumentResponse>,
     ): Double? {
         val keyPattern = Regex("""^(chkp|check)_\d+$""")
-        val checkItems = items.filter {
+        val conventionItems = items.filter {
             keyPattern.matches(it.key) && it.type == NotebookInstrumentItemType.CHECK
+        }
+        // Listas con otras claves (formularios web, situaciones de aprendizaje, obs_* de casilla):
+        // cuentan si todos los ítems que puntúan son casillas (los TEXT no puntúan).
+        val scoringItems = items.filter { it.type != NotebookInstrumentItemType.TEXT }
+        val checkItems = conventionItems.ifEmpty {
+            if (scoringItems.isNotEmpty() && scoringItems.all { it.type == NotebookInstrumentItemType.CHECK }) {
+                scoringItems
+            } else {
+                emptyList()
+            }
         }
         if (checkItems.isEmpty()) return null
         val checked = checkItems.count { responsesByItem[it.id]?.boolValue == true }

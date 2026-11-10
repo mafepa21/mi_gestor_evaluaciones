@@ -98,6 +98,7 @@
 		1B2C7DAD7AEEF4FA93C4382C /* GroupStageConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D88D6FBF96890E3E226DC10 /* GroupStageConfiguration.swift */; };
 		1B4B792C95F53A22C93321C5 /* SchoolCalendarPresetSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AD7E95B759E25696F69EE87 /* SchoolCalendarPresetSheet.swift */; };
 		1BB5B1294E60AD563A8AB901 /* WebSubmissionImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF82345E1A34DF613A018608 /* WebSubmissionImportTests.swift */; };
+		1BDDC03AFD19E73E206D0841 /* NotebookModuleRubricClipboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56DF8AEE50463D64AC10483D /* NotebookModuleRubricClipboard.swift */; };
 		1BE418013AE187C52A1C4B4D /* SdaSituationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68E09552D03E6F4A5A8FDD5D /* SdaSituationPickerSheet.swift */; };
 		1C1A78FD72228C3E1A8852EC /* PageTemplateMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BC4DE39615F354D9B463D9B /* PageTemplateMenu.swift */; };
 		1C8EFF05FAF8C0965132E2B3 /* NotebookModulePhysicalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D27387AE67C9F0D93CE2B8E6 /* NotebookModulePhysicalTests.swift */; };
@@ -564,6 +565,7 @@
 		9D01F457DE02D070677CF7CC /* AppleSharedBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B43394FF80D6A97B38599A52 /* AppleSharedBridge.swift */; };
 		9D83A1D7E52754F96510EC9E /* WebSubmissionInboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 869391CFDB1C9575306D9A05 /* WebSubmissionInboxTests.swift */; };
 		9DBAC0638928BB61794F3584 /* NotebookModuleQuickKeypad.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC4FA91E783D30DECEFCF17B /* NotebookModuleQuickKeypad.swift */; };
+		9E01CCD3C115E3FBFB166B92 /* NotebookModuleRubricClipboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56DF8AEE50463D64AC10483D /* NotebookModuleRubricClipboard.swift */; };
 		9E58C9D4FBE1D8D5C15718AB /* EducationalPatternsClassifier.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = 2FF82C9CFA92B54E8B91CEDB /* EducationalPatternsClassifier.mlmodel */; };
 		9EBE7A9F2026E1763482E015 /* StudentEmailImportCourseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E1268449FDD64F9B62D7BE0 /* StudentEmailImportCourseTests.swift */; };
 		9F5E000C6AADAB9FD0D828FC /* PlannerDaySheetPDFRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B834188C13BEE93C12A69D4 /* PlannerDaySheetPDFRendererTests.swift */; };
@@ -1152,6 +1154,7 @@
 		553BE9C8F245950E744D692A /* NotebookTopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookTopBar.swift; sourceTree = "<group>"; };
 		553CB47B4806F997A313F12A /* CourtVoiceCriteriaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourtVoiceCriteriaTests.swift; sourceTree = "<group>"; };
 		55519476F175FF4B59F1AB21 /* NotebookSkeletonGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookSkeletonGridView.swift; sourceTree = "<group>"; };
+		56DF8AEE50463D64AC10483D /* NotebookModuleRubricClipboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleRubricClipboard.swift; sourceTree = "<group>"; };
 		56F2CF5E5B8BFCE0959388B9 /* SettingsDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDiagnosticsView.swift; sourceTree = "<group>"; };
 		574A36D51DB905768D1450DF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		583959F23A0D26CC96A6ADDD /* PlannerGanttProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerGanttProjectionTests.swift; sourceTree = "<group>"; };
@@ -2080,6 +2083,7 @@
 				AEEB5AEB802B224689F0882B /* NotebookModuleOrganization.swift */,
 				D27387AE67C9F0D93CE2B8E6 /* NotebookModulePhysicalTests.swift */,
 				FC4FA91E783D30DECEFCF17B /* NotebookModuleQuickKeypad.swift */,
+				56DF8AEE50463D64AC10483D /* NotebookModuleRubricClipboard.swift */,
 				065423C5B84920548813741C /* NotebookModuleStructuredClipboard.swift */,
 				5BA1F288BF073BB3431CF16E /* NotebookModuleSupportActions.swift */,
 				8A4E8D89679CED5E074F1005 /* NotebookModuleToolbarState.swift */,
@@ -2192,6 +2196,13 @@
 				7B6269F60689E51D017ECE88 /* Tournament */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		"TEMP_A45F3E78-B00B-4592-B145-C841321680D4" /* .claude */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = .claude;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -2725,6 +2736,7 @@
 				C9E78365D5064396BEFC11C8 /* NotebookModuleOrganization.swift in Sources */,
 				7FEA017B96FA13B6E3B6006A /* NotebookModulePhysicalTests.swift in Sources */,
 				A28DE00327B6A0494218FE26 /* NotebookModuleQuickKeypad.swift in Sources */,
+				9E01CCD3C115E3FBFB166B92 /* NotebookModuleRubricClipboard.swift in Sources */,
 				3BAE956ED32E80D4E1181484 /* NotebookModuleStructuredClipboard.swift in Sources */,
 				D6723E23F4F90F03E1E999E7 /* NotebookModuleSupportActions.swift in Sources */,
 				A5180F527898A05083E23CF0 /* NotebookModuleToolbarState.swift in Sources */,
@@ -3149,6 +3161,7 @@
 				FCFCDB058F5AC765537750B3 /* NotebookModuleOrganization.swift in Sources */,
 				1C8EFF05FAF8C0965132E2B3 /* NotebookModulePhysicalTests.swift in Sources */,
 				9DBAC0638928BB61794F3584 /* NotebookModuleQuickKeypad.swift in Sources */,
+				1BDDC03AFD19E73E206D0841 /* NotebookModuleRubricClipboard.swift in Sources */,
 				7479EFE561A455A96DABC4E7 /* NotebookModuleStructuredClipboard.swift in Sources */,
 				6877F85FFE101D346660E09C /* NotebookModuleSupportActions.swift in Sources */,
 				2F72D4E14B451CD4EE6F131C /* NotebookModuleToolbarState.swift in Sources */,

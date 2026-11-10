@@ -19,9 +19,18 @@ El formato sigue una variante practica de Keep a Changelog:
 - Cuaderno: copiar y pegar celdas de lista de cotejo sin abrir el instrumento (menú contextual, barra o ⌘C/⌘V con el grid enfocado). Se copian las respuestas de todas las sesiones y la nota se recalcula. Una celda copiada rellena un rango seleccionado (Mayús + clic en la misma columna); un rango se pega con la misma forma. Deshacer (⌘Z) restaura las respuestas previas.
 - Cuaderno: pegar un solo valor sobre un rango de una columna normal rellena todo el rango.
 
+### Changed
+
+- Listas de cotejo de casillas de requisito o todo/nada (`check_<n>`): ahora dan nota 0-10 (marcadas / total × 10) en vez de solo «Completo». Las celdas antiguas reciben la nota al abrir el grupo (relleno de notas que faltan).
+
+### Fixed
+
+- Media: una nota 0-10 de lista de casillas entre 1 y 4 (p. ej. 2,5) ya no se reescala como nivel 1-4 (`rescaleNumericGrade`, `kmp/shared/domain/Models.kt`, tocado con permiso). Misma regla en la celda y en el editor de media.
+- Cuaderno: Mayús + clic en una lista de cotejo amplía la selección sin abrir el instrumento; menú «Seleccionar hasta aquí».
+
 ### Verification
 
-- Build Debug `MiGestorKMPMac` y `MiGestorKMPiOS` (simulador genérico): BUILD SUCCEEDED. Sin prueba manual en iPad ni Mac todavía. Sin tests automáticos nuevos.
+- Build Debug `MiGestorKMPMac` y `MiGestorKMPiOS` (simulador genérico): BUILD SUCCEEDED. Sin prueba manual en iPad ni Mac todavía. `:shared:desktopTest` (175, 0 fallos, test nuevo `NotebookRescaleGradeTest`) y `:data:desktopTest` (223, 0 fallos).
 
 ### Added
 

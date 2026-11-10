@@ -2461,8 +2461,10 @@ struct NotebookStructuredGrade: Equatable {
 
     init(value: Double, column: NotebookColumnDefinition) {
         self.value = value
+        // Las listas de casillas dan nota 0-10 aunque caiga entre 1 y 4 (p. ej. 2,5).
+        let isCheckList = column.inputKind == .structuredChecklist
         let isFourLevel = column.scaleKind == .fourLevel
-            || (column.scaleKind != .tenPoint && value >= 1.0 && value <= 4.0)
+            || (!isCheckList && column.scaleKind != .tenPoint && value >= 1.0 && value <= 4.0)
         self.maximum = isFourLevel ? 4 : 10
     }
 

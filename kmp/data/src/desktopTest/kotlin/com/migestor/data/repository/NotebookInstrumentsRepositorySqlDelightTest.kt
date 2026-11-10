@@ -225,7 +225,7 @@ class NotebookInstrumentsRepositorySqlDelightTest {
     }
 
     @Test
-    fun `saveResponses does not derive a score for a plain submission checklist`() = runTest {
+    fun `saveResponses derives a 0-10 score for a plain submission checklist`() = runTest {
         val fixture = createFixture()
         val studentId = fixture.students.saveStudent(firstName = "Iker", lastName = "Sanz", email = null)
         val classId = fixture.classes.saveClass(name = "1 BAC D", course = 1, description = null)
@@ -277,7 +277,7 @@ class NotebookInstrumentsRepositorySqlDelightTest {
             syncVersion = 1L,
         )
 
-        assertEquals(0, fixture.grades.listGradesForStudentInClass(studentId, classId).size)
+        assertEquals(10.0, fixture.grades.listGradesForStudentInClass(studentId, classId).single().value)
     }
 
     @Test

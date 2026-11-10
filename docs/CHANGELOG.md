@@ -16,10 +16,12 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Added
 
 - Cuaderno: «Evaluar grupo…» en listas de cotejo y rejillas de observación. Hoja masiva con alumnos en filas, ítems de cada sesión en columnas y «Para todos…» por ítem (solo vacíos o sobrescribir). Guarda por alumno con el mismo cálculo de nota en Kotlin.
+- Cuaderno: copiar y pegar celdas de lista de cotejo sin abrir el instrumento (menú contextual, barra o ⌘C/⌘V con el grid enfocado). Se copian las respuestas de todas las sesiones y la nota se recalcula. Una celda copiada rellena un rango seleccionado (Mayús + clic en la misma columna); un rango se pega con la misma forma. Deshacer (⌘Z) restaura las respuestas previas.
+- Cuaderno: pegar un solo valor sobre un rango de una columna normal rellena todo el rango.
 
 ### Verification
 
-- Build Debug `MiGestorKMPMac`: BUILD SUCCEEDED. Sin prueba manual en iPad ni Mac todavía.
+- Build Debug `MiGestorKMPMac` y `MiGestorKMPiOS` (simulador genérico): BUILD SUCCEEDED. Sin prueba manual en iPad ni Mac todavía. Sin tests automáticos nuevos.
 
 ### Added
 

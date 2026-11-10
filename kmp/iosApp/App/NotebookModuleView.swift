@@ -112,6 +112,7 @@ struct NotebookModuleView: View {
     @State var isFillColumnDialogPresented = false
     @State var pendingCopyTabStructureSource: NotebookTab? = nil
     @State var undoStack: [NotebookCellUndoEntry] = []
+    @State var structuredClipboard: NotebookStructuredClipboard? = nil
     @State var redoStack: [NotebookCellUndoEntry] = []
     @State var selectedCellRange: NotebookCellRange? = nil
     @State var structuralGridRevision = 0
@@ -1168,6 +1169,11 @@ struct NotebookModuleView: View {
 
     func copySelectedCell(data: NotebookUiStateData) {
         guard let selected = selectedNotebookCell(data: data) else { return }
+        if selected.column.inputKind.isStructuredInstrument {
+            copyStructuredCells(column: selected.column, data: data)
+            return
+        }
+        structuredClipboard = nil
         let rows = filteredRows(data: data)
         if let range = selectedCellRange,
            range.columnId == selected.column.id,
@@ -1187,12 +1193,21 @@ struct NotebookModuleView: View {
     func pasteIntoSelectedCell(data: NotebookUiStateData) {
         guard let selected = selectedNotebookCell(data: data),
               let rawClipboard = clipboardText() else { return }
+        if selected.column.inputKind.isStructuredInstrument {
+            pasteStructuredCells(into: selected.column, rawClipboard: rawClipboard, data: data)
+            return
+        }
         guard isToolbarEditableCellColumn(selected.column) else {
             showToast("Esta columna se edita desde su acción específica", style: .warning)
             return
         }
 
-        let pastedValues = notebookClipboardColumnValues(from: rawClipboard)
+        var pastedValues = notebookClipboardColumnValues(from: rawClipboard)
+        // Un solo valor sobre un rango seleccionado rellena todo el rango.
+        let rangeRows = selectedRangeRows(column: selected.column, data: data)
+        if pastedValues.count == 1, rangeRows.count > 1 {
+            pastedValues = Array(repeating: pastedValues[0], count: rangeRows.count)
+        }
         let isNumericTarget = selected.column.type == .numeric
         guard pastedValues.count > 1 else {
             let value = pastedValues.first ?? rawClipboard.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1213,7 +1228,8 @@ struct NotebookModuleView: View {
         }
 
         let rows = filteredRows(data: data)
-        guard let startIndex = rows.firstIndex(where: { $0.student.id == selected.selection.studentId }) else { return }
+        let startStudentId = rangeRows.count > 1 ? rangeRows[0].student.id : selected.selection.studentId
+        guard let startIndex = rows.firstIndex(where: { $0.student.id == startStudentId }) else { return }
         let targetRows = rows[startIndex...]
 
         var changes: [NotebookCellUndoChange] = []

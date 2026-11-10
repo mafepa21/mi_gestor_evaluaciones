@@ -311,6 +311,16 @@ extension NotebookModuleView {
     }
 
     func handleNotebookGridKey(_ command: NotebookGridKeyCommand, data: NotebookUiStateData) {
+        switch command {
+        case .copy:
+            copySelectedCell(data: data)
+            return
+        case .paste:
+            pasteIntoSelectedCell(data: data)
+            return
+        default:
+            break
+        }
         #if os(macOS)
         switch command {
         case .move(let direction):
@@ -321,6 +331,8 @@ extension NotebookModuleView {
             cancelKeyboardCapture()
         case .type(let text):
             typeIntoSelectedGrade(text, data: data)
+        case .copy, .paste:
+            break
         }
         #else
         navigateFromFocused(direction: navigationDirection, data: data)

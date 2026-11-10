@@ -824,6 +824,17 @@ extension NotebookModuleView {
                     }
                 }
 
+                Divider()
+                Button("Copiar", systemImage: "doc.on.doc") {
+                    selectCellForClipboard(studentId: item.student.id, column: column)
+                    copySelectedCell(data: data)
+                }
+                Button("Pegar", systemImage: "clipboard") {
+                    selectCellForClipboard(studentId: item.student.id, column: column)
+                    pasteIntoSelectedCell(data: data)
+                }
+                Divider()
+
                 if column.type == .rubric {
                     Button("Evaluar alumno…") {
                         focusMode = .editing

@@ -18,6 +18,8 @@ El formato sigue una variante practica de Keep a Changelog:
 - Cuaderno: «Evaluar grupo…» en listas de cotejo y rejillas de observación. Hoja masiva con alumnos en filas, ítems de cada sesión en columnas y «Para todos…» por ítem (solo vacíos o sobrescribir). Guarda por alumno con el mismo cálculo de nota en Kotlin.
 - Cuaderno: copiar y pegar celdas de lista de cotejo sin abrir el instrumento (menú contextual, barra o ⌘C/⌘V con el grid enfocado). Se copian las respuestas de todas las sesiones y la nota se recalcula. Una celda copiada rellena un rango seleccionado (Mayús + clic en la misma columna); un rango se pega con la misma forma. Deshacer (⌘Z) restaura las respuestas previas.
 - Cuaderno: pegar un solo valor sobre un rango de una columna normal rellena todo el rango.
+- Cuaderno: copiar y pegar celdas de rúbrica (⌘C/⌘V y menú) sin abrir la rúbrica. Copia el nivel de cada criterio entre columnas con la misma rúbrica; ⌘Z deshace.
+- Cuaderno: las celdas de lista de cotejo muestran la nota en vez de «Completo» (la celda de solo lectura no recibía la nota). Las listas de casillas con claves libres también dan nota 0-10.
 
 ### Changed
 

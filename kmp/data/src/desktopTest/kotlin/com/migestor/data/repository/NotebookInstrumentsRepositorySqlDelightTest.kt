@@ -501,6 +501,90 @@ class NotebookInstrumentsRepositorySqlDelightTest {
         assertEquals(6.666666666666666, row.gradeValueFor(column)!!, 0.0001)
     }
 
+    /// Prepara una coevaluación (rúbrica `rub_<n>` 1-4) en una columna de formulario y mete las
+    /// respuestas directamente en la tabla, como hace Sync LAN: sin pasar por `saveResponses`,
+    /// así que no hay nota guardada.
+    private suspend fun seedSyncedPeerAssessment(fixture: Fixture, values: List<Double>): Pair<Long, Long> {
+        val studentId = fixture.students.saveStudent(firstName = "Lucia", lastName = "Prueba", email = null)
+        val classId = fixture.classes.saveClass(name = "1 BAC Z", course = 1, description = null)
+        fixture.classes.addStudentToClass(classId, studentId)
+        fixture.config.saveColumn(
+            classId,
+            NotebookColumnDefinition(
+                id = "coev_col",
+                title = "Coevaluacion tactica",
+                type = NotebookColumnType.TEXT,
+                inputKind = NotebookCellInputKind.STRUCTURED_FORM,
+                countsTowardAverage = false,
+            )
+        )
+        fixture.instruments.saveTemplate(
+            template = NotebookInstrumentTemplate(
+                id = "template_coev_col",
+                classId = classId,
+                columnId = "coev_col",
+                title = "Coevaluacion tactica",
+                kind = NotebookInstrumentTemplateKind.FORM,
+                inputKind = NotebookCellInputKind.STRUCTURED_FORM,
+            ),
+            items = values.indices.map { index ->
+                NotebookInstrumentItem(
+                    id = "template_coev_col_rub_${index + 1}",
+                    templateId = "template_coev_col",
+                    key = "rub_${index + 1}",
+                    title = "Indicador ${index + 1}",
+                    type = NotebookInstrumentItemType.SCALE_1_4,
+                )
+            }
+        )
+        values.forEachIndexed { index, value ->
+            fixture.db.appDatabaseQueries.upsertInstrumentResponse(
+                class_id = classId,
+                student_id = studentId,
+                column_id = "coev_col",
+                item_id = "template_coev_col_rub_${index + 1}",
+                value_text = null,
+                value_bool = null,
+                value_number = value,
+                updated_at_epoch_ms = 500L + index,
+                device_id = "ipad",
+                sync_version = 1L,
+            )
+        }
+        return classId to studentId
+    }
+
+    @Test
+    fun `backfillMissingDerivedGrades saves the grade of synced responses without one`() = runTest {
+        val fixture = createFixture()
+        val (classId, studentId) = seedSyncedPeerAssessment(fixture, listOf(3.0, 2.0, 3.0))
+        assertEquals(emptyList(), fixture.grades.listGradesForStudentInClass(studentId, classId))
+
+        assertEquals(1, fixture.instruments.backfillMissingDerivedGrades(classId))
+
+        val grade = fixture.grades.listGradesForStudentInClass(studentId, classId).single()
+        assertEquals("coev_col", grade.columnId)
+        assertEquals(8.0 / 3.0, grade.value!!, 0.0001)
+        // Segunda pasada: ya hay nota, no hace nada.
+        assertEquals(0, fixture.instruments.backfillMissingDerivedGrades(classId))
+    }
+
+    @Test
+    fun `backfillMissingDerivedGrades never overwrites an existing grade`() = runTest {
+        val fixture = createFixture()
+        val (classId, studentId) = seedSyncedPeerAssessment(fixture, listOf(1.0, 1.0))
+        fixture.grades.saveGrade(
+            classId = classId,
+            studentId = studentId,
+            columnId = "coev_col",
+            evaluationId = null,
+            value = 4.0,
+        )
+
+        assertEquals(0, fixture.instruments.backfillMissingDerivedGrades(classId))
+        assertEquals(4.0, fixture.grades.listGradesForStudentInClass(studentId, classId).single().value)
+    }
+
     private fun observationGridItems(): List<NotebookInstrumentItem> {
         val indicators = listOf("Tecnica", "RPE adecuado", "Ajuste de intensidad", "Compromiso motor")
         val sessions = listOf("S3 - inicio", "S7 - mitad y reajuste", "S9 - cierre")
@@ -542,7 +626,7 @@ class NotebookInstrumentsRepositorySqlDelightTest {
             sheetCache = sheetCache,
         )
         val instruments = NotebookInstrumentsRepositorySqlDelight(db, grades, sheetCache)
-        return Fixture(students, classes, config, grades, notebook, instruments)
+        return Fixture(students, classes, config, grades, notebook, instruments, db)
     }
 
     private data class Fixture(
@@ -552,5 +636,6 @@ class NotebookInstrumentsRepositorySqlDelightTest {
         val grades: GradesRepositorySqlDelight,
         val notebook: NotebookRepositorySqlDelight,
         val instruments: NotebookInstrumentsRepositorySqlDelight,
+        val db: AppDatabase,
     )
 }

@@ -30,6 +30,36 @@ extension KmpBridge {
             }
         }
         notebookViewModel.selectClass(classId: id, force: true)
+        backfillMissingInstrumentGrades(classId: id)
+    }
+
+    /// Grupos con un relleno de notas en marcha: evita lanzar dos a la vez si se cambia
+    /// de grupo y se vuelve enseguida.
+    private static var instrumentGradeBackfillInFlight: Set<Int64> = []
+
+    /// Las celdas de instrumento cuyas respuestas llegaron sin pasar por «Guardar» en este
+    /// equipo (Sync LAN, entregas antiguas, versiones previas) no tienen nota guardada y el
+    /// Cuaderno solo enseña «Completo». Al abrir el grupo se calcula y guarda la que falte;
+    /// nunca se cambia una nota que ya existe.
+    private func backfillMissingInstrumentGrades(classId: Int64) {
+        guard classId > 0, !Self.instrumentGradeBackfillInFlight.contains(classId) else { return }
+        Self.instrumentGradeBackfillInFlight.insert(classId)
+        Task { @MainActor [weak self] in
+            defer { Self.instrumentGradeBackfillInFlight.remove(classId) }
+            guard let self else { return }
+            let saved: Int
+            do {
+                saved = Int(try await self.container.notebookInstrumentsRepository
+                    .backfillMissingDerivedGrades(classId: classId).int32Value)
+            } catch {
+                return
+            }
+            guard saved > 0, self.currentNotebookClassId == classId else { return }
+            self.invalidateNotebookCellValueIndexCache()
+            self.lastNotebookAggregateSignature = nil
+            self.refreshCurrentNotebook()
+            self.scheduleNotebookSnapshotSync(forClassId: classId)
+        }
     }
 
     /// Una sola espera a la vez: un cambio de grupo nuevo descarta la anterior.

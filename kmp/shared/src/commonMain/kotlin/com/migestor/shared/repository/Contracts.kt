@@ -391,6 +391,13 @@ interface NotebookInstrumentsRepository {
         deviceId: String? = null,
         syncVersion: Long = 0,
     ): NotebookInstrumentCellSummary
+
+    /// Calcula y guarda la nota derivada de las celdas de instrumento que tienen respuestas
+    /// pero ninguna nota guardada (respuestas llegadas por Sync LAN, entregas antiguas o
+    /// guardadas con versiones previas al cálculo). Nunca cambia una nota que ya existe.
+    /// Devuelve cuántas notas ha guardado.
+    @Throws(Throwable::class)
+    suspend fun backfillMissingDerivedGrades(classId: Long): Int = 0
 }
 
 interface NotebookRepository {

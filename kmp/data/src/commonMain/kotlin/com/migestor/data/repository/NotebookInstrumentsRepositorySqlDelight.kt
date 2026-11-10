@@ -213,10 +213,7 @@ class NotebookInstrumentsRepositorySqlDelight(
                 sync_version = syncVersion,
             )
         }
-        val derived = deriveObservationGridScore(detail.items, responsesByItem)
-            ?: deriveStudentRubricScore(detail.items, responsesByItem)
-            ?: deriveProportionalChecklistScore(detail.items, responsesByItem)
-            ?: deriveGenericScale14Score(detail.items, responsesByItem)
+        val derived = deriveScore(detail.items, responsesByItem)
         derived?.let { derivedScore ->
             gradesRepository.saveGrade(
                 classId = classId,
@@ -240,6 +237,78 @@ class NotebookInstrumentsRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
         summary
     }
+
+    override suspend fun backfillMissingDerivedGrades(classId: Long): Int = withContext(Dispatchers.Default) {
+        val templates = db.appDatabaseQueries.selectAllInstrumentTemplatesByClass(classId).executeAsList()
+        if (templates.isEmpty()) return@withContext 0
+        val responsesByColumn = db.appDatabaseQueries.selectAllInstrumentResponsesByClass(classId)
+            .executeAsList()
+            .groupBy { it.column_id }
+        if (responsesByColumn.isEmpty()) return@withContext 0
+        // Una celda con nota (aunque sea vacía a propósito) no se toca: solo se rellenan huecos.
+        val gradedCells = gradesRepository.listGradesForClass(classId)
+            .map { it.studentId to it.columnId }
+            .toSet()
+
+        var saved = 0
+        templates.forEach { template ->
+            val columnResponses = responsesByColumn[template.column_id] ?: return@forEach
+            val items = db.appDatabaseQueries.selectInstrumentItemsByTemplate(template.id).executeAsList().map { row ->
+                NotebookInstrumentItem(
+                    id = row.id,
+                    templateId = row.template_id,
+                    key = row.item_key,
+                    title = row.title,
+                    type = itemType(row.item_type),
+                    required = row.required != 0L,
+                )
+            }
+            if (items.isEmpty()) return@forEach
+            columnResponses.groupBy { it.student_id }.forEach { (studentId, rows) ->
+                if ((studentId to template.column_id) in gradedCells) return@forEach
+                val responsesByItem = rows.associate { row ->
+                    row.item_id to NotebookInstrumentResponse(
+                        classId = row.class_id,
+                        studentId = row.student_id,
+                        columnId = row.column_id,
+                        itemId = row.item_id,
+                        textValue = row.value_text,
+                        boolValue = row.value_bool?.let { it != 0L },
+                        numberValue = row.value_number,
+                    )
+                }
+                val score = deriveScore(items, responsesByItem) ?: return@forEach
+                // Fecha de la última respuesta, no "ahora": así una nota puesta después en otro
+                // equipo gana al sincronizar.
+                val updatedAt = rows.maxOf { it.updated_at_epoch_ms }
+                gradesRepository.saveGrade(
+                    classId = classId,
+                    studentId = studentId,
+                    columnId = template.column_id,
+                    evaluationId = null,
+                    value = score,
+                    updatedAtEpochMs = updatedAt,
+                    deviceId = rows.maxBy { it.updated_at_epoch_ms }.device_id,
+                    syncVersion = 1,
+                )
+                saved += 1
+            }
+        }
+        if (saved > 0) {
+            sheetCache.invalidate(classId)
+            NotebookRefreshBus.emitRefresh()
+        }
+        saved
+    }
+
+    /// Nota derivada de un instrumento: la primera regla que reconoce sus ítems.
+    private fun deriveScore(
+        items: List<NotebookInstrumentItem>,
+        responsesByItem: Map<String, NotebookInstrumentResponse>,
+    ): Double? = deriveObservationGridScore(items, responsesByItem)
+        ?: deriveStudentRubricScore(items, responsesByItem)
+        ?: deriveProportionalChecklistScore(items, responsesByItem)
+        ?: deriveGenericScale14Score(items, responsesByItem)
 
     /// Traduce las respuestas 1-4 de una rejilla de observación en una nota numérica:
     /// 1. Si los ítems siguen la convención de sesión × indicador (`obs_s<sesión>_i<indicador>`),

@@ -363,19 +363,27 @@ class NotebookInstrumentsRepositorySqlDelight(
         return values.average()
     }
 
-    /// Traduce una checklist ponderada ("checklist proporcional": el documento le asigna un %
-    /// del peso de la SA) en una nota 0-10 = ítems marcados / ítems totales × 10. Solo se aplica
-    /// a los instrumentos cuyos ítems siguen la convención de clave `chkp_<n>` que genera el
-    /// importador Apple para `AssessmentInstrumentScoreStrategy.CHECKLIST_PROPORTIONAL`; las
-    /// checklists de requisito de entrega (`check_<n>`, sin peso) y las de todo/nada siguen sin
-    /// generar nota automática.
+    /// Traduce una lista de cotejo de casillas en una nota 0-10 = ítems marcados / ítems
+    /// totales × 10. Vale para la checklist ponderada (`chkp_<n>`) y para las de requisito de
+    /// entrega o todo/nada (`check_<n>`): el docente pidió ver una nota en la celda en vez de
+    /// «Completo». Si la columna no cuenta en la media, la nota se ve pero no pesa.
     private fun deriveProportionalChecklistScore(
         items: List<NotebookInstrumentItem>,
         responsesByItem: Map<String, NotebookInstrumentResponse>,
     ): Double? {
-        val keyPattern = Regex("""^chkp_\d+$""")
-        val checkItems = items.filter {
+        val keyPattern = Regex("""^(chkp|check)_\d+$""")
+        val conventionItems = items.filter {
             keyPattern.matches(it.key) && it.type == NotebookInstrumentItemType.CHECK
+        }
+        // Listas con otras claves (formularios web, situaciones de aprendizaje, obs_* de casilla):
+        // cuentan si todos los ítems que puntúan son casillas (los TEXT no puntúan).
+        val scoringItems = items.filter { it.type != NotebookInstrumentItemType.TEXT }
+        val checkItems = conventionItems.ifEmpty {
+            if (scoringItems.isNotEmpty() && scoringItems.all { it.type == NotebookInstrumentItemType.CHECK }) {
+                scoringItems
+            } else {
+                emptyList()
+            }
         }
         if (checkItems.isEmpty()) return null
         val checked = checkItems.count { responsesByItem[it.id]?.boolValue == true }

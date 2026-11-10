@@ -1,5 +1,8 @@
 import SwiftUI
 import MiGestorKit
+#if os(macOS)
+import AppKit
+#endif
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -1061,23 +1064,16 @@ private struct NotebookStatefulEditableTableCell: View {
                     }
                 }
             case .rubric:
+                // El menú contextual (evaluar, copiar, pegar) lo pone la celda contenedora.
                 Button {
                     onSelect()
+                    // Mayús + clic amplía la selección para copiar/pegar: no abre la rúbrica.
+                    guard !NotebookModifierKeys.isShiftDown else { return }
                     onOpenRubricIndividual()
                 } label: {
                     NotebookRubricValueLabel(rubricText: displaySnapshot.rubricText)
                 }
                 .buttonStyle(.plain)
-                .contextMenu {
-                    Button("Evaluar alumno…") {
-                        onSelect()
-                        onOpenRubricIndividual()
-                    }
-                    Button("Evaluar grupo…") {
-                        onSelect()
-                        onOpenRubricBulk()
-                    }
-                }
             default:
                 HStack(spacing: 6) {
                     if isNotebookIndividualSummaryColumn(column) {
@@ -1389,6 +1385,8 @@ private struct NotebookStatefulEditableTableCell: View {
     private var structuredInstrumentButton: some View {
         Button {
             onSelect()
+            // Mayús + clic amplía la selección para copiar/pegar: no abre el instrumento.
+            guard !NotebookModifierKeys.isShiftDown else { return }
             onOpenStructuredInstrument()
         } label: {
             NotebookStructuredValueLabel(text: structuredDisplayText, grade: structuredGrade)
@@ -2007,23 +2005,16 @@ private struct NotebookRubricCell: View, Equatable {
             isSelected: isSelected,
             onSelect: onSelect
         ) {
+            // El menú contextual (evaluar, copiar, pegar) lo pone la celda contenedora.
             Button {
                 onSelect()
+                // Mayús + clic amplía la selección para copiar/pegar: no abre la rúbrica.
+                guard !NotebookModifierKeys.isShiftDown else { return }
                 onOpenRubricIndividual()
             } label: {
                 NotebookRubricValueLabel(rubricText: displaySnapshot.rubricText)
             }
             .buttonStyle(.plain)
-            .contextMenu {
-                Button("Evaluar alumno…") {
-                    onSelect()
-                    onOpenRubricIndividual()
-                }
-                Button("Evaluar grupo…") {
-                    onSelect()
-                    onOpenRubricBulk()
-                }
-            }
         }
     }
 
@@ -2055,6 +2046,12 @@ private struct NotebookReadOnlyCell: View, Equatable {
         item.lookup.cellsByColumnId[column.id]
     }
 
+    /// Nota derivada que Kotlin guarda en la celda; sin ella se ve solo el estado ("Completo").
+    private var structuredGrade: NotebookStructuredGrade? {
+        NotebookStructuredGrade.parse(displaySnapshot.numericText)
+            .map { NotebookStructuredGrade(value: $0, column: column) }
+    }
+
     private var displayText: String {
         let snapshotText = displaySnapshot.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !snapshotText.isEmpty {
@@ -2080,9 +2077,11 @@ private struct NotebookReadOnlyCell: View, Equatable {
         ) {
             Button {
                 onSelect()
+                // Mayús + clic amplía la selección para copiar/pegar: no abre el instrumento.
+                guard !NotebookModifierKeys.isShiftDown else { return }
                 onOpenStructuredInstrument()
             } label: {
-                NotebookStructuredValueLabel(text: displayText)
+                NotebookStructuredValueLabel(text: displayText, grade: structuredGrade)
             }
             .buttonStyle(.plain)
             .help("Abrir instrumento")
@@ -2454,8 +2453,10 @@ struct NotebookStructuredGrade: Equatable {
 
     init(value: Double, column: NotebookColumnDefinition) {
         self.value = value
+        // Las listas de casillas dan nota 0-10 aunque caiga entre 1 y 4 (p. ej. 2,5).
+        let isCheckList = column.inputKind == .structuredChecklist
         let isFourLevel = column.scaleKind == .fourLevel
-            || (column.scaleKind != .tenPoint && value >= 1.0 && value <= 4.0)
+            || (!isCheckList && column.scaleKind != .tenPoint && value >= 1.0 && value <= 4.0)
         self.maximum = isFourLevel ? 4 : 10
     }
 
@@ -2580,5 +2581,16 @@ private struct NotebookStructuredValueLabel: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
         }
+    }
+}
+
+/// Teclas modificadoras en el momento del clic (solo Mac; en iPad no se pueden leer desde un Button).
+enum NotebookModifierKeys {
+    static var isShiftDown: Bool {
+        #if os(macOS)
+        NSEvent.modifierFlags.contains(.shift)
+        #else
+        false
+        #endif
     }
 }

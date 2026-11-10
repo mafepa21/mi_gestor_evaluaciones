@@ -384,7 +384,7 @@ struct NotebookAverageEditorSheet: View {
     }
 
     private func rescaleNumericGrade(_ rawValue: Double, for column: NotebookColumnDefinition) -> Double {
-        if column.scaleKind == .fourLevel || (column.inputKind.isStructuredInstrument && rawValue >= 1.0 && rawValue <= 4.0 && column.scaleKind != .tenPoint) {
+        if column.scaleKind == .fourLevel || (column.inputKind.isStructuredInstrument && column.inputKind != .structuredChecklist && rawValue >= 1.0 && rawValue <= 4.0 && column.scaleKind != .tenPoint) {
             return (min(max(rawValue, 1.0), 4.0) - 1.0) / 3.0 * 10.0
         }
         return rawValue

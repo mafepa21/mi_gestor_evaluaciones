@@ -464,6 +464,20 @@ struct NotebookCellUndoChange {
     let column: NotebookColumnDefinition
     let previousValue: String
     let previousDisplayLabel: String?
+    /// Respuestas previas de un instrumento estructurado. Si existe, deshacer restaura las
+    /// respuestas (y Kotlin recalcula la nota) en vez de escribir `previousValue` como nota.
+    var structuredSnapshot: StructuredInstrumentEvaluationModel? = nil
+    /// Niveles previos de una celda de rúbrica (criterio → nivel). Si existe, deshacer
+    /// vuelve a guardar esos niveles y su nota.
+    var rubricSnapshot: [Int64: Int64]? = nil
+}
+
+/// Lo último copiado desde celdas de lista de cotejo. Solo vale mientras el portapapeles del
+/// sistema siga teniendo el mismo texto: si el docente copia otra cosa, se ignora.
+struct NotebookStructuredClipboard {
+    let columnId: String
+    let studentIds: [Int64]
+    let text: String
 }
 
 struct NotebookCellUndoEntry {

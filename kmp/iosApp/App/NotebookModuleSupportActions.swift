@@ -343,7 +343,17 @@ extension NotebookModuleView {
             refreshNotebookEditMenu()
             return
         }
-        let inverse = entry.changes.map { change -> NotebookCellUndoChange in
+        // Las listas de cotejo se restauran por respuestas, en segundo plano. No tienen rehacer:
+        // escribir su nota como texto dejaría las respuestas desalineadas.
+        let structuredChanges = entry.changes.filter { $0.structuredSnapshot != nil }
+        if !structuredChanges.isEmpty {
+            restoreStructuredSnapshots(structuredChanges)
+        }
+        let rubricChanges = entry.changes.filter { $0.rubricSnapshot != nil }
+        if !rubricChanges.isEmpty {
+            restoreRubricSnapshots(rubricChanges)
+        }
+        let inverse = entry.changes.filter { $0.structuredSnapshot == nil && $0.rubricSnapshot == nil }.map { change -> NotebookCellUndoChange in
             let current = notebookHistoryDisplayValue(for: change)
             bridge.flushPendingColumnGradeSave(studentId: change.studentId, columnId: change.column.id)
             bridge.saveColumnGrade(studentId: change.studentId, column: change.column, value: change.previousValue)
@@ -355,7 +365,9 @@ extension NotebookModuleView {
                 previousDisplayLabel: nil
             )
         }
-        destination.append(NotebookCellUndoEntry(changes: inverse))
+        if !inverse.isEmpty {
+            destination.append(NotebookCellUndoEntry(changes: inverse))
+        }
         AppleInteractionFeedback.play(.success)
         if let first = entry.changes.first {
             withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {

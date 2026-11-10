@@ -21,6 +21,9 @@ enum NotebookGridKeyCommand: Equatable {
     case edit
     case cancel
     case type(String)
+    /// ⌘C / ⌘V con el grid enfocado (no mientras se edita una celda).
+    case copy
+    case paste
 }
 
 private struct NotebookKeyboardNavigationModifier: ViewModifier {
@@ -36,6 +39,18 @@ private struct NotebookKeyboardNavigationModifier: ViewModifier {
                 .onKeyPress(phases: [.down, .repeat]) { press in
                     handleMacKeyPress(press)
                 }
+                // Copiar/Pegar del menú Edición cuando el grid tiene el foco. Los campos de texto
+                // de una celda en edición tienen su propio foco y siguen con el portapapeles normal.
+                .onCopyCommand {
+                    onCommand(.copy)
+                    // El sistema reescribe el portapapeles con lo que devolvemos: devolver lo que
+                    // acaba de copiar el Cuaderno para no dejarlo vacío.
+                    guard let text = NSPasteboard.general.string(forType: .string) else { return [] }
+                    return [NSItemProvider(object: text as NSString)]
+                }
+                .onPasteCommand(of: [.plainText]) { _ in
+                    onCommand(.paste)
+                }
             #else
             content
                 .focusable()
@@ -46,6 +61,11 @@ private struct NotebookKeyboardNavigationModifier: ViewModifier {
                 }
                 .onKeyPress(.tab) {
                     onCommand(.move(.down))
+                    return .handled
+                }
+                .onKeyPress(characters: CharacterSet(charactersIn: "cv"), phases: .down) { press in
+                    guard press.modifiers == .command else { return .ignored }
+                    onCommand(press.characters == "c" ? .copy : .paste)
                     return .handled
                 }
             #endif

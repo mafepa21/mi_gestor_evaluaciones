@@ -273,6 +273,25 @@ extension NotebookModuleView {
         )
     }
 
+    /// Abre la evaluación masiva de una lista de cotejo/rejilla para los alumnos visibles.
+    func openStructuredBulk(column: NotebookColumnDefinition, data: NotebookUiStateData) {
+        focusedCellId = nil
+        activeChoiceCellId = nil
+        let students = filteredRows(data: data).map { row in
+            StructuredInstrumentBulkRequest.Student(
+                id: row.student.id,
+                name: "\(row.student.firstName) \(row.student.lastName)"
+            )
+        }
+        structuredBulkRequest = StructuredInstrumentBulkRequest(
+            id: "\(data.sheet.classId)-\(column.id)",
+            classId: data.sheet.classId,
+            columnId: column.id,
+            title: column.title,
+            students: students
+        )
+    }
+
     func navigateFromFocused(direction: NotebookNavigationDirection, data: NotebookUiStateData) {
         let currentCellId = focusedCellId ?? activeChoiceCellId
         guard let currentCellId else { return }
@@ -292,6 +311,16 @@ extension NotebookModuleView {
     }
 
     func handleNotebookGridKey(_ command: NotebookGridKeyCommand, data: NotebookUiStateData) {
+        switch command {
+        case .copy:
+            copySelectedCell(data: data)
+            return
+        case .paste:
+            pasteIntoSelectedCell(data: data)
+            return
+        default:
+            break
+        }
         #if os(macOS)
         switch command {
         case .move(let direction):
@@ -302,6 +331,8 @@ extension NotebookModuleView {
             cancelKeyboardCapture()
         case .type(let text):
             typeIntoSelectedGrade(text, data: data)
+        case .copy, .paste:
+            break
         }
         #else
         navigateFromFocused(direction: navigationDirection, data: data)

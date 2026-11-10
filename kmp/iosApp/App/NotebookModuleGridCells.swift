@@ -817,6 +817,35 @@ extension NotebookModuleView {
                     }
                 }
 
+                if column.inputKind.isStructuredInstrument {
+                    Button("Evaluar grupo…") {
+                        focusMode = .editing
+                        openStructuredBulk(column: column, data: data)
+                    }
+                }
+
+                Divider()
+                if let anchor = inspectorSelection,
+                   anchor.columnId == column.id,
+                   anchor.studentId != item.student.id {
+                    Button("Seleccionar hasta aquí", systemImage: "arrow.up.and.down.text.horizontal") {
+                        selectedCellRange = NotebookCellRange(
+                            columnId: column.id,
+                            anchorStudentId: anchor.studentId,
+                            endStudentId: item.student.id
+                        )
+                    }
+                }
+                Button("Copiar", systemImage: "doc.on.doc") {
+                    selectCellForClipboard(studentId: item.student.id, column: column)
+                    copySelectedCell(data: data)
+                }
+                Button("Pegar", systemImage: "clipboard") {
+                    selectCellForClipboard(studentId: item.student.id, column: column)
+                    pasteIntoSelectedCell(data: data)
+                }
+                Divider()
+
                 if column.type == .rubric {
                     Button("Evaluar alumno…") {
                         focusMode = .editing
@@ -1186,6 +1215,11 @@ extension NotebookModuleView {
             if column.type == .calculated {
                 Button("Editar fórmula…") {
                     presentFormulaEditor(for: column)
+                }
+            }
+            if column.inputKind.isStructuredInstrument {
+                Button("Evaluar grupo…") {
+                    openStructuredBulk(column: column, data: data)
                 }
             }
             if column.type == .rubric {

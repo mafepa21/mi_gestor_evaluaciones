@@ -825,6 +825,17 @@ extension NotebookModuleView {
                 }
 
                 Divider()
+                if let anchor = inspectorSelection,
+                   anchor.columnId == column.id,
+                   anchor.studentId != item.student.id {
+                    Button("Seleccionar hasta aquí", systemImage: "arrow.up.and.down.text.horizontal") {
+                        selectedCellRange = NotebookCellRange(
+                            columnId: column.id,
+                            anchorStudentId: anchor.studentId,
+                            endStudentId: item.student.id
+                        )
+                    }
+                }
                 Button("Copiar", systemImage: "doc.on.doc") {
                     selectCellForClipboard(studentId: item.student.id, column: column)
                     copySelectedCell(data: data)

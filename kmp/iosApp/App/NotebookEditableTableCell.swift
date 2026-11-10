@@ -1,5 +1,8 @@
 import SwiftUI
 import MiGestorKit
+#if os(macOS)
+import AppKit
+#endif
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -1389,6 +1392,8 @@ private struct NotebookStatefulEditableTableCell: View {
     private var structuredInstrumentButton: some View {
         Button {
             onSelect()
+            // Mayús + clic amplía la selección para copiar/pegar: no abre el instrumento.
+            guard !NotebookModifierKeys.isShiftDown else { return }
             onOpenStructuredInstrument()
         } label: {
             NotebookStructuredValueLabel(text: structuredDisplayText, grade: structuredGrade)
@@ -2080,6 +2085,8 @@ private struct NotebookReadOnlyCell: View, Equatable {
         ) {
             Button {
                 onSelect()
+                // Mayús + clic amplía la selección para copiar/pegar: no abre el instrumento.
+                guard !NotebookModifierKeys.isShiftDown else { return }
                 onOpenStructuredInstrument()
             } label: {
                 NotebookStructuredValueLabel(text: displayText)
@@ -2580,5 +2587,16 @@ private struct NotebookStructuredValueLabel: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
         }
+    }
+}
+
+/// Teclas modificadoras en el momento del clic (solo Mac; en iPad no se pueden leer desde un Button).
+enum NotebookModifierKeys {
+    static var isShiftDown: Bool {
+        #if os(macOS)
+        NSEvent.modifierFlags.contains(.shift)
+        #else
+        false
+        #endif
     }
 }

@@ -120,7 +120,9 @@ struct NotebookEditableTableCell: View {
             let raw = displaySnapshot.text.isEmpty
                 ? (item.lookup.cellsByColumnId[column.id]?.displayValue ?? item.lookup.cellsByColumnId[column.id]?.textValue ?? "")
                 : displaySnapshot.text
-            return NotebookStructuredValueLabel.accessibilityValue(for: raw)
+            let grade = NotebookStructuredGrade.parse(displaySnapshot.numericText)
+                .map { NotebookStructuredGrade(value: $0, column: column) }
+            return NotebookStructuredValueLabel.accessibilityValue(for: raw, grade: grade)
         }
         if column.type == .rubric {
             return NotebookRubricValueLabel.accessibilityValue(for: displaySnapshot.rubricText)
@@ -1389,22 +1391,32 @@ private struct NotebookStatefulEditableTableCell: View {
             onSelect()
             onOpenStructuredInstrument()
         } label: {
-            NotebookStructuredValueLabel(text: structuredDisplayText)
+            NotebookStructuredValueLabel(text: structuredDisplayText, grade: structuredGrade)
         }
         .buttonStyle(.plain)
         .help("Abrir instrumento")
     }
 
+    /// Progreso del instrumento ("Completo", "3/5", "Pendiente") o, si no lo hay, el texto
+    /// guardado. La nota va aparte en `structuredGrade`.
     private var structuredDisplayText: String {
-        if column.type == .numeric {
-            let num = numericDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !num.isEmpty { return num }
-            let snapshotNum = displaySnapshot.numericText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !snapshotNum.isEmpty { return snapshotNum }
-        }
         let value = (persistedCell?.displayValue ?? persistedCell?.textValue ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? "Pendiente" : value
+        if !value.isEmpty { return value }
+        if column.type == .numeric {
+            let num = displaySnapshot.numericText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !num.isEmpty, NotebookStructuredGrade.parse(num) == nil { return num }
+        }
+        return "Pendiente"
+    }
+
+    /// Nota derivada del instrumento, con su escala. `nil` si el instrumento no da nota
+    /// (por ejemplo, un formulario solo de texto) o aún no tiene respuestas que puntúen.
+    private var structuredGrade: NotebookStructuredGrade? {
+        let draft = column.type == .numeric ? numericDraft.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        let raw = draft.isEmpty ? displaySnapshot.numericText : draft
+        guard let value = NotebookStructuredGrade.parse(raw) else { return nil }
+        return NotebookStructuredGrade(value: value, column: column)
     }
 
     private var choicePopoverBinding: Binding<Bool> {
@@ -2432,10 +2444,38 @@ private struct NotebookRubricValueLabel: View {
     }
 }
 
-/// Estado de un instrumento estructurado (observación, checklist): vacío =
-/// círculo hueco, parcial = "n/m" en dígitos monoespaciados, completo = marca verde.
+/// Nota de un instrumento estructurado con la escala en la que se guardó.
+/// Las notas derivadas son 1-4 (observación, rúbrica de alumnado, escala genérica) o 0-10
+/// (checklist proporcional). La escala se deduce con la misma regla que el editor de media
+/// (`NotebookAverageEditorSheet.rescaleNumericGrade`): si cambia una, cambiar la otra.
+struct NotebookStructuredGrade: Equatable {
+    let value: Double
+    let maximum: Int
+
+    init(value: Double, column: NotebookColumnDefinition) {
+        self.value = value
+        let isFourLevel = column.scaleKind == .fourLevel
+            || (column.scaleKind != .tenPoint && value >= 1.0 && value <= 4.0)
+        self.maximum = isFourLevel ? 4 : 10
+    }
+
+    static func parse(_ raw: String) -> Double? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return Double(trimmed.replacingOccurrences(of: ",", with: "."))
+    }
+
+    var valueText: String { NotebookPhysicalMark.decimalText(value) }
+    var scaleText: String { "/ \(maximum)" }
+    var accessibilityText: String { "\(valueText) sobre \(maximum)" }
+}
+
+/// Estado de un instrumento estructurado (observación, checklist). Con nota: la nota y su
+/// escala delante y el estado al lado en pequeño (marca verde si está completo, "n/m" si
+/// falta algo). Sin nota: vacío = círculo hueco, parcial = "n/m", completo = marca verde.
 private struct NotebookStructuredValueLabel: View {
     let text: String
+    var grade: NotebookStructuredGrade? = nil
 
     private static func progress(_ raw: String) -> (done: Int, total: Int)? {
         let parts = raw.split(separator: "/", omittingEmptySubsequences: false)
@@ -2451,13 +2491,65 @@ private struct NotebookStructuredValueLabel: View {
         return trimmed.isEmpty || trimmed == "Pendiente"
     }
 
-    static func accessibilityValue(for raw: String) -> String {
-        if isPending(raw) { return "Pendiente" }
-        if let p = progress(raw) { return "\(p.done) de \(p.total)" }
-        return raw
+    static func accessibilityValue(for raw: String, grade: NotebookStructuredGrade? = nil) -> String {
+        let status: String
+        if isPending(raw) {
+            status = "Pendiente"
+        } else if let p = progress(raw) {
+            status = p.done >= p.total ? "Completo" : "\(p.done) de \(p.total)"
+        } else {
+            status = raw
+        }
+        guard let grade else { return status }
+        return isPending(raw) ? grade.accessibilityText : "\(grade.accessibilityText), \(status)"
+    }
+
+    private static func isComplete(_ raw: String) -> Bool {
+        if let p = progress(raw) { return p.done >= p.total }
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines) == "Completo"
     }
 
     var body: some View {
+        if let grade {
+            gradeBody(grade)
+        } else {
+            statusBody
+        }
+    }
+
+    private func gradeBody(_ grade: NotebookStructuredGrade) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(grade.valueText)
+                .font(NotebookGridStyle.cellFont)
+                .foregroundStyle(.primary)
+                .monospacedDigit()
+            Text(grade.scaleText)
+                .notebookFont(size: 11, weight: .medium)
+                .foregroundStyle(.tertiary)
+            statusBadge
+        }
+        .lineLimit(1)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .help(Self.accessibilityValue(for: text, grade: grade))
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        if Self.isComplete(text) {
+            Image(systemName: "checkmark")
+                .notebookFont(size: 11, weight: .bold)
+                .foregroundStyle(NotebookStyle.successTint)
+        } else if let p = Self.progress(text) {
+            Text("\(p.done)/\(p.total)")
+                .notebookFont(size: 11, weight: .semibold)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var statusBody: some View {
         if Self.isPending(text) {
             NotebookEmptyCellMark(helpText: "Pendiente") {
                 Circle()

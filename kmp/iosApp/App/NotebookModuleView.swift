@@ -155,6 +155,7 @@ struct NotebookModuleView: View {
     @State var fixedZoneLiveWidth: CGFloat? = nil
     @State var formulaEditRequest: NotebookFormulaEditRequest? = nil
     @State var structuredInstrumentRequest: StructuredInstrumentEvaluationRequest? = nil
+    @State var structuredBulkRequest: StructuredInstrumentBulkRequest? = nil
     @State var formulaDraft = ""
     @State var formulaAIPrompt = ""
     @State var formulaAIMessage: String? = nil
@@ -1578,6 +1579,24 @@ struct NotebookModuleView: View {
                     )
                     #if os(macOS)
                     .frame(minWidth: 680, minHeight: 620)
+                    #else
+                    .presentationDetents([.large])
+                    #endif
+                }
+                .sheet(item: $structuredBulkRequest) { request in
+                    StructuredInstrumentBulkEvaluationSheet(
+                        bridge: bridge,
+                        request: request,
+                        onSaved: { studentIds in
+                            studentIds.forEach { reloadNotebookRow($0) }
+                            showToast("Guardados \(studentIds.count) alumnos", style: .success)
+                        },
+                        onClose: {
+                            structuredBulkRequest = nil
+                        }
+                    )
+                    #if os(macOS)
+                    .frame(minWidth: 1000, minHeight: 680)
                     #else
                     .presentationDetents([.large])
                     #endif

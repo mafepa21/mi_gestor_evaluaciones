@@ -817,6 +817,13 @@ extension NotebookModuleView {
                     }
                 }
 
+                if column.inputKind.isStructuredInstrument {
+                    Button("Evaluar grupo…") {
+                        focusMode = .editing
+                        openStructuredBulk(column: column, data: data)
+                    }
+                }
+
                 if column.type == .rubric {
                     Button("Evaluar alumno…") {
                         focusMode = .editing
@@ -1186,6 +1193,11 @@ extension NotebookModuleView {
             if column.type == .calculated {
                 Button("Editar fórmula…") {
                     presentFormulaEditor(for: column)
+                }
+            }
+            if column.inputKind.isStructuredInstrument {
+                Button("Evaluar grupo…") {
+                    openStructuredBulk(column: column, data: data)
                 }
             }
             if column.type == .rubric {

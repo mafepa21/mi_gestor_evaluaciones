@@ -115,3 +115,119 @@ struct NotebookStateCard<Accessory: View>: View {
     }
 }
 
+
+// MARK: - Aviso de guardado
+
+/// Aviso de guardado del Cuaderno, visible en todos los modos de barra
+/// (iPad ancho, iPad estrecho y Mac). Observa solo el store del Cuaderno para
+/// no repintar el módulo entero cuando cambia el estado de guardado.
+struct NotebookSaveStatusOverlay: View {
+    @ObservedObject var store: NotebookBridgeStore
+    /// Error de asistencia pendiente, si lo hay. No tiene "Reintentar": se
+    /// reintenta pulsando otra vez la celda.
+    let attendanceError: String?
+    let onRetry: () -> Void
+
+    /// Solo se enseña "Guardando…" si el guardado tarda: así no parpadea en
+    /// cada nota, que normalmente se guarda en milisegundos.
+    @State private var showsSlowSave = false
+    private static let slowSaveDelay: UInt64 = 600_000_000
+
+    private var isFailed: Bool {
+        NotebookSaveBadge.showsFailure(
+            splitFailed: store.notebookSplitSaveState.state == .failed,
+            inlineFailed: store.notebookSaveState == .failed
+        )
+    }
+
+    private var isBusy: Bool {
+        !isFailed && (store.notebookSplitSaveState.isSaving || store.notebookSplitSaveState.isDirty)
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            if isFailed {
+                failureBanner(
+                    message: "No se pudo guardar. Tus últimos cambios aún no están guardados.",
+                    showsRetry: true
+                )
+            }
+            if let attendanceError {
+                failureBanner(message: attendanceError, showsRetry: false)
+            }
+            if showsSlowSave && isBusy {
+                savingChip
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: isFailed)
+        .animation(.easeInOut(duration: 0.2), value: attendanceError)
+        .animation(.easeInOut(duration: 0.2), value: showsSlowSave && isBusy)
+        .task(id: isBusy) {
+            guard isBusy else {
+                showsSlowSave = false
+                return
+            }
+            try? await Task.sleep(nanoseconds: Self.slowSaveDelay)
+            if !Task.isCancelled { showsSlowSave = true }
+        }
+        .appOnChange(of: isFailed) { failed in
+            guard failed else { return }
+            AccessibilityNotification.Announcement("No se pudo guardar el cuaderno").post()
+        }
+        .appOnChange(of: attendanceError) { message in
+            guard let message else { return }
+            AccessibilityNotification.Announcement(message).post()
+        }
+    }
+
+    private func failureBanner(message: String, showsRetry: Bool) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+                .accessibilityHidden(true)
+            Text(message)
+                .notebookFont(size: 13, weight: .semibold, design: .rounded)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+            if showsRetry {
+                Button(action: onRetry) {
+                    Label("Reintentar", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: 520)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(NotebookStyle.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.red.opacity(0.35), lineWidth: 1)
+                )
+        )
+        .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 8)
+        .accessibilityElement(children: .combine)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private var savingChip: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.mini)
+            Text("Guardando…")
+                .notebookFont(size: 12, weight: .semibold, design: .rounded)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Capsule(style: .continuous).fill(NotebookStyle.surface))
+        .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Guardando cambios")
+        .transition(.opacity)
+    }
+}

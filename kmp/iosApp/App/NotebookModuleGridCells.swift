@@ -2,6 +2,9 @@ import SwiftUI
 import MiGestorKit
 
 extension NotebookModuleView {
+    /// Inicio del aviso de error al guardar asistencia desde el Cuaderno.
+    static let attendanceSaveErrorPrefix = "No se pudo guardar la asistencia"
+
     /// Cabecera plana integrada: sin chip flotante (fill/borde/sombra/cápsula
     /// propios). La identidad de la columna es una barra de 3pt pegada al borde
     /// inferior, del ancho completo de la columna, que conecta visualmente la
@@ -1054,9 +1057,13 @@ extension NotebookModuleView {
                         on: date,
                         status: status
                     )
+                    // Si el reintento sale bien, se quita el aviso de error.
+                    if bridge.status.hasPrefix(NotebookModuleView.attendanceSaveErrorPrefix) {
+                        bridge.status = ""
+                    }
                     return true
                 } catch {
-                    bridge.status = "No se pudo guardar la asistencia. Pulsa otra vez para reintentar."
+                    bridge.status = "\(NotebookModuleView.attendanceSaveErrorPrefix). Pulsa otra vez para reintentar."
                     return false
                 }
             },

@@ -38,11 +38,25 @@ extension NotebookModuleView {
         .animation(.easeInOut(duration: 0.22), value: notebookStateKey)
         .background(EvaluationBackdrop())
         .overlay(alignment: .bottom) {
-            if let toast {
-                notebookToastView(toast)
-                    .padding(.bottom, 20)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            VStack(spacing: 8) {
+                // El aviso de guardado vive aquí y no en la barra: así se ve en
+                // todos los modos (iPad ancho, iPad estrecho y Mac).
+                if !isMacInspectorOnly {
+                    NotebookSaveStatusOverlay(
+                        store: notebookStore,
+                        attendanceError: bridge.status.hasPrefix(NotebookModuleView.attendanceSaveErrorPrefix)
+                            ? bridge.status
+                            : nil,
+                        onRetry: { bridge.saveNotebook() }
+                    )
+                }
+                if let toast {
+                    notebookToastView(toast)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 20)
         }
         .alert(editingCategoryId == nil ? "Nueva categoría" : "Renombrar categoría", isPresented: $isCreateCategoryAlertPresented) {
             TextField("Nombre", text: $categoryDraft)

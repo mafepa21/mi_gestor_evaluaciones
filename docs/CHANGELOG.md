@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Torneos: «Ampliar plazo» en la inscripción por enlace. El plazo va firmado en el enlace, así que se publica un formulario nuevo solo para quien no ha respondido y se abre el correo con esos enlaces. Las respuestas recibidas se conservan y las del formulario anterior se siguen importando (ficheros y buzón). Las inscripciones guardadas antes se leen igual (`previousRounds` opcional).
 - Cuaderno: «Evaluar grupo…» en listas de cotejo y rejillas de observación. Hoja masiva con alumnos en filas, ítems de cada sesión en columnas y «Para todos…» por ítem (solo vacíos o sobrescribir). Guarda por alumno con el mismo cálculo de nota en Kotlin.
 - Cuaderno: copiar y pegar celdas de lista de cotejo sin abrir el instrumento (menú contextual, barra o ⌘C/⌘V con el grid enfocado). Se copian las respuestas de todas las sesiones y la nota se recalcula. Una celda copiada rellena un rango seleccionado (Mayús + clic en la misma columna); un rango se pega con la misma forma. Deshacer (⌘Z) restaura las respuestas previas.
 - Cuaderno: pegar un solo valor sobre un rango de una columna normal rellena todo el rango.

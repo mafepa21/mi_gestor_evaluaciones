@@ -30,6 +30,8 @@ struct SdaTournamentRegistrationSheet: View {
     @State private var inboxFingerprint: String? = WebSubmissionInbox.accountKey.map(WebSubmissionInbox.fingerprint)
     @State private var isConfirmingCreate = false
     @State private var placementDraft: PlacementPlanInput?
+    @State private var isShowingExtend = false
+    @State private var newExpiresAt = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
 
     private var registration: TournamentRegistration? { store.plan.registration }
 
@@ -162,8 +164,41 @@ struct SdaTournamentRegistrationSheet: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
-            LabeledContent("Plazo", value: Date(timeIntervalSince1970: Double(registration.expiresAtEpochMs) / 1000)
-                .formatted(date: .abbreviated, time: .omitted))
+            let deadline = Date(timeIntervalSince1970: Double(registration.expiresAtEpochMs) / 1000)
+            LabeledContent("Plazo") {
+                Text(deadline.formatted(date: .abbreviated, time: .omitted))
+                    .foregroundStyle(deadline < Date() ? .red : .secondary)
+            }
+            extendControls(registration)
+        }
+    }
+
+    /// Ampliar plazo: el plazo va firmado en el enlace, así que se publica otro formulario
+    /// solo para quien no ha respondido. Lo ya recibido se conserva.
+    @ViewBuilder
+    private func extendControls(_ registration: TournamentRegistration) -> some View {
+        let pending = registration.pendingStudentIds(rosterIds: rosterIds)
+        if isShowingExtend {
+            DatePicker("Nuevo plazo", selection: $newExpiresAt, in: Date()..., displayedComponents: .date)
+            Button {
+                Task { await extend(registration, pending: pending) }
+            } label: {
+                Label(isPublishing ? "Creando…" : "Crear enlace nuevo para quien falta (\(pending.count))",
+                      systemImage: "calendar.badge.plus")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isPublishing || pending.isEmpty || baseURL.isEmpty)
+            Text("Quien ya respondió no recibe nada. Sus respuestas se conservan.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else if !pending.isEmpty {
+            Button {
+                isShowingExtend = true
+            } label: {
+                Label("Ampliar plazo", systemImage: "calendar.badge.clock")
+                    .frame(minHeight: 44)
+            }
         }
     }
 
@@ -404,31 +439,67 @@ struct SdaTournamentRegistrationSheet: View {
         }
     }
 
+    /// Publica un formulario nuevo para quien falta. Si algo falla, el torneo queda como estaba.
+    private func extend(_ current: TournamentRegistration, pending: [String]) async {
+        errorMessage = nil
+        isPublishing = true
+        defer { isPublishing = false }
+        do {
+            let published = try await TournamentRegistration.publish(
+                tournamentName: store.plan.name,
+                students: students.map { (id: $0.id, firstName: $0.firstName, lastName: $0.lastName) },
+                baseURL: baseURL,
+                deliveryEmail: deliveryEmail.trimmingCharacters(in: .whitespacesAndNewlines),
+                expiresAt: newExpiresAt,
+                linkStudentIds: Set(pending.compactMap { Int64($0) })
+            )
+            // Se parte de lo guardado ahora, por si entró alguna respuesta mientras se publicaba.
+            let latest = registration ?? current
+            store.mutate { $0.registration = latest.extended(with: published.registration) }
+            manifestToUpload = published.isSelfContained ? nil : published.manifestPath
+            isShowingExtend = false
+            showingMail = true
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "No se pudo ampliar el plazo."
+        }
+    }
+
     private func importFiles(_ result: Result<[URL], Error>) {
         errorMessage = nil
-        guard case .success(let urls) = result, var form = registration, let manifest = form.manifest else { return }
+        guard case .success(let urls) = result, var form = registration else { return }
         var files: [(name: String, data: Data)] = []
         for url in urls {
             let accessing = url.startAccessingSecurityScopedResource()
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
             if let data = try? Data(contentsOf: url) { files.append((name: url.lastPathComponent, data: data)) }
         }
-        _ = importData(files, into: &form, manifest: manifest)
+        _ = importData(files, into: &form)
     }
 
-    /// Valida y guarda unas entregas. Devuelve la vista previa para saber qué se aceptó.
+    /// Valida y guarda unas entregas. Cada fichero se prueba con cada formulario (el actual
+    /// y los de plazos anteriores). Devuelve la vista previa para saber qué se aceptó.
     private func importData(
         _ files: [(name: String, data: Data)],
-        into form: inout TournamentRegistration,
-        manifest: WebFormManifest
+        into form: inout TournamentRegistration
     ) -> WebSubmissionImportPreview {
         let names = Dictionary(
             students.map { ($0.id, "\($0.firstName) \($0.lastName)") },
             uniquingKeysWith: { first, _ in first }
         )
-        let snapshot = form.snapshot(classId: store.record.classId, title: store.plan.name, studentNames: names)
-        let preview = WebSubmissionImportService(resolver: WebSubmissionSnapshotResolver(snapshot: snapshot))
-            .preview(files: files, manifest: manifest)
+        var preview = WebSubmissionImportPreview()
+        // Nombres únicos: con ellos se sabe qué ficheros rechazó un formulario para probar el siguiente.
+        var remaining = files.enumerated().map { (name: "\($0.offset + 1). \($0.element.name)", data: $0.element.data) }
+        for round in form.allForms {
+            guard let manifest = round.manifest, !remaining.isEmpty else { continue }
+            let snapshot = round.snapshot(classId: store.record.classId, title: store.plan.name, studentNames: names)
+            let partial = WebSubmissionImportService(resolver: WebSubmissionSnapshotResolver(snapshot: snapshot))
+                .preview(files: remaining, manifest: manifest)
+            preview.drafts += partial.drafts
+            preview.alreadyImported += partial.alreadyImported
+            let rejected = Set(partial.rejections.map(\.fileName))
+            remaining = remaining.filter { rejected.contains($0.name) }
+            preview.rejections = partial.rejections
+        }
         let added = form.absorb(preview.drafts)
         store.mutate { $0.registration = form }
         pairing = nil
@@ -441,38 +512,46 @@ struct SdaTournamentRegistrationSheet: View {
     }
 
     /// Recoge del buzón, importa y borra del servidor lo ya importado.
+    /// Recorre el buzón de cada formulario (el actual y los de plazos anteriores).
     private func collectFromInbox() async {
-        guard !isCollecting, var form = registration, let url = form.inboxURL, let manifest = form.manifest,
-              !students.isEmpty else { return }
-        guard let readToken = WebSubmissionInbox.loadToken(
-            name: WebSubmissionInbox.readTokenName(formInstanceId: form.formInstanceId)
-        ) else {
-            importMessage = "Las respuestas directas solo se recogen en el dispositivo que creó el formulario."
-            return
-        }
+        guard !isCollecting, let current = registration, !students.isEmpty else { return }
+        let rounds = current.allForms.filter { $0.inboxURL != nil }
+        guard !rounds.isEmpty else { return }
         isCollecting = true
         defer { isCollecting = false }
-        let client = WebSubmissionInboxClient(url: url)
-        do {
-            let collected = try await client.collect(formInstanceId: form.formInstanceId, readToken: readToken)
-            guard !collected.isEmpty else {
-                importMessage = "No hay respuestas nuevas."
+        var anyToken = false
+        var anyNew = false
+        for round in rounds {
+            guard let url = round.inboxURL,
+                  let readToken = WebSubmissionInbox.loadToken(
+                    name: WebSubmissionInbox.readTokenName(formInstanceId: round.formInstanceId)
+                  ) else { continue }
+            anyToken = true
+            let client = WebSubmissionInboxClient(url: url)
+            do {
+                let collected = try await client.collect(formInstanceId: round.formInstanceId, readToken: readToken)
+                guard !collected.isEmpty, var form = registration else { continue }
+                anyNew = true
+                let preview = importData(
+                    collected.map { (name: "buzón \($0.alias.prefix(6))", data: $0.data) },
+                    into: &form
+                )
+                // Se borra lo que ya está en la app (nuevo o repetido). Lo rechazado se queda para revisarlo.
+                let kept = Set(preview.drafts.map(\.submissionId) + preview.alreadyImported.map(\.submissionId))
+                try await client.delete(
+                    formInstanceId: round.formInstanceId,
+                    readToken: readToken,
+                    entries: collected.filter { kept.contains($0.submissionId) }.map { ($0.alias, $0.submissionId) }
+                )
+            } catch {
+                importMessage = (error as? LocalizedError)?.errorDescription ?? "No se pudo comprobar el buzón."
                 return
             }
-            let preview = importData(
-                collected.map { (name: "buzón \($0.alias.prefix(6))", data: $0.data) },
-                into: &form,
-                manifest: manifest
-            )
-            // Se borra lo que ya está en la app (nuevo o repetido). Lo rechazado se queda para revisarlo.
-            let kept = Set(preview.drafts.map(\.submissionId) + preview.alreadyImported.map(\.submissionId))
-            try await client.delete(
-                formInstanceId: form.formInstanceId,
-                readToken: readToken,
-                entries: collected.filter { kept.contains($0.submissionId) }.map { ($0.alias, $0.submissionId) }
-            )
-        } catch {
-            importMessage = (error as? LocalizedError)?.errorDescription ?? "No se pudo comprobar el buzón."
+        }
+        if !anyToken {
+            importMessage = "Las respuestas directas solo se recogen en el dispositivo que creó el formulario."
+        } else if !anyNew {
+            importMessage = "No hay respuestas nuevas."
         }
     }
 

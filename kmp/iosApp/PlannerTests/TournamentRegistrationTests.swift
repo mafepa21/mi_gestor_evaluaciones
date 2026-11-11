@@ -163,6 +163,74 @@ final class TournamentRegistrationTests: XCTestCase {
         XCTAssertEqual(form.importedSubmissionIds, ["s1", "s2"])
     }
 
+    // MARK: Ampliar plazo
+
+    private func segundaRonda() -> TournamentRegistration {
+        TournamentRegistration(
+            formInstanceId: "F2",
+            privateKeyRef: "llavero://entregas-web/F2",
+            expiresAtEpochMs: 99,
+            manifestJSON: "{}",
+            studentIdByAlias: ["b2": "2"],
+            linkByStudentId: ["2": "https://ejemplo.test/b2"],
+            itemIdByWebItemId: ["x1": "participa", "x2": "pareja", "x3": "equipo"],
+            studentIdByPartnerOption: ["Ana Gil": "1", "Bruno Sol": "2"]
+        )
+    }
+
+    func testAmpliarConservaRespuestasYGuardaLaRondaAnterior() {
+        var form = registration()
+        form.absorb([draft(formId: "F1", student: 1, answers: [answer("participa", TournamentRegistration.yesOption)], submission: "s1")])
+        let ampliado = form.extended(with: segundaRonda())
+        XCTAssertEqual(ampliado.formInstanceId, "F2")
+        XCTAssertEqual(ampliado.expiresAtEpochMs, 99)
+        XCTAssertEqual(ampliado.entries["1"]?.participates, true)
+        XCTAssertEqual(ampliado.importedSubmissionIds, ["s1"])
+        XCTAssertEqual(ampliado.previousRounds.map(\.formInstanceId), ["F1"])
+        XCTAssertEqual(Array(ampliado.linkByStudentId.keys), ["2"])
+    }
+
+    func testSoloQuienFaltaQuedaPendiente() {
+        var form = registration()
+        form.absorb([draft(formId: "F1", student: 1, answers: [answer("participa", TournamentRegistration.noOption)])])
+        XCTAssertEqual(form.pendingStudentIds(rosterIds: ["1", "2", "3"]), ["2", "3"])
+    }
+
+    func testTrasAmpliarSeImportanRespuestasDeAmbasRondas() {
+        var form = registration().extended(with: segundaRonda())
+        let tarde = draft(formId: "F1", student: 1, answers: [answer("participa", TournamentRegistration.yesOption), answer("pareja", "Bruno Sol")], submission: "s1")
+        var nueva = draft(formId: "F2", student: 2, answers: [answer("participa", TournamentRegistration.yesOption), answer("pareja", "Ana Gil")], submission: "s2")
+        nueva = WebSubmissionDraft(
+            submissionId: nueva.submissionId, formInstanceId: "F2", alias: "b2", studentId: 2,
+            studentName: nil, classId: 1, columnId: "", clientSubmittedAt: "", answers: nueva.answers,
+            requiredTotal: 2, requiredAnswered: 2, missingRequiredTitles: []
+        )
+        XCTAssertEqual(form.absorb([tarde, nueva]), 2)
+        XCTAssertEqual(form.entries["1"]?.partnerStudentId, "2")
+        XCTAssertEqual(form.entries["2"]?.partnerStudentId, "1")
+        XCTAssertEqual(form.absorb([tarde]), 1)
+        XCTAssertEqual(form.importedSubmissionIds, ["s1", "s2"])
+        XCTAssertEqual(form.allForms.map(\.formInstanceId), ["F2", "F1"])
+    }
+
+    func testAmpliacionSobreviveAlGuardar() throws {
+        var plan = TournamentPlan(name: "Futbolín 1º", teamCount: 2)
+        plan.registration = registration().extended(with: segundaRonda())
+        XCTAssertEqual(try TournamentPlan(columns: plan.columns()).registration, plan.registration)
+    }
+
+    func testInscripcionGuardadaSinRondasSeSigueLeyendo() throws {
+        var form = registration()
+        form.inboxURL = nil
+        var json = String(data: try JSONEncoder().encode(form), encoding: .utf8)!
+        XCTAssertTrue(json.contains("previousRounds"))
+        json = json.replacingOccurrences(of: ",\"previousRounds\":[]", with: "")
+            .replacingOccurrences(of: "\"previousRounds\":[],", with: "")
+        XCTAssertFalse(json.contains("previousRounds"))
+        let leido = try JSONDecoder().decode(TournamentRegistration.self, from: Data(json.utf8))
+        XCTAssertEqual(leido, form)
+    }
+
     // MARK: Compatibilidad
 
     func testTorneoAntiguoSinInscripcionSeSigueLeyendo() throws {

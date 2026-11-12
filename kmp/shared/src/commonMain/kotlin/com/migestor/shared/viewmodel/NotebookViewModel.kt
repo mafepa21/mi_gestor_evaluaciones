@@ -154,6 +154,18 @@ class NotebookViewModel(
     // un valor de un guardado anterior. Cada carga captura su generación antes del primer
     // `suspend` y descarta su resultado si una carga más reciente ya se lanzó mientras esperaba.
     private var loadGeneration: Long = 0
+    // Carga completa en curso (`selectClass`). Una recarga nueva cancela la anterior para no
+    // leer y montar el Cuaderno entero varias veces a la vez; `loadGeneration` sigue como red
+    // de seguridad (la cancelación solo llega en el siguiente punto de suspensión).
+    private var loadJob: Job? = null
+
+    // Pausa explícita de la recarga reactiva (p. ej. con la hoja de evaluación masiva abierta:
+    // cada autoguardado por alumno recargaría el Cuaderno de detrás). Mientras dura, los
+    // cambios de BD y las señales de `NotebookRefreshBus` solo se anotan; al levantarla se
+    // hace UNA recarga si llegó alguno. Un cambio de clase la resetea.
+    private val _reactiveReloadPaused = MutableStateFlow(false)
+    private val _reloadPendingWhilePaused = MutableStateFlow(false)
+    val isReactiveReloadPaused: Boolean get() = _reactiveReloadPaused.value
     private val workGroupWriteMutex = kotlinx.coroutines.sync.Mutex()
     private var workGroupReloadJob: Job? = null
 
@@ -164,6 +176,10 @@ class NotebookViewModel(
     private fun observeRefreshSignals() {
         scope.launch {
             NotebookRefreshBus.refreshSignal.collect {
+                if (_reactiveReloadPaused.value) {
+                    _reloadPendingWhilePaused.value = true
+                    return@collect
+                }
                 activeClassId?.let { selectClass(it, force = true) }
             }
         }
@@ -268,9 +284,31 @@ class NotebookViewModel(
 
     val currentClassId: Long? get() = activeClassId
 
+    /**
+     * Pausa (o reanuda) la recarga reactiva del Cuaderno. Al reanudar, si llegó algún cambio
+     * durante la pausa (propio o por sincronización), se hace exactamente una recarga.
+     */
+    fun setReactiveReloadPaused(paused: Boolean) {
+        if (paused) {
+            _reactiveReloadPaused.value = true
+            return
+        }
+        if (!_reactiveReloadPaused.compareAndSet(expect = true, update = false)) return
+        if (_reloadPendingWhilePaused.compareAndSet(expect = true, update = false)) {
+            activeClassId?.let { selectClass(it, force = true) }
+        }
+    }
+
+    private fun resetReactiveReloadPause() {
+        _reactiveReloadPaused.value = false
+        _reloadPendingWhilePaused.value = false
+    }
+
     fun selectClass(classId: Long, force: Boolean = false) {
         if (!force && activeClassId == classId) return
         flushAllPendingColumnGradeSaves()
+        // Otra clase: la pausa y lo pendiente eran de la anterior (la carga nueva ya es completa).
+        if (activeClassId != classId) resetReactiveReloadPause()
 
         // Nunca emitir Loading si ya tenemos datos para esta clase.
         // Esto evita que refrescos forzados (sync, addColumn, etc.) destruyan
@@ -284,7 +322,10 @@ class NotebookViewModel(
 
         val myGeneration = ++loadGeneration
 
-        scope.launch {
+        // Una recarga forzada nueva deja sin efecto la anterior: se cancela su trabajo.
+        // Los guardados pendientes no viven en este Job (ver `flushAllPendingColumnGradeSaves`).
+        loadJob?.cancel()
+        loadJob = scope.launch {
             try {
                 val snapshot = notebookRepository.loadNotebookSnapshot(classId)
                 val evaluations = evaluationsRepository.listClassEvaluations(classId)
@@ -322,6 +363,9 @@ class NotebookViewModel(
                 if (activeClassId == classId) {
                     startObservingData(classId)
                 }
+            } catch (e: CancellationException) {
+                // Sustituida por una recarga más reciente: no es un error de carga.
+                throw e
             } catch (e: Exception) {
                 if (activeClassId == classId) {
                     _state.value = NotebookUiState.Error(e.message ?: "Error al cargar el cuaderno")
@@ -341,6 +385,10 @@ class NotebookViewModel(
             .onEach {
                 val currentState = _state.value
                 if (currentState is NotebookUiState.Data) {
+                    if (_reactiveReloadPaused.value) {
+                        _reloadPendingWhilePaused.value = true
+                        return@onEach
+                    }
                     if (shouldSkipObserverReloadForInlineSave()) return@onEach
                     val myGeneration = ++loadGeneration
                     try {
@@ -370,6 +418,8 @@ class NotebookViewModel(
                             _checkDrafts.value = freshState.checkDrafts
                             _state.value = freshState
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         // Log o manejar error de actualización silenciosa
                     }

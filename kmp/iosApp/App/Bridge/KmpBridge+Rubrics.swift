@@ -208,7 +208,11 @@ extension KmpBridge {
                 guard let self else { return }
                 if emitNotebookRefresh {
                     self.lastNotebookAggregateSignature = nil
-                    self.refreshCurrentNotebook()
+                    // Sin avance automático, el observador de `rubricEvaluationState` en
+                    // `KmpBridge.swift` ya recarga al ver `isSaveSuccessful`: no repetirlo.
+                    if self.isNotebookRubricAutoAdvanceActive {
+                        self.refreshCurrentNotebook()
+                    }
                     if let classId = self.notebookViewModel.currentClassId?.int64Value {
                         self.scheduleNotebookSnapshotSync(forClassId: classId)
                     }
@@ -233,6 +237,7 @@ extension KmpBridge {
             columnId: column.id,
             tabId: nil
         )
+        pauseNotebookReloadForBulkSheet()
         showingBulkRubricEvaluation = true
     }
 
@@ -251,6 +256,7 @@ extension KmpBridge {
             columnId: columnId,
             tabId: tabId
         )
+        pauseNotebookReloadForBulkSheet()
         showingBulkRubricEvaluation = true
     }
 
@@ -306,6 +312,7 @@ extension KmpBridge {
                 columnId: column?.id,
                 tabId: column?.tabIds.first
             )
+            pauseNotebookReloadForBulkSheet()
             showingBulkRubricEvaluation = true
 
             if column == nil {
@@ -320,9 +327,22 @@ extension KmpBridge {
     
     func closeBulkRubricEvaluation() {
         showingBulkRubricEvaluation = false
-        rubricBulkEvaluationViewModel.onSheetClosed()
+        // Sin aviso propio: la única recarga la hace `resumeNotebookReloadAfterBulkSheet`.
+        rubricBulkEvaluationViewModel.onSheetClosed(emitNotebookRefresh: false)
+        resumeNotebookReloadAfterBulkSheet()
         // Al cerrar la masiva, limpiamos cualquier overlay individual residual.
         rubricEvaluationState = RubricEvaluationUiState.companion.default()
+    }
+
+    /// Con la hoja masiva abierta, cada autoguardado por alumno recargaba el Cuaderno de
+    /// detrás (la fila ya se actualiza por `RubricEvaluationBus`). Se pausa la recarga
+    /// reactiva y se reanuda al cerrar la hoja: una sola recarga si llegó algún cambio.
+    private func pauseNotebookReloadForBulkSheet() {
+        notebookViewModel.setReactiveReloadPaused(paused: true)
+    }
+
+    private func resumeNotebookReloadAfterBulkSheet() {
+        notebookViewModel.setReactiveReloadPaused(paused: false)
     }
 
     func closeRubricEvaluation() {
@@ -411,6 +431,8 @@ extension KmpBridge {
     func bulkSaveAllAndClose() {
         rubricBulkEvaluationViewModel.saveAll()
         showingBulkRubricEvaluation = false
+        // Nunca dejar la pausa puesta. `saveAll` avisa él mismo al terminar de guardar.
+        resumeNotebookReloadAfterBulkSheet()
     }
 
     func bulkSaveAll() {

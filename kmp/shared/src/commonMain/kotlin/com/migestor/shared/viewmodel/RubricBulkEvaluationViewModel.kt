@@ -219,12 +219,18 @@ class RubricBulkEvaluationViewModel(
         }
     }
 
-    /** Llamar al cerrar la hoja: recarga el Cuaderno una vez si hubo guardados automáticos. */
-    fun onSheetClosed() {
+    /**
+     * Llamar al cerrar la hoja: recarga el Cuaderno una vez si hubo guardados automáticos.
+     *
+     * Con `emitNotebookRefresh = false` no avisa: lo usa quien ya pausó la recarga reactiva
+     * del Cuaderno (`NotebookViewModel.setReactiveReloadPaused`) y la reanuda al cerrar, que
+     * hace ella sola la única recarga. Avisar aquí además provocaría una segunda.
+     */
+    fun onSheetClosed(emitNotebookRefresh: Boolean = true) {
         isSheetClosed = true
         if (hasPendingNotebookRefresh) {
             hasPendingNotebookRefresh = false
-            NotebookRefreshBus.emitRefresh()
+            if (emitNotebookRefresh) NotebookRefreshBus.emitRefresh()
         }
     }
 

@@ -182,6 +182,22 @@ final class SdaTournamentSupportTests: XCTestCase {
         XCTAssertEqual(plan.completedMatchCount, 1, "El resultado sigue contando")
     }
 
+    func testStaleAutoNamesAreFixedWithoutMemberChanges() throws {
+        let names = ["1": "Ana", "2": "Bruno", "3": "Carla", "4": "Dani", "5": "Eva", "6": "Fran"]
+        var plan = TournamentPlan(name: "Liga", teams: [
+            TournamentPlanTeam(id: "a", name: "Ana y Bruno", studentIDs: ["1", "6"]),
+            TournamentPlanTeam(id: "b", name: "Carla y Dani", studentIDs: ["3", "4"]),
+            TournamentPlanTeam(id: "c", name: "Los Rayos", studentIDs: ["2", "5"])
+        ], venueCount: 1)
+        plan.persistSchedule(try TournamentScheduleGenerator.generate(format: .roundRobin, teamNames: plan.teamNames, venueCount: 1))
+        XCTAssertTrue(plan.hasStaleTeamNames(firstNames: names))
+        try plan.updateMembers([:], firstNames: names)
+        XCTAssertEqual(plan.teamNames, ["Ana y Fran", "Carla y Dani", "Los Rayos"])
+        XCTAssertFalse(plan.hasStaleTeamNames(firstNames: names))
+        let inSchedule = Set(plan.savedSchedule.flatMap(\.matches).flatMap { [$0.homeTeam, $0.awayTeam] })
+        XCTAssertEqual(inSchedule, Set(plan.teamNames))
+    }
+
     func testUpdateMembersRejectsEmptyOrRepeatedAndKeepsPlan() throws {
         let original = [group(1, "A", students: [1]), group(2, "B", students: [2])]
         var plan = TournamentPlan(name: "Liga", teams: SdaTournamentTeams.planTeams(from: original), venueCount: 1)

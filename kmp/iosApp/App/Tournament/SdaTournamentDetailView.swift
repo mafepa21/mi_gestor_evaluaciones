@@ -148,7 +148,11 @@ struct SdaTournamentDetailView: View {
             scoreSheet(for: target)
         }
         .sheet(isPresented: $showingMembers) {
-            SdaTournamentMembersSheet(teams: plan.teams, students: students) { members in
+            SdaTournamentMembersSheet(
+                teams: plan.teams,
+                students: students,
+                hasStaleNames: plan.hasStaleTeamNames(firstNames: firstNames)
+            ) { members in
                 try store.mutateThrowing { try $0.updateMembers(members, firstNames: firstNames) }
             }
         }

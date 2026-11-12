@@ -193,15 +193,35 @@ extension TournamentPlan {
         return !expected.isEmpty && tokens == expected
     }
 
+    /// `true` si el nombre está hecho con nombres de pila de la clase (al menos dos) pero no con
+    /// los de sus integrantes de ahora: quedó desfasado de una edición anterior.
+    static func isStaleAutoTeamName(_ name: String, studentIDs: [String], firstNames: [String: String]) -> Bool {
+        guard !isAutoTeamName(name, studentIDs: studentIDs, firstNames: firstNames) else { return false }
+        var base = name
+        if let range = base.range(of: #" \d+$"#, options: .regularExpression) { base.removeSubrange(range) }
+        let tokens = base.replacingOccurrences(of: ", ", with: " y ")
+            .components(separatedBy: " y ")
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+        let classNames = Set(firstNames.values.map { $0.lowercased() })
+        return tokens.count >= 2 && tokens.allSatisfy { classNames.contains($0) }
+    }
+
+    /// Equipos cuyo nombre automático no coincide con sus integrantes.
+    func hasStaleTeamNames(firstNames: [String: String]) -> Bool {
+        teams.contains { Self.isStaleAutoTeamName($0.name, studentIDs: $0.studentIDs, firstNames: firstNames) }
+    }
+
     private mutating func renameAutoNamedTeams(previous: [TournamentPlanTeam], firstNames: [String: String]) {
         let old = Dictionary(uniqueKeysWithValues: previous.map { ($0.id, $0) })
         var used = Set(teams.map { $0.name.lowercased() })
         var renames: [String: String] = [:]
         for index in teams.indices {
             let team = teams[index]
-            guard let was = old[team.id],
-                  Set(was.studentIDs) != Set(team.studentIDs),
-                  Self.isAutoTeamName(team.name, studentIDs: was.studentIDs, firstNames: firstNames) else { continue }
+            guard let was = old[team.id] else { continue }
+            let changedAuto = Set(was.studentIDs) != Set(team.studentIDs)
+                && Self.isAutoTeamName(team.name, studentIDs: was.studentIDs, firstNames: firstNames)
+            let stale = Self.isStaleAutoTeamName(team.name, studentIDs: team.studentIDs, firstNames: firstNames)
+            guard changedAuto || stale else { continue }
             used.remove(team.name.lowercased())
             let base = Self.autoTeamName(for: team.studentIDs, firstNames: firstNames)
             var name = base

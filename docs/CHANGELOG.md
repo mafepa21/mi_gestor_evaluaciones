@@ -28,6 +28,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Cuaderno: un fallo al guardar ya se ve en iPad ancho, iPad estrecho y Mac. Aviso fijo junto al grid con «Reintentar» (no se va solo), «Guardando…» discreto si el guardado tarda más de 0,6 s, y anuncio a VoiceOver. El aviso de error de asistencia también se ve y se quita al reintentar con éxito. Antes el indicador vivía en una barra que ningún modo usaba (`NotebookSaveStatusOverlay`).
 - Media: una nota 0-10 de lista de casillas entre 1 y 4 (p. ej. 2,5) ya no se reescala como nivel 1-4 (`rescaleNumericGrade`, `kmp/shared/domain/Models.kt`, tocado con permiso). Misma regla en la celda y en el editor de media.
 - Cuaderno: Mayús + clic en una lista de cotejo amplía la selección sin abrir el instrumento; menú «Seleccionar hasta aquí».
 

@@ -136,6 +136,47 @@ extension TournamentPlan {
     }
 }
 
+// MARK: - Integrantes
+
+enum TournamentMembersError: Error, Equatable {
+    case unknownTeam
+    case emptyTeam(String)
+    case repeatedStudent(String)
+}
+
+extension TournamentPlan {
+    /// Cambia solo los alumnos de cada equipo. Conserva nombres, calendario y resultados
+    /// (los partidos van atados al nombre del equipo). No modifica el plan si algo falla.
+    mutating func updateMembers(_ members: [String: [String]], markManual: Bool = true) throws {
+        let ids = Set(teams.map(\.id))
+        guard Set(members.keys).isSubset(of: ids) else { throw TournamentMembersError.unknownTeam }
+        var copy = teams
+        var seen = Set<String>()
+        for index in copy.indices {
+            let list = members[copy[index].id] ?? copy[index].studentIDs
+            guard !list.isEmpty else { throw TournamentMembersError.emptyTeam(copy[index].name) }
+            for student in list {
+                guard seen.insert(student).inserted else { throw TournamentMembersError.repeatedStudent(student) }
+            }
+            copy[index].studentIDs = list.sorted()
+        }
+        teams = copy
+        if markManual { teamsEditedManually = true }
+    }
+
+    /// Copia de los grupos de trabajo solo los integrantes (mismos equipos, mismos nombres).
+    /// Los grupos borrados o nuevos se ignoran.
+    mutating func copyMembers(from groups: [TournamentWorkGroupTeam]) throws {
+        let fresh = Dictionary(
+            uniqueKeysWithValues: groups.map { (String($0.groupId), $0.members.map { String($0.studentId) }) }
+        )
+        let members = teams.reduce(into: [String: [String]]()) { result, team in
+            if let list = fresh[team.id], !list.isEmpty { result[team.id] = list }
+        }
+        try updateMembers(members, markManual: false)
+    }
+}
+
 // MARK: - Resultados
 
 extension TournamentPlan {

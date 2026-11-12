@@ -142,6 +142,47 @@ final class SdaTournamentSupportTests: XCTestCase {
         XCTAssertFalse(SdaTournamentTeams.hasChanged(snapshot: plan.teams, current: edited))
     }
 
+    func testUpdateMembersKeepsScheduleAndResults() throws {
+        let original = [group(1, "Halcones", students: [1, 2]), group(2, "Linces", students: [3, 4]), group(3, "Orcas", students: [5, 6])]
+        var plan = TournamentPlan(name: "Liga", teams: SdaTournamentTeams.planTeams(from: original), venueCount: 1)
+        plan.persistSchedule(try TournamentScheduleGenerator.generate(format: .roundRobin, teamNames: plan.teamNames, venueCount: 1))
+        plan.setScore(for: try XCTUnwrap(plan.slots.first), home: 2, away: 1)
+        let schedule = plan.savedSchedule
+        let results = plan.savedResults
+
+        try plan.updateMembers(["1": ["1", "3"], "2": ["2", "4"]])
+        XCTAssertEqual(plan.teams.first { $0.id == "1" }?.studentIDs, ["1", "3"])
+        XCTAssertEqual(plan.savedSchedule, schedule)
+        XCTAssertEqual(plan.savedResults, results)
+        XCTAssertEqual(plan.teamsEditedManually, true)
+
+        // Se guarda y se recupera igual.
+        let restored = try TournamentPlan(columns: plan.columns())
+        XCTAssertEqual(restored.teamsEditedManually, true)
+        XCTAssertEqual(restored.teams, plan.teams)
+    }
+
+    func testUpdateMembersRejectsEmptyOrRepeatedAndKeepsPlan() throws {
+        let original = [group(1, "A", students: [1]), group(2, "B", students: [2])]
+        var plan = TournamentPlan(name: "Liga", teams: SdaTournamentTeams.planTeams(from: original), venueCount: 1)
+        let before = plan
+        XCTAssertThrowsError(try plan.updateMembers(["1": []]))
+        XCTAssertThrowsError(try plan.updateMembers(["1": ["2"]]))
+        XCTAssertThrowsError(try plan.updateMembers(["99": ["5"]]))
+        XCTAssertEqual(plan, before)
+    }
+
+    func testCopyMembersFromGroupsKeepsResults() throws {
+        let original = [group(1, "A", students: [1, 2]), group(2, "B", students: [3]), group(3, "C", students: [4])]
+        var plan = TournamentPlan(name: "Liga", teams: SdaTournamentTeams.planTeams(from: original), venueCount: 1)
+        plan.persistSchedule(try TournamentScheduleGenerator.generate(format: .roundRobin, teamNames: plan.teamNames, venueCount: 1))
+        plan.setScore(for: try XCTUnwrap(plan.slots.first), home: 1, away: 0)
+        let edited = [group(1, "A", students: [1]), group(2, "B", students: [2, 3]), group(3, "C", students: [4])]
+        try plan.copyMembers(from: edited)
+        XCTAssertFalse(plan.savedResults.isEmpty)
+        XCTAssertFalse(SdaTournamentTeams.hasChanged(snapshot: plan.teams, current: edited))
+    }
+
     func testUpdateTeamsWithTooFewGroupsThrowsAndKeepsPlan() throws {
         let original = [group(1, "A", students: [1]), group(2, "B", students: [2])]
         var plan = TournamentPlan(name: "Liga", teams: SdaTournamentTeams.planTeams(from: original), venueCount: 1)

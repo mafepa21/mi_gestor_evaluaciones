@@ -10,7 +10,13 @@ struct SdaNewTournamentSheet: View {
     let preferredClassId: Int64?
     let onCreated: (TournamentRecord) -> Void
 
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (classes),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    private var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.classes)] }
+    }
     @Environment(\.dismiss) private var dismiss
 
     @State private var name: String
@@ -23,6 +29,8 @@ struct SdaNewTournamentSheet: View {
     @State private var transitionMinutes = 2
     @State private var requestedGroupCount = 0
     @State private var requestedQualified = 2
+    @State private var totalMinutes = 60
+    @State private var placementRounds: Int?
     @State private var sessionMinutes: Int?
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -94,10 +102,20 @@ struct SdaNewTournamentSheet: View {
     }
 
     private var canCreate: Bool {
-        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && selectedTeams.count >= 2
-            && estimate != nil
-            && !isSaving
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !isSaving else { return false }
+        if format == .leaguePlacement {
+            return PlacementPlanner.calculate(
+                PlacementPlanInput(
+                    teamCount: selectedTeams.count,
+                    matchMinutes: matchMinutes,
+                    transitionMinutes: transitionMinutes,
+                    totalMinutes: totalMinutes,
+                    venueCount: venueCount,
+                    placementRounds: placementRounds
+                )
+            )?.fits == true
+        }
+        return selectedTeams.count >= 2 && estimate != nil
     }
 
     // MARK: Cuerpo
@@ -110,8 +128,19 @@ struct SdaNewTournamentSheet: View {
                 formatSection
                 if format == .groupStageKnockout, selectedTeams.count >= 2 { groupStageSection }
                 teamsSection
-                settingsSection
-                summarySection
+                if format == .leaguePlacement {
+                    SdaPlacementPlanSections(
+                        fixedTeamCount: selectedTeams.count,
+                        matchMinutes: $matchMinutes,
+                        totalMinutes: $totalMinutes,
+                        venueCount: $venueCount,
+                        transitionMinutes: $transitionMinutes,
+                        placementRounds: $placementRounds
+                    )
+                } else {
+                    settingsSection
+                    summarySection
+                }
                 if let errorMessage {
                     Section {
                         LearningSituationInlineNotice(kind: .error, message: errorMessage)
@@ -168,6 +197,8 @@ struct SdaNewTournamentSheet: View {
             ForEach(TournamentFormat.allCases) { option in
                 Button {
                     format = option
+                    // Esta modalidad está pensada para muchas pistas a la vez.
+                    if option == .leaguePlacement, venueCount == 2 { venueCount = 8 }
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: option.symbolName)
@@ -406,14 +437,11 @@ struct SdaNewTournamentSheet: View {
                 matchDurationMinutes: matchMinutes,
                 transitionMinutes: transitionMinutes
             )
-            let rounds = try TournamentScheduleGenerator.generate(
-                format: plan.format,
-                teamNames: plan.teamNames,
-                venueCount: plan.venueCount,
-                groupCount: plan.format == .groupStageKnockout ? plan.groupCount : nil,
-                qualifiedTeamsPerGroup: plan.qualifiedTeamsPerGroup
-            )
-            plan.persistSchedule(rounds)
+            if plan.format == .leaguePlacement {
+                plan.totalTimeMinutes = totalMinutes
+                plan.placementRounds = placementRounds
+            }
+            plan.persistSchedule(try plan.generatedRounds())
             let tabIds = Set(chosen.map(\.tabId))
             let record = try TournamentRecord(
                 plan: plan,

@@ -13,7 +13,7 @@ extension NotebookModuleView {
     var notebookContentWithDialogs: some View {
         Group {
             if let data = bridge.notebookState as? NotebookUiStateData {
-                notebookLoadedContent(data: data)
+                AnyView(notebookLoadedContent(data: data))
                     .transition(.opacity.combined(with: .scale(scale: 0.99)))
             } else if bridge.notebookState is NotebookUiStateLoading {
                 NotebookSkeletonGridView(rowCount: 14, columnCount: 7)

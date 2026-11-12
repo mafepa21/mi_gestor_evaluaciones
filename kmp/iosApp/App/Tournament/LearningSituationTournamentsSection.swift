@@ -10,7 +10,9 @@ struct LearningSituationTournamentsSection: View {
     let groupsClassId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
 
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @StateObject private var model: SdaTournamentsListModel
     @State private var isCreating = false
     @State private var refreshTarget: SdaTournamentTarget?
@@ -80,7 +82,7 @@ struct LearningSituationTournamentsSection: View {
             ) { created in
                 model.upsert(created)
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
         .confirmationDialog(
             "¿Borrar «\(deleteTarget.flatMap { model.record(id: $0.id)?.name } ?? "este torneo")»?",

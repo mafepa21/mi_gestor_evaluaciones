@@ -14,6 +14,10 @@ struct TournamentPlanConfigSnapshot: Equatable, Codable, Sendable {
     var legacyExtras: TournamentLegacyExtras?
     /// Solo en torneos con inscripción por formulario web.
     var registration: TournamentRegistration?
+    /// Solo en torneos de liguilla + puestos.
+    var totalTimeMinutes: Int?
+    var placementRounds: Int?
+    var leagueClosedEarly: Bool?
 }
 
 /// Las cinco columnas JSON de `learning_situation_tournaments` más id y nombre.
@@ -60,7 +64,10 @@ extension TournamentPlan {
             transitionMinutes: transitionMinutes,
             status: status,
             legacyExtras: legacyExtras,
-            registration: registration
+            registration: registration,
+            totalTimeMinutes: totalTimeMinutes,
+            placementRounds: placementRounds,
+            leagueClosedEarly: leagueClosedEarly
         )
     }
 
@@ -121,6 +128,9 @@ extension TournamentPlan {
         self.groupCount = config.groupCount
         self.legacyExtras = config.legacyExtras
         self.registration = config.registration
+        self.totalTimeMinutes = config.totalTimeMinutes
+        self.placementRounds = config.placementRounds
+        self.leagueClosedEarly = config.leagueClosedEarly
         self.savedSchedule = try TournamentPlanJSON.decode([ScheduledRound].self, from: columns.scheduleJSON, fallback: [])
         self.savedResults = try TournamentPlanJSON.decode([MatchResult].self, from: columns.resultsJSON, fallback: [])
         self.savedKnockoutResults = try TournamentPlanJSON.decode(

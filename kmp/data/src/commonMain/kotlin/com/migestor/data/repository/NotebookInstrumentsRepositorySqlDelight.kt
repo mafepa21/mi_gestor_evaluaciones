@@ -213,10 +213,7 @@ class NotebookInstrumentsRepositorySqlDelight(
                 sync_version = syncVersion,
             )
         }
-        val derived = deriveObservationGridScore(detail.items, responsesByItem)
-            ?: deriveStudentRubricScore(detail.items, responsesByItem)
-            ?: deriveProportionalChecklistScore(detail.items, responsesByItem)
-            ?: deriveGenericScale14Score(detail.items, responsesByItem)
+        val derived = deriveScore(detail.items, responsesByItem)
         derived?.let { derivedScore ->
             gradesRepository.saveGrade(
                 classId = classId,
@@ -240,6 +237,78 @@ class NotebookInstrumentsRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
         summary
     }
+
+    override suspend fun backfillMissingDerivedGrades(classId: Long): Int = withContext(Dispatchers.Default) {
+        val templates = db.appDatabaseQueries.selectAllInstrumentTemplatesByClass(classId).executeAsList()
+        if (templates.isEmpty()) return@withContext 0
+        val responsesByColumn = db.appDatabaseQueries.selectAllInstrumentResponsesByClass(classId)
+            .executeAsList()
+            .groupBy { it.column_id }
+        if (responsesByColumn.isEmpty()) return@withContext 0
+        // Una celda con nota (aunque sea vacía a propósito) no se toca: solo se rellenan huecos.
+        val gradedCells = gradesRepository.listGradesForClass(classId)
+            .map { it.studentId to it.columnId }
+            .toSet()
+
+        var saved = 0
+        templates.forEach { template ->
+            val columnResponses = responsesByColumn[template.column_id] ?: return@forEach
+            val items = db.appDatabaseQueries.selectInstrumentItemsByTemplate(template.id).executeAsList().map { row ->
+                NotebookInstrumentItem(
+                    id = row.id,
+                    templateId = row.template_id,
+                    key = row.item_key,
+                    title = row.title,
+                    type = itemType(row.item_type),
+                    required = row.required != 0L,
+                )
+            }
+            if (items.isEmpty()) return@forEach
+            columnResponses.groupBy { it.student_id }.forEach { (studentId, rows) ->
+                if ((studentId to template.column_id) in gradedCells) return@forEach
+                val responsesByItem = rows.associate { row ->
+                    row.item_id to NotebookInstrumentResponse(
+                        classId = row.class_id,
+                        studentId = row.student_id,
+                        columnId = row.column_id,
+                        itemId = row.item_id,
+                        textValue = row.value_text,
+                        boolValue = row.value_bool?.let { it != 0L },
+                        numberValue = row.value_number,
+                    )
+                }
+                val score = deriveScore(items, responsesByItem) ?: return@forEach
+                // Fecha de la última respuesta, no "ahora": así una nota puesta después en otro
+                // equipo gana al sincronizar.
+                val updatedAt = rows.maxOf { it.updated_at_epoch_ms }
+                gradesRepository.saveGrade(
+                    classId = classId,
+                    studentId = studentId,
+                    columnId = template.column_id,
+                    evaluationId = null,
+                    value = score,
+                    updatedAtEpochMs = updatedAt,
+                    deviceId = rows.maxBy { it.updated_at_epoch_ms }.device_id,
+                    syncVersion = 1,
+                )
+                saved += 1
+            }
+        }
+        if (saved > 0) {
+            sheetCache.invalidate(classId)
+            NotebookRefreshBus.emitRefresh()
+        }
+        saved
+    }
+
+    /// Nota derivada de un instrumento: la primera regla que reconoce sus ítems.
+    private fun deriveScore(
+        items: List<NotebookInstrumentItem>,
+        responsesByItem: Map<String, NotebookInstrumentResponse>,
+    ): Double? = deriveObservationGridScore(items, responsesByItem)
+        ?: deriveStudentRubricScore(items, responsesByItem)
+        ?: deriveProportionalChecklistScore(items, responsesByItem)
+        ?: deriveGenericScale14Score(items, responsesByItem)
 
     /// Traduce las respuestas 1-4 de una rejilla de observación en una nota numérica:
     /// 1. Si los ítems siguen la convención de sesión × indicador (`obs_s<sesión>_i<indicador>`),
@@ -294,19 +363,27 @@ class NotebookInstrumentsRepositorySqlDelight(
         return values.average()
     }
 
-    /// Traduce una checklist ponderada ("checklist proporcional": el documento le asigna un %
-    /// del peso de la SA) en una nota 0-10 = ítems marcados / ítems totales × 10. Solo se aplica
-    /// a los instrumentos cuyos ítems siguen la convención de clave `chkp_<n>` que genera el
-    /// importador Apple para `AssessmentInstrumentScoreStrategy.CHECKLIST_PROPORTIONAL`; las
-    /// checklists de requisito de entrega (`check_<n>`, sin peso) y las de todo/nada siguen sin
-    /// generar nota automática.
+    /// Traduce una lista de cotejo de casillas en una nota 0-10 = ítems marcados / ítems
+    /// totales × 10. Vale para la checklist ponderada (`chkp_<n>`) y para las de requisito de
+    /// entrega o todo/nada (`check_<n>`): el docente pidió ver una nota en la celda en vez de
+    /// «Completo». Si la columna no cuenta en la media, la nota se ve pero no pesa.
     private fun deriveProportionalChecklistScore(
         items: List<NotebookInstrumentItem>,
         responsesByItem: Map<String, NotebookInstrumentResponse>,
     ): Double? {
-        val keyPattern = Regex("""^chkp_\d+$""")
-        val checkItems = items.filter {
+        val keyPattern = Regex("""^(chkp|check)_\d+$""")
+        val conventionItems = items.filter {
             keyPattern.matches(it.key) && it.type == NotebookInstrumentItemType.CHECK
+        }
+        // Listas con otras claves (formularios web, situaciones de aprendizaje, obs_* de casilla):
+        // cuentan si todos los ítems que puntúan son casillas (los TEXT no puntúan).
+        val scoringItems = items.filter { it.type != NotebookInstrumentItemType.TEXT }
+        val checkItems = conventionItems.ifEmpty {
+            if (scoringItems.isNotEmpty() && scoringItems.all { it.type == NotebookInstrumentItemType.CHECK }) {
+                scoringItems
+            } else {
+                emptyList()
+            }
         }
         if (checkItems.isEmpty()) return null
         val checked = checkItems.count { responsesByItem[it.id]?.boolValue == true }

@@ -217,6 +217,10 @@ data class RubricCriterion(
     val order: Int,
     val competencyId: Long? = null,
     val trace: AuditTrace = AuditTrace(),
+    /** Juego de dibujos por nivel (clave de `RubricVisuals` en Apple); null = solo texto. */
+    val visualKey: String? = null,
+    /** Cortes de cronómetro (`RubricTiming`); null = sin cronómetro. */
+    val timingConfig: String? = null,
 )
 
 data class RubricLevel(
@@ -284,6 +288,8 @@ data class RubricAssessment(
     val criterionId: Long,
     val levelId: Long,
     val trace: AuditTrace = AuditTrace(),
+    /** Marca medida (segundos) que decidió el nivel; null si se eligió a mano. */
+    val measuredValue: Double? = null,
 )
 
 data class Evaluation(
@@ -1760,7 +1766,11 @@ fun NotebookColumnDefinition.rescaleNumericGrade(rawValue: Double): Double {
     return when (scaleKind) {
         NotebookScaleKind.FOUR_LEVEL -> (rawValue.coerceIn(1.0, 4.0) - 1.0) / 3.0 * 10.0
         else -> {
-            if (scaleKind == NotebookScaleKind.CUSTOM && inputKind.isStructuredInstrument() && rawValue in 1.0..4.0) {
+            // Las listas de casillas ya guardan una nota 0-10 (marcadas / total × 10): un 2,5 no es
+            // un nivel 1-4.
+            if (scaleKind == NotebookScaleKind.CUSTOM && inputKind.isStructuredInstrument() &&
+                inputKind != NotebookCellInputKind.STRUCTURED_CHECKLIST && rawValue in 1.0..4.0
+            ) {
                 (rawValue.coerceIn(1.0, 4.0) - 1.0) / 3.0 * 10.0
             } else {
                 rawValue

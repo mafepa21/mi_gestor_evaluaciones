@@ -148,7 +148,7 @@ struct PlannerWorkspaceIOS: View {
                         }
                     }
                 )
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
         }
         .onDisappear {

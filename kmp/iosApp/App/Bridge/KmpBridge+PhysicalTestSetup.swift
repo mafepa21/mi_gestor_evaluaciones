@@ -25,6 +25,9 @@ struct PhysicalTestSetupDraft {
     /// Id de una pestaña existente o título de una pestaña nueva.
     var notebookTab: String?
     var date: Date
+    /// Evaluación («1ª evaluación»…). Con valor, cada evaluación tiene su propia columna.
+    var termLabel: String? = nil
+    var countsTowardAverage: Bool = true
 }
 
 struct PhysicalTestSetupOutcome {
@@ -122,7 +125,11 @@ extension KmpBridge {
         let dateMs = Int64(draft.date.timeIntervalSince1970 * 1000)
         let course = classes.first(where: { $0.id == classId }).map { KotlinInt(value: $0.course) }
         let batteryId = "pe_wizard_battery_\(definitionId)"
-        let assignmentId = "pe_wizard_assignment_\(definitionId)_\(classId)"
+        let assignmentId = PhysicalTestNotebookPlacement.assignmentId(
+            definitionId: definitionId,
+            classId: classId,
+            termLabel: draft.termLabel
+        )
 
         try await container.physicalTestsRepository.saveBattery(
             battery: PhysicalTestBattery(
@@ -144,7 +151,7 @@ extension KmpBridge {
                 course: course,
                 ageFrom: nil,
                 ageTo: nil,
-                termLabel: nil,
+                termLabel: draft.termLabel,
                 dateEpochMs: dateMs,
                 rawColumnMode: true,
                 scoreColumnMode: hasScale,
@@ -161,25 +168,11 @@ extension KmpBridge {
                     id: assignmentId,
                     classId: classId,
                     tabId: tabId,
-                    name: name,
+                    name: draft.termLabel.map { "\(name) · \($0)" } ?? name,
                     order: (categories.map(\.order).max() ?? -1) + 1,
                     isCollapsed: false,
                     trace: trace
                 )
-            )
-        }
-
-        // El listado de pruebas del grupo sale de sus evaluaciones.
-        let code = "EF_\(definitionId.uppercased())"
-        let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: classId)
-        if !evaluations.contains(where: { $0.code == code }) {
-            _ = try await createPhysicalTest(
-                classId: classId,
-                code: code,
-                name: name,
-                kind: draft.measurement.rawValue,
-                weight: 1,
-                description: nil
             )
         }
 
@@ -194,7 +187,12 @@ extension KmpBridge {
 
         let rawTitle = "\(name) · \(draft.measurement == .level ? "Nivel" : "Marca")"
         let rawColumnId: String
-        if let id = existingLink?.rawColumnId ?? existingColumnId(rawTitle) {
+        // Un enlace puede apuntar a columnas ya borradas del cuaderno: solo se reutilizan las vivas.
+        let liveColumnIds = Set(existingColumns.map(\.id))
+        func liveLinkedId(_ id: String?) -> String? {
+            id.flatMap { liveColumnIds.contains($0) ? $0 : nil }
+        }
+        if let id = liveLinkedId(existingLink?.rawColumnId) ?? existingColumnId(rawTitle) {
             rawColumnId = id
         } else {
             rawColumnId = try await createNotebookPhysicalColumnForClass(
@@ -208,7 +206,9 @@ extension KmpBridge {
                 weight: 0,
                 countsTowardAverage: false,
                 dateEpochMs: dateMs,
-                targetTabId: tabId
+                targetTabId: tabId,
+                // Con baremo, la columna visible es la de nota («marca | nota»).
+                isHidden: hasScale
             )
             createdColumns += 1
         }
@@ -216,7 +216,7 @@ extension KmpBridge {
         var scoreColumnId: String?
         if hasScale {
             let scoreTitle = "\(name) · Nota"
-            if let id = existingLink?.scoreColumnId ?? existingColumnId(scoreTitle) {
+            if let id = liveLinkedId(existingLink?.scoreColumnId) ?? existingColumnId(scoreTitle) {
                 scoreColumnId = id
             } else {
                 scoreColumnId = try await createNotebookPhysicalColumnForClass(
@@ -227,8 +227,8 @@ extension KmpBridge {
                     unitOrSituation: "Nota baremada",
                     scaleKind: .tenPoint,
                     iconName: "chart.bar.fill",
-                    weight: 10,
-                    countsTowardAverage: true,
+                    weight: draft.countsTowardAverage ? 10 : 0,
+                    countsTowardAverage: draft.countsTowardAverage,
                     dateEpochMs: dateMs,
                     targetTabId: tabId
                 )

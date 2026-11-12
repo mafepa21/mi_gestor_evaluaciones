@@ -309,6 +309,10 @@ enum EvaluationSyncMerge {
 }
 
 enum RubricBundleSyncMerge {
+    static func shouldSkipBundle(existingFound: Bool, criteriaNeedPrevious: Bool) -> Bool {
+        criteriaNeedPrevious && !existingFound
+    }
+
     static func optionalText(previous: String?, incoming: String?, keyPresent: Bool) -> String? {
         keyPresent ? incoming : previous
     }
@@ -448,16 +452,27 @@ extension KmpBridge {
         pairedServerFingerprint = result.certificateFingerprint
 
         do {
-            // El primer pull descarga TODO el dataset (since=0). Con datasets
-            // grandes (~4 MB / ~4 000 cambios) la transferencia WiFi + aplicación
-            // en SQLite local puede superar los 12 s fácilmente. 45 s da margen
-            // suficiente para redes domésticas reales.
+            // Smart Merge al emparejar: primero recogemos y enviamos los cambios
+            // pendientes de este dispositivo para que el Mac los evalúe por fecha
+            // (Last-Write-Wins) y después descargamos el dataset remoto aplicando
+            // solo los registros más recientes en cada apartado.
             try await runSyncOperationWithTimeout(seconds: 45) {
+                #if os(iOS)
+                await self.enqueueModuleRecordChanges(force: true)
+                #endif
+                let hasPendingBeforePull = await MainActor.run { !self.pendingOutboundChanges.isEmpty }
+                if hasPendingBeforePull {
+                    try? await self.performPushSync(silent: true)
+                }
                 try await self.performPullSync(
                     silent: true,
                     sinceEpochMsOverride: 0,
                     refreshAfterApply: false
                 )
+                let hasPendingAfterPull = await MainActor.run { !self.pendingOutboundChanges.isEmpty }
+                if hasPendingAfterPull {
+                    try? await self.performPushSync(silent: true)
+                }
             }
             persistSyncSecrets()
             let now = Date()
@@ -564,11 +579,13 @@ extension KmpBridge {
     }
 
     public enum SyncAdoptionSource: Equatable {
+        case smartMerge
         case thisDevice
         case pairedMac
     }
 
     public enum SyncAdoptionOutcome {
+        case mergedInPlace
         case needsRestart(backupHint: String?)
         case stagedOnMac
     }
@@ -662,6 +679,76 @@ extension KmpBridge {
         let appSupportDir = dbURL.deletingLastPathComponent()
 
         switch source {
+        case .smartMerge:
+            // La fusión cambia datos sin vuelta atrás: sin copia no se empieza.
+            do {
+                _ = try await AppleBackupService.shared.createBackup(note: "Antes de fusionar dispositivos")
+            } catch {
+                throw NSError(domain: "Sync", code: -510, userInfo: [
+                    NSLocalizedDescriptionKey: LanSyncBatchedPushCopy.mergeBackupFailedMessage(error.localizedDescription)
+                ])
+            }
+            #if os(iOS)
+            await enqueueModuleRecordChanges(force: true)
+            #endif
+            let localAdapter = SqlDelightSyncAdapter(container: container, localDeviceId: localDeviceId)
+            let localKmpChanges = try await localAdapter.collectLocalChanges(sinceEpochMs: 0)
+            var mergedByKey: [String: LanSyncChange] = [:]
+            for kmpChange in localKmpChanges {
+                let lanChange = LanSyncChange(
+                    entity: kmpChange.entity,
+                    id: kmpChange.id,
+                    updatedAtEpochMs: kmpChange.updatedAtEpochMs,
+                    deviceId: kmpChange.deviceId,
+                    payload: kmpChange.payload,
+                    op: kmpChange.op,
+                    schemaVersion: Int(kmpChange.schemaVersion)
+                )
+                mergedByKey["\(lanChange.entity)|\(lanChange.id)"] = lanChange
+            }
+            for pending in pendingOutboundChanges {
+                let key = "\(pending.entity)|\(pending.id)"
+                if let existing = mergedByKey[key] {
+                    if pending.updatedAtEpochMs >= existing.updatedAtEpochMs {
+                        mergedByKey[key] = pending
+                    }
+                } else {
+                    mergedByKey[key] = pending
+                }
+            }
+            let outbound = Array(mergedByKey.values).sorted {
+                if $0.updatedAtEpochMs != $1.updatedAtEpochMs {
+                    return $0.updatedAtEpochMs < $1.updatedAtEpochMs
+                }
+                return $0.id < $1.id
+            }
+            let pushResult = try await pushInBatches(
+                changes: outbound,
+                retryFailedBatches: true
+            )
+            guard pushResult.oversized.isEmpty else {
+                throw NSError(domain: "Sync", code: -511, userInfo: [
+                    NSLocalizedDescriptionKey: LanSyncBatchedPushCopy.oversizedMessage(pushResult.oversized)
+                ])
+            }
+            guard pushResult.failed == 0 else {
+                throw NSError(domain: "Sync", code: -512, userInfo: [
+                    NSLocalizedDescriptionKey: LanSyncBatchedPushCopy.mergeFailedMessage(
+                        failed: pushResult.failed,
+                        total: pushResult.sentTotal
+                    )
+                ])
+            }
+            try await performPullSync(
+                silent: true,
+                sinceEpochMsOverride: 0,
+                refreshAfterApply: true
+            )
+            await MainActor.run {
+                self.syncDivergence = nil
+            }
+            return .mergedInPlace
+
         case .pairedMac:
             let pendingDbURL = appSupportDir.appendingPathComponent("pending_adopt.db")
             let pendingJsonURL = appSupportDir.appendingPathComponent("pending_adopt.json")
@@ -900,8 +987,57 @@ extension KmpBridge {
         }
     }
 
+    /// Envía los cambios en paquetes que el helper acepta y suelta de la cola cada
+    /// paquete entregado. Solo quita entradas iguales a lo enviado: una edición más
+    /// nueva hecha durante el envío no es igual y se conserva.
+    private func pushInBatches(
+        changes: [LanSyncChange],
+        retryFailedBatches: Bool
+    ) async throws -> LanSyncBatchedPushResult {
+        guard let token = syncToken, pairedSyncHost != nil else {
+            throw NSError(domain: "Sync", code: -41, userInfo: [NSLocalizedDescriptionKey: "No hay emparejamiento activo"])
+        }
+        return try await LanSyncBatchedPush.run(
+            changes: changes,
+            retryFailedBatches: retryFailedBatches,
+            send: { batch in
+                let host = self.pairedSyncHost ?? ""
+                do {
+                    return try await self.lanSyncClient.push(
+                        host: host,
+                        token: token,
+                        deviceId: self.localDeviceId,
+                        changes: batch,
+                        lastKnownServerEpochMs: self.lastSyncCursorEpochMs,
+                        pinnedFingerprint: self.pairedServerFingerprint
+                    )
+                } catch {
+                    try Task.checkCancellation()
+                    guard self.recoverHostAfterNetworkChange(previousHost: host),
+                          let reboundHost = self.pairedSyncHost else {
+                        throw error
+                    }
+                    return try await self.lanSyncClient.push(
+                        host: reboundHost,
+                        token: token,
+                        deviceId: self.localDeviceId,
+                        changes: batch,
+                        lastKnownServerEpochMs: self.lastSyncCursorEpochMs,
+                        pinnedFingerprint: self.pairedServerFingerprint
+                    )
+                }
+            },
+            onDelivered: { batch in
+                let delivered = Set(batch)
+                self.pendingOutboundChanges.removeAll { delivered.contains($0) }
+                self.syncPendingChanges = self.pendingOutboundChanges.count
+                self.persistPendingChanges()
+            }
+        )
+    }
+
     private func performPushSync(silent: Bool) async throws {
-        guard let host = pairedSyncHost, let token = syncToken else {
+        guard pairedSyncHost != nil, syncToken != nil else {
             throw NSError(domain: "Sync", code: -41, userInfo: [NSLocalizedDescriptionKey: "No hay emparejamiento activo"])
         }
         guard !pendingOutboundChanges.isEmpty else {
@@ -925,44 +1061,13 @@ extension KmpBridge {
         // limpiemos la cola al recibir la respuesta.
         let sentChanges = pendingOutboundChanges
 
-        let ack: LanPushResult
-        do {
-            ack = try await lanSyncClient.push(
-                host: host,
-                token: token,
-                deviceId: localDeviceId,
-                changes: sentChanges,
-                lastKnownServerEpochMs: lastSyncCursorEpochMs,
-                pinnedFingerprint: pairedServerFingerprint
-            )
-        } catch {
-            try Task.checkCancellation()
-            guard recoverHostAfterNetworkChange(previousHost: host), let reboundHost = pairedSyncHost else {
-                throw error
-            }
-            ack = try await lanSyncClient.push(
-                host: reboundHost,
-                token: token,
-                deviceId: localDeviceId,
-                changes: sentChanges,
-                lastKnownServerEpochMs: lastSyncCursorEpochMs,
-                pinnedFingerprint: pairedServerFingerprint
-            )
-        }
+        // Si hubo fallos en un paquete, ese paquete sigue pendiente para el siguiente
+        // sync (sin IDs por cambio en el ack no podemos soltar solo los aplicados).
+        let ack = try await pushInBatches(
+            changes: sentChanges,
+            retryFailedBatches: false
+        )
         try Task.checkCancellation()
-        // Si hubo fallos, el lote enviado sigue pendiente para el siguiente sync.
-        // Sin IDs por cambio en el ack, no podemos soltar solo los aplicados.
-        // Si failed == 0 (aplicados o ignorados por LWW) o el Mac manda, sí
-        // soltamos el snapshot enviado. Solo quitamos entradas iguales a lo
-        // enviado: una edición más nueva durante el await no es Equatable y se
-        // conserva.
-        if SyncLanPushPendingPolicy.shouldClearSentPending(
-            failed: ack.failed,
-            desktopAuthoritative: ack.desktopAuthoritative
-        ) {
-            pendingOutboundChanges.removeAll { sentChanges.contains($0) }
-            persistPendingChanges()
-        }
         if ack.desktopAuthoritative {
             try await performPullSync(
                 silent: true,
@@ -978,12 +1083,18 @@ extension KmpBridge {
             let statusMessage = SyncLanPushCloseCopy.statusMessage(
                 applied: ack.applied,
                 failed: ack.failed,
-                sentTotal: sentChanges.count,
+                sentTotal: ack.sentTotal,
                 desktopAuthoritative: ack.desktopAuthoritative
             )
             publishSyncState {
                 $0.syncStatusMessage = statusMessage
             }
+        }
+        // El resto ya ha llegado al Mac; estos siguen pendientes y se avisa de ellos.
+        guard ack.oversized.isEmpty else {
+            throw NSError(domain: "Sync", code: -511, userInfo: [
+                NSLocalizedDescriptionKey: LanSyncBatchedPushCopy.oversizedMessage(ack.oversized)
+            ])
         }
     }
 
@@ -1333,10 +1444,11 @@ extension KmpBridge {
         }
 
         cells.forEach { cell in
+            let cellUpdatedAt = cell.trace.updatedAt.toEpochMilliseconds()
             enqueueLocalChange(
                 entity: "notebook_cell",
                 id: "\(cell.classId)-\(cell.studentId)-\(cell.columnId)",
-                updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000), // cells no tienen trace todavía
+                updatedAtEpochMs: cellUpdatedAt > 0 ? cellUpdatedAt : 1,
                 payload: [
                     "classId": cell.classId,
                     "studentId": cell.studentId,
@@ -1445,7 +1557,8 @@ extension KmpBridge {
                         "studentId": assessment.studentId,
                         "evaluationId": assessment.evaluationId,
                         "criterionId": assessment.criterionId,
-                        "levelId": assessment.levelId
+                        "levelId": assessment.levelId,
+                        "measuredValue": assessment.measuredValue ?? NSNull()
                     ],
                     shouldPersist: false,
                     shouldScheduleAutoSync: false
@@ -1566,6 +1679,33 @@ extension KmpBridge {
         }
     }
 
+    private func shouldApplyIncomingLanChange(
+        _ change: LanSyncChange,
+        existingUpdatedAtEpochMs: Int64?,
+        existingDeviceId: String?,
+        alternatePendingIds: [String] = []
+    ) -> Bool {
+        let candidateIds = Set([change.id] + alternatePendingIds)
+        for pending in pendingOutboundChanges where pending.entity == change.entity && candidateIds.contains(pending.id) {
+            if pending.updatedAtEpochMs > change.updatedAtEpochMs {
+                return false
+            }
+            if pending.updatedAtEpochMs == change.updatedAtEpochMs && pending.deviceId > change.deviceId {
+                return false
+            }
+        }
+        guard let existing = existingUpdatedAtEpochMs, existing > 0 else {
+            return true
+        }
+        if change.updatedAtEpochMs > existing {
+            return true
+        }
+        if change.updatedAtEpochMs < existing {
+            return false
+        }
+        return change.deviceId >= (existingDeviceId ?? "")
+    }
+
     private func applyPulledChanges(_ changes: [LanSyncChange]) async throws {
         // Reuniones, acuerdos, medidas de apoyo, tutorías y asignaturas las aplica el
         // mismo código Kotlin que el Mac (`SchoolRecordsSync`). Antes caían en el
@@ -1634,7 +1774,8 @@ extension KmpBridge {
             let payloadObject = parsedPayloads[index]
 
             if change.op == "delete" {
-                try await applyDeletedChange(change: change, payloadObject: payloadObject)
+                let deleted = try await applyDeletedChange(change: change, payloadObject: payloadObject)
+                guard deleted else { continue }
                 // Deja un tombstone: si el otro dispositivo empuja más tarde un upsert
                 // fechado ANTES de este borrado, no debe resucitar la entidad (ver el
                 // chequeo simétrico justo antes del switch de abajo).
@@ -1669,6 +1810,11 @@ extension KmpBridge {
                 } catch {
                     continue
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId
+                ) else { continue }
                 let startKeyPresent = payloadObject.keys.contains("startEpochMs")
                 let endKeyPresent = payloadObject.keys.contains("endEpochMs")
                 let centerKeyPresent = payloadObject.keys.contains("centerId")
@@ -1744,6 +1890,11 @@ extension KmpBridge {
                 } else {
                     existing = nil
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId
+                ) else { continue }
                 let descriptionKeyPresent = payloadObject.keys.contains("description")
                 let centerKeyPresent = payloadObject.keys.contains("centerId")
                 let academicYearKeyPresent = payloadObject.keys.contains("academicYearId")
@@ -1811,6 +1962,11 @@ extension KmpBridge {
                 } catch {
                     continue
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId
+                ) else { continue }
                 let email = StudentSyncMerge.optionalText(
                     previous: existing?.email,
                     incoming: payloadObject["email"] as? String,
@@ -1859,6 +2015,13 @@ extension KmpBridge {
             case "student_deleted":
                 let studentId = int64Value(payloadObject["id"]) ?? 0
                 if studentId > 0 {
+                    let existing = try? await container.studentsRepository.getStudent(studentId: studentId)
+                    guard shouldApplyIncomingLanChange(
+                        change,
+                        existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                        existingDeviceId: existing?.trace.deviceId,
+                        alternatePendingIds: ["\(studentId)"]
+                    ) else { continue }
                     try await container.studentsRepository.deleteStudent(studentId: studentId)
                 }
 
@@ -1901,6 +2064,12 @@ extension KmpBridge {
                 } else {
                     existing = nil
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: evaluationId > 0 ? ["\(evaluationId)"] : []
+                ) else { continue }
                 let weightKeyPresent = payloadObject.keys.contains("weight")
                 let formulaKeyPresent = payloadObject.keys.contains("formula")
                 let rubricKeyPresent = payloadObject.keys.contains("rubricId")
@@ -1974,6 +2143,12 @@ extension KmpBridge {
                     } catch {
                         continue
                     }
+                    guard shouldApplyIncomingLanChange(
+                        change,
+                        existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                        existingDeviceId: existing?.trace.deviceId,
+                        alternatePendingIds: ["\(classId)-\(studentId)-\(columnId)"]
+                    ) else { continue }
                     let value = GradeSyncMerge.optionalDouble(
                         previous: existing?.value?.doubleValue,
                         incoming: doubleValue(payloadObject["value"]),
@@ -2037,6 +2212,12 @@ extension KmpBridge {
                 let resolvedId = WeeklySlotSyncMerge.keptId(incoming: incomingId, matched: matchedId)
                 // Sin id remoto ni franja local (grupo/día/horas), no inventar una copia.
                 guard resolvedId > 0 else { continue }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: nil,
+                    existingDeviceId: nil,
+                    alternatePendingIds: ["\(resolvedId)"]
+                ) else { continue }
                 _ = try await container.weeklyTemplateRepository.insert(
                     slot: WeeklySlotTemplate(
                         id: resolvedId,
@@ -2060,6 +2241,12 @@ extension KmpBridge {
                 } catch {
                     continue
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: [tabId]
+                ) else { continue }
                 let orderKeyPresent = payloadObject.keys.contains("order")
                 let parentKeyPresent = payloadObject.keys.contains("parentTabId")
                 let descriptionKeyPresent = payloadObject.keys.contains("description")
@@ -2127,6 +2314,12 @@ extension KmpBridge {
                 } catch {
                     continue
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: ["\(groupId)", "group-\(groupId)"]
+                ) else { continue }
                 let orderKeyPresent = payloadObject.keys.contains("order")
                 let situationKeyPresent = payloadObject.keys.contains("learningSituationId")
                     || payloadObject.keys.contains("learning_situation_id")
@@ -2178,6 +2371,18 @@ extension KmpBridge {
                     let groupId = int64Value(payloadObject["groupId"]) ?? int64Value(payloadObject["group_id"]),
                     let studentId = int64Value(payloadObject["studentId"]) ?? int64Value(payloadObject["student_id"])
                 else { continue }
+                let existingMember = try? await container.notebookConfigRepository
+                    .listWorkGroupMembers(classId: classId, tabId: tabId)
+                    .first { $0.studentId == studentId }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existingMember?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existingMember?.trace.deviceId,
+                    alternatePendingIds: [
+                        "\(classId)|\(tabId)|\(groupId)|\(studentId)",
+                        "group-member-\(classId)-\(tabId)-\(groupId)-\(studentId)"
+                    ]
+                ) else { continue }
                 try await container.notebookConfigRepository.assignStudentsToWorkGroup(
                     classId: classId,
                     tabId: tabId,
@@ -2192,6 +2397,15 @@ extension KmpBridge {
                     let tabId = payloadObject["tabId"] as? String,
                     let name = payloadObject["name"] as? String
                 else { continue }
+                let existingCategory = try? await container.notebookConfigRepository
+                    .listColumnCategories(classId: classId, tabId: nil)
+                    .first { $0.id == id }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existingCategory?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existingCategory?.trace.deviceId,
+                    alternatePendingIds: [id]
+                ) else { continue }
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
                 let trace = AuditTrace(
                     authorUserId: nil,
@@ -2236,6 +2450,12 @@ extension KmpBridge {
                 } catch {
                     continue
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: [resolvedColumnId]
+                ) else { continue }
 
                 let typeKeyPresent = payloadObject.keys.contains("type") || payloadObject.keys.contains("column_type")
                 let incomingTypeRaw = (payloadObject["type"] as? String) ?? (payloadObject["column_type"] as? String)
@@ -2483,6 +2703,12 @@ extension KmpBridge {
                 } catch {
                     continue
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: ["\(classId)-\(studentId)-\(columnId)"]
+                ) else { continue }
 
                 let textValue = NotebookCellSyncMerge.optionalText(
                     previous: existing?.textValue,
@@ -2520,7 +2746,7 @@ extension KmpBridge {
                     keyPresent: payloadObject.keys.contains("attachmentUris")
                 )
 
-                try await container.notebookRepository.saveCell(
+                try await container.notebookCellsRepository.saveCell(
                     classId: classId,
                     studentId: studentId,
                     columnId: columnId,
@@ -2532,7 +2758,10 @@ extension KmpBridge {
                     colorHex: colorHex,
                     attachmentUris: attachmentUris,
                     authorUserId: nil,
-                    associatedGroupId: nil
+                    associatedGroupId: nil,
+                    updatedAtEpochMs: change.updatedAtEpochMs,
+                    deviceId: change.deviceId,
+                    syncVersion: 1
                 )
 
             case "notebook_instrument_template":
@@ -2571,12 +2800,20 @@ extension KmpBridge {
                         syncVersion: 1
                     )
                 )
-                let existingItems: [NotebookInstrumentItem]
+                let existingDetail: NotebookInstrumentDetail?
                 do {
-                    existingItems = try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId)?.items ?? []
+                    existingDetail = try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId)
                 } catch {
                     continue
                 }
+                let existingTemplate = existingDetail?.template_
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existingTemplate?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existingTemplate?.trace.deviceId,
+                    alternatePendingIds: [id]
+                ) else { continue }
+                let existingItems = existingDetail?.items ?? []
                 try await container.notebookInstrumentsRepository.saveTemplate(template: template, items: existingItems)
 
             case "notebook_instrument_item":
@@ -2599,6 +2836,12 @@ extension KmpBridge {
                     continue
                 }
                 let previous = detail.items.first { $0.id == id }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: previous?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: previous?.trace.deviceId,
+                    alternatePendingIds: [id]
+                ) else { continue }
                 let itemType = payloadObject.keys.contains("itemType")
                     ? notebookInstrumentItemType((payloadObject["itemType"] as? String) ?? "scale14")
                     : (previous?.type ?? notebookInstrumentItemType("scale14"))
@@ -2663,6 +2906,12 @@ extension KmpBridge {
                     continue
                 }
                 let previous = loadedResponses.first { $0.itemId == itemId }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: previous?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: previous?.trace.deviceId,
+                    alternatePendingIds: ["\(classId)-\(studentId)-\(columnId)-\(itemId)"]
+                ) else { continue }
                 let textValue = payloadObject.keys.contains("valueText")
                     ? (payloadObject["valueText"] as? String ?? "")
                     : (previous?.textValue ?? "")
@@ -2714,6 +2963,15 @@ extension KmpBridge {
                     continue
                 }
                 let existing = existingUnits.first { $0.id == incomingId }
+                let existingUnitRow = incomingId > 0
+                    ? container.database.plannerQueries.selectAllTeachingUnits().executeAsList().first(where: { $0.id == incomingId })
+                    : nil
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existingUnitRow?.updated_at_epoch_ms,
+                    existingDeviceId: existingUnitRow?.device_id,
+                    alternatePendingIds: incomingId > 0 ? ["\(incomingId)"] : []
+                ) else { continue }
                 let unit = TeachingUnit(
                     id: incomingId,
                     name: name,
@@ -2738,7 +2996,22 @@ extension KmpBridge {
                         ? localDate(from: payloadObject["endDate"])
                         : existing?.endDate
                 )
-                _ = try await container.plannerRepository.upsertTeachingUnit(unit: unit)
+                let savedUnitId = try await container.plannerRepository.upsertTeachingUnit(unit: unit)
+                if savedUnitId.int64Value > 0 {
+                    container.database.plannerQueries.upsertTeachingUnit(
+                        id: savedUnitId,
+                        group_id: unit.groupId,
+                        school_class_id: unit.schoolClassId,
+                        name: unit.name,
+                        description: unit.description_,
+                        color_hex: unit.colorHex,
+                        start_date: unit.startDate?.description(),
+                        end_date: unit.endDate?.description(),
+                        updated_at_epoch_ms: change.updatedAtEpochMs,
+                        device_id: change.deviceId,
+                        sync_version: 1
+                    )
+                }
 
             case "learning_situation":
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
@@ -2753,6 +3026,12 @@ extension KmpBridge {
                 } else {
                     existing = nil
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: incomingId > 0 ? ["\(incomingId)"] : []
+                ) else { continue }
                 func kept(_ key: String, previous: String) -> String {
                     TeachingUnitSyncMerge.text(
                         previous: previous,
@@ -2801,6 +3080,12 @@ extension KmpBridge {
                 let incomingVersionId = int64Value(payloadObject["id"]) ?? 0
                 let existing = existingVersions.first { $0.id == incomingVersionId && incomingVersionId > 0 }
                     ?? existingVersions.first { $0.sha256 == hash }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: incomingVersionId > 0 ? ["\(incomingVersionId)"] : []
+                ) else { continue }
                 let downloadedPath = await downloadLearningSituationDocumentIfNeeded(sha256: hash)
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
                 _ = try await container.learningSituationsRepository.saveVersion(
@@ -2851,6 +3136,12 @@ extension KmpBridge {
                 let incomingVersionId = int64Value(payloadObject["id"]) ?? 0
                 let existing = existingVersions.first { $0.id == incomingVersionId && incomingVersionId > 0 }
                     ?? existingVersions.first { $0.sha256 == hash }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: incomingVersionId > 0 ? ["\(incomingVersionId)"] : []
+                ) else { continue }
                 let downloadedPath = await downloadLearningSituationDocumentIfNeeded(sha256: hash)
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
                 _ = try await container.learningSituationsRepository.saveSessionSequenceVersion(
@@ -2904,6 +3195,12 @@ extension KmpBridge {
                 } else {
                     existing = nil
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: incomingId > 0 ? ["\(incomingId)"] : []
+                ) else { continue }
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
                 _ = try await container.learningSituationsRepository.saveSessionPlan(
                     plan: LearningSituationSessionPlan(
@@ -2977,7 +3274,12 @@ extension KmpBridge {
                     continue
                 }
                 // Última escritura gana: un cambio más antiguo que lo local no pisa el torneo.
-                if let existing, existing.trace.updatedAt.toEpochMilliseconds() > change.updatedAtEpochMs { continue }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: [tournamentId]
+                ) else { continue }
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
                 try await container.learningSituationsRepository.saveTournamentFromSync(
                     tournament: LearningSituationTournament(
@@ -3045,6 +3347,12 @@ extension KmpBridge {
                 } catch {
                     continue
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: existing.map { ["\($0.id)"] } ?? []
+                ) else { continue }
                 let kind: LearningSituationResourceKind
                 if payloadObject.keys.contains("kind"), let kindName = payloadObject["kind"] as? String {
                     switch kindName {
@@ -3100,6 +3408,15 @@ extension KmpBridge {
                 } else {
                     existingSession = nil
                 }
+                let existingSessionRow = sessionId > 0
+                    ? container.database.plannerQueries.selectSessionById(id: sessionId).executeAsOneOrNull()
+                    : nil
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existingSessionRow?.updated_at_epoch_ms,
+                    existingDeviceId: existingSessionRow?.device_id,
+                    alternatePendingIds: sessionId > 0 ? ["\(sessionId)"] : []
+                ) else { continue }
                 let teachingUnitId = payloadObject.keys.contains("teachingUnitId")
                     ? (int64Value(payloadObject["teachingUnitId"]) ?? existingSession?.teachingUnitId ?? 0)
                     : (existingSession?.teachingUnitId ?? 0)
@@ -3176,7 +3493,28 @@ extension KmpBridge {
                     status: status
                 )
                 do {
-                    _ = try await container.plannerRepository.upsertSession(session: session)
+                    let savedSessionId = try await container.plannerRepository.upsertSession(session: session)
+                    if let savedRow = container.database.plannerQueries.selectSessionById(id: savedSessionId.int64Value).executeAsOneOrNull() {
+                        container.database.plannerQueries.updateSessionById(
+                            date: savedRow.date,
+                            group_id: savedRow.group_id,
+                            period: savedRow.period,
+                            unit_id: savedRow.unit_id,
+                            objectives: savedRow.objectives,
+                            activities: savedRow.activities,
+                            evaluation: savedRow.evaluation,
+                            linked_assessment_ids_csv: savedRow.linked_assessment_ids_csv,
+                            teacher_schedule_slot_id: savedRow.teacher_schedule_slot_id,
+                            start_time: savedRow.start_time,
+                            end_time: savedRow.end_time,
+                            learning_situation_session_plan_id: savedRow.learning_situation_session_plan_id,
+                            status: savedRow.status,
+                            updated_at_epoch_ms: change.updatedAtEpochMs,
+                            device_id: change.deviceId,
+                            sync_version: 1,
+                            id: savedRow.id
+                        )
+                    }
                 } catch {
                     print("LAN Sync: upsertSession failed for planning_session \(change.id): \(error)")
                     continue
@@ -3196,6 +3534,12 @@ extension KmpBridge {
                 } else {
                     existing = nil
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: incomingId > 0 ? ["\(incomingId)"] : []
+                ) else { continue }
                 let schedule = TeacherSchedule(
                     id: incomingId,
                     ownerUserId: TeacherScheduleSyncMerge.longId(
@@ -3274,6 +3618,12 @@ extension KmpBridge {
                 } else {
                     existing = nil
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: nil,
+                    existingDeviceId: nil,
+                    alternatePendingIds: incomingId > 0 ? ["\(incomingId)"] : []
+                ) else { continue }
                 let startTime: String
                 if payloadObject.keys.contains("startTime") {
                     guard let incomingStart = payloadObject["startTime"] as? String else { continue }
@@ -3347,6 +3697,12 @@ extension KmpBridge {
                 } else {
                     existing = nil
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: nil,
+                    existingDeviceId: nil,
+                    alternatePendingIds: incomingId > 0 ? ["\(incomingId)"] : []
+                ) else { continue }
                 _ = try await container.teacherScheduleRepository.saveEvaluationPeriod(
                     period: PlannerEvaluationPeriod(
                         id: incomingId,
@@ -3394,11 +3750,6 @@ extension KmpBridge {
                             }
                         }()
                 }
-                let needsPrevious =
-                    !descriptionKeyPresent
-                    || !classIdKeyPresent
-                    || !teachingUnitIdKeyPresent
-                    || criteriaNeedPrevious
                 let existingDetail: RubricDetail?
                 if let rubricId {
                     do {
@@ -3409,12 +3760,22 @@ extension KmpBridge {
                 } else {
                     existingDetail = nil
                 }
-                // Sin lectura local no se puede conservar description/classId/teachingUnitId,
-                // peso/orden de criterios ni points/order/description de niveles.
-                if needsPrevious, existingDetail == nil {
+                // Una rúbrica nueva no tiene nada que conservar: sin descripción, clase o
+                // unidad se guarda igual (un Mac antiguo no manda clase ni unidad). Solo se
+                // descarta si faltan peso, orden o puntos, que no se pueden inventar.
+                if RubricBundleSyncMerge.shouldSkipBundle(
+                    existingFound: existingDetail != nil,
+                    criteriaNeedPrevious: criteriaNeedPrevious
+                ) {
                     continue
                 }
                 let existing = existingDetail?.rubric
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: rubricId.map { ["\($0)"] } ?? []
+                ) else { continue }
                 let description = RubricBundleSyncMerge.optionalText(
                     previous: existing?.description_,
                     incoming: payloadObject["description"] as? String,
@@ -3442,7 +3803,13 @@ extension KmpBridge {
                     syncVersion: 1
                 )
                 for criterion in criteria {
+                    // Paquetes antiguos llegan sin id de criterio: se reutiliza el criterio
+                    // existente con mismo texto y orden en vez de insertar un duplicado.
                     let criterionId = int64Value(criterion["id"]).flatMap { $0 > 0 ? $0 : nil }
+                        ?? existingDetail?.criteria.first { existing in
+                            existing.criterion.description_ == (criterion["description"] as? String)
+                                && Int64(existing.criterion.order) == int64Value(criterion["order"])
+                        }?.criterion.id
                     let existingCriterion = existingDetail?.criteria
                         .first { $0.criterion.id == criterionId }?
                         .criterion
@@ -3480,6 +3847,14 @@ extension KmpBridge {
                         deviceId: change.deviceId,
                         syncVersion: 1
                     )
+                    // Un equipo sin rúbricas visuales no manda las claves: se conserva lo que hay.
+                    if criterion.keys.contains("visualKey") || criterion.keys.contains("timingConfig") {
+                        try await container.rubricsRepository.saveCriterionPresentation(
+                            criterionId: savedCriterionId.int64Value,
+                            visualKey: criterion.keys.contains("visualKey") ? criterion["visualKey"] as? String : existingCriterion?.visualKey,
+                            timingConfig: criterion.keys.contains("timingConfig") ? criterion["timingConfig"] as? String : existingCriterion?.timingConfig
+                        )
+                    }
                     let levels = criterion["levels"] as? [[String: Any]] ?? []
                     let existingLevels = existingDetail?.criteria
                         .first { $0.criterion.id == criterionId }?
@@ -3487,6 +3862,7 @@ extension KmpBridge {
                     for level in levels {
                         guard let levelName = level["name"] as? String else { continue }
                         let levelId = int64Value(level["id"]).flatMap { $0 > 0 ? $0 : nil }
+                            ?? existingLevels.first { Int64($0.order) == int64Value(level["order"]) }?.id
                         let existingLevel = existingLevels.first { $0.id == levelId }
                         let pointsKeyPresent = level.keys.contains("points")
                         let levelDescriptionKeyPresent = level.keys.contains("description")
@@ -3553,6 +3929,19 @@ extension KmpBridge {
                 } catch {
                     continue
                 }
+                let attendanceNaturalKey = sessionIdValue.map {
+                    "\(classId)-\(studentId)-\(dateEpochMs)-\($0)"
+                } ?? "\(classId)-\(studentId)-\(dateEpochMs)"
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: [
+                        attendanceNaturalKey,
+                        "\(classId)-\(studentId)-\(dateEpochMs)",
+                        existing.map { "\($0.id)" } ?? ""
+                    ].filter { !$0.isEmpty }
+                ) else { continue }
                 let note = AttendanceSyncMerge.text(
                     previous: existing?.note ?? "",
                     incoming: payloadObject["note"] as? String,
@@ -3601,6 +3990,12 @@ extension KmpBridge {
                 } catch {
                     continue
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: incomingId.map { ["\($0)"] } ?? []
+                ) else { continue }
                 let detail = IncidentSyncMerge.optionalText(
                     previous: existing?.detail,
                     incoming: payloadObject["detail"] as? String,
@@ -3643,6 +4038,12 @@ extension KmpBridge {
                 } catch {
                     continue
                 }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: incomingId.map { ["\($0)"] } ?? []
+                ) else { continue }
                 let description = CalendarEventSyncMerge.optionalText(
                     previous: existing?.description_,
                     incoming: payloadObject["description"] as? String,
@@ -3675,6 +4076,16 @@ extension KmpBridge {
                     let criterionId = int64Value(payloadObject["criterionId"]),
                     let levelId = int64Value(payloadObject["levelId"])
                 else { continue }
+                let existingAssessment = try? await container.rubricsRepository.listRubricAssessments(
+                    studentId: studentId,
+                    evaluationId: evaluationId
+                ).first { $0.criterionId == criterionId }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existingAssessment?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existingAssessment?.trace.deviceId,
+                    alternatePendingIds: ["\(studentId)-\(evaluationId)-\(criterionId)"]
+                ) else { continue }
                 let resolvedScore = try await container.rubricsRepository.saveRubricAssessment(
                     studentId: studentId,
                     evaluationId: evaluationId,
@@ -3684,6 +4095,21 @@ extension KmpBridge {
                     deviceId: change.deviceId,
                     syncVersion: 1
                 )
+                // Tiempo del cronómetro: solo si el cambio entrante ganó (la fila quedó con su fecha).
+                if payloadObject.keys.contains("measuredValue") {
+                    let stored = try await container.rubricsRepository.listRubricAssessments(
+                        studentId: studentId,
+                        evaluationId: evaluationId
+                    ).first { $0.criterionId == criterionId }
+                    if stored?.trace.updatedAt.toEpochMilliseconds() == change.updatedAtEpochMs {
+                        try await container.rubricsRepository.saveRubricAssessmentMeasurement(
+                            studentId: studentId,
+                            evaluationId: evaluationId,
+                            criterionId: criterionId,
+                            measuredValue: doubleValue(payloadObject["measuredValue"]).map { KotlinDouble(value: $0) }
+                        )
+                    }
+                }
                 if let evaluation = try await container.evaluationsRepository.getEvaluation(evaluationId: evaluationId),
                    let classId = int64Value(evaluation.classId),
                    classId > 0 {
@@ -3714,6 +4140,12 @@ extension KmpBridge {
             case "session_journal":
                 guard let planningSessionId = SessionJournalSyncCodec.shared.planningSessionId(payload: change.payload)?.int64Value,
                       planningSessionId > 0 else { continue }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: nil,
+                    existingDeviceId: nil,
+                    alternatePendingIds: ["\(planningSessionId)"]
+                ) else { continue }
                 let existingJournal = try await container.sessionJournalRepository.getJournalForSession(
                     planningSessionId: planningSessionId
                 )
@@ -3758,43 +4190,111 @@ extension KmpBridge {
         }
     }
 
-    private func applyDeletedChange(change: LanSyncChange, payloadObject: [String: Any]) async throws {
+    private func applyDeletedChange(change: LanSyncChange, payloadObject: [String: Any]) async throws -> Bool {
         switch change.entity {
         case "academic_year":
             let yearId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
             if yearId > 0 {
+                let existing = try? await container.academicYearsRepository.listAcademicYears().first { $0.id == yearId }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: ["\(yearId)"]
+                ) else { return false }
                 try? await container.academicYearsRepository.deleteArchivedAcademicYear(academicYearId: yearId)
+                return true
             }
+            return false
         case "student_deleted", "student":
             let studentId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
             if studentId > 0 {
+                let existing = try? await container.studentsRepository.getStudent(studentId: studentId)
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: ["\(studentId)"]
+                ) else { return false }
                 try await container.studentsRepository.deleteStudent(studentId: studentId)
+                return true
             }
+            return false
         case "evaluation":
             let evaluationId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
             if evaluationId > 0 {
+                let existing = try? await container.evaluationsRepository.getEvaluation(evaluationId: evaluationId)
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: ["\(evaluationId)"]
+                ) else { return false }
                 try await container.evaluationsRepository.deleteEvaluation(evaluationId: evaluationId)
+                return true
             }
+            return false
         case "weekly_slot":
             let slotId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
             if slotId > 0 {
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: nil,
+                    existingDeviceId: nil,
+                    alternatePendingIds: ["\(slotId)"]
+                ) else { return false }
                 try await container.weeklyTemplateRepository.delete(slotId: slotId)
+                return true
             }
+            return false
         case "notebook_tab":
             let tabId = (payloadObject["id"] as? String) ?? change.id
             if !tabId.isEmpty {
+                let classId = int64Value(payloadObject["classId"]) ?? notebookViewModel.currentClassId?.int64Value ?? 0
+                let existing = classId > 0
+                    ? (try? await container.notebookConfigRepository.listTabs(classId: classId).first { $0.id == tabId })
+                    : nil
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: [tabId]
+                ) else { return false }
                 try await container.notebookRepository.deleteTab(tabId: tabId)
+                return true
             }
+            return false
         case "learning_situation_tournament":
             let tournamentId = (payloadObject["id"] as? String) ?? change.id
             if !tournamentId.isEmpty {
+                let existing = try? await container.learningSituationsRepository.getTournament(id: tournamentId)
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: [tournamentId]
+                ) else { return false }
                 try await container.learningSituationsRepository.deleteTournament(id: tournamentId)
+                return true
             }
+            return false
         case "notebook_group":
             let groupId = int64Value(payloadObject["id"]) ?? Int64(change.id.replacingOccurrences(of: "group-", with: "")) ?? 0
             if groupId > 0 {
+                let classId = int64Value(payloadObject["classId"]) ?? notebookViewModel.currentClassId?.int64Value ?? 0
+                let existing = classId > 0
+                    ? (try? await container.notebookConfigRepository.listWorkGroups(classId: classId, tabId: nil).first { $0.id == groupId })
+                    : nil
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: ["\(groupId)", "group-\(groupId)"]
+                ) else { return false }
                 try await container.notebookRepository.deleteWorkGroup(groupId: groupId)
+                return true
             }
+            return false
         case "notebook_group_member":
             // Formato "classId|tabId|groupId|studentId" o tombstone "group-member-classId-tabId-groupId-studentId".
             let rawId = change.id.hasPrefix("group-member-")
@@ -3807,23 +4307,53 @@ extension KmpBridge {
                 let classId = int64Value(payloadObject["classId"]) ?? int64Value(payloadObject["class_id"]) ?? idParts[safe: 0].flatMap(Int64.init),
                 let tabId = (payloadObject["tabId"] as? String) ?? (payloadObject["tab_id"] as? String) ?? idParts[safe: 1],
                 let studentId = int64Value(payloadObject["studentId"]) ?? int64Value(payloadObject["student_id"]) ?? idParts[safe: 3].flatMap(Int64.init)
-            else { break }
+            else { return false }
+            let existing = try? await container.notebookConfigRepository
+                .listWorkGroupMembers(classId: classId, tabId: tabId)
+                .first { $0.studentId == studentId }
+            guard shouldApplyIncomingLanChange(
+                change,
+                existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                existingDeviceId: existing?.trace.deviceId,
+                alternatePendingIds: [change.id]
+            ) else { return false }
             try await container.notebookConfigRepository.clearStudentsFromWorkGroup(
                 classId: classId,
                 tabId: tabId,
                 studentIds: [KotlinLong(value: studentId)]
             )
+            return true
         case "notebook_column":
             let columnId = (payloadObject["id"] as? String) ?? change.id
             if !columnId.isEmpty {
+                let classId = int64Value(payloadObject["classId"]) ?? notebookViewModel.currentClassId?.int64Value ?? 0
+                let existing = classId > 0
+                    ? (try? await container.notebookConfigRepository.listColumns(classId: classId).first { $0.id == columnId })
+                    : nil
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: [columnId]
+                ) else { return false }
                 try await container.notebookRepository.deleteColumn(columnId: columnId)
+                return true
             }
+            return false
         case "notebook_instrument_template":
             let templateId = (payloadObject["id"] as? String) ?? change.id
             let columnId = templateId.hasPrefix("template_") ? String(templateId.dropFirst(9)) : templateId
             if let detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId) {
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: detail.template_.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: detail.template_.trace.deviceId,
+                    alternatePendingIds: [templateId]
+                ) else { return false }
                 try await container.notebookInstrumentsRepository.saveTemplate(template: detail.template_, items: [])
+                return true
             }
+            return false
         case "notebook_instrument_response":
             if let classId = int64Value(payloadObject["classId"]),
                let studentId = int64Value(payloadObject["studentId"]),
@@ -3837,12 +4367,19 @@ extension KmpBridge {
                         columnId: columnId
                     )
                 } catch {
-                    break
+                    return false
                 }
+                let previous = loadedResponses.first { $0.itemId == itemId }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: previous?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: previous?.trace.deviceId,
+                    alternatePendingIds: ["\(classId)-\(studentId)-\(columnId)-\(itemId)"]
+                ) else { return false }
                 guard let responses = InstrumentResponseMerge.removing(
                     existing: loadedResponses,
                     removeWhere: { $0.itemId == itemId }
-                ) else { break }
+                ) else { return false }
                 _ = try await container.notebookInstrumentsRepository.saveResponses(
                     classId: classId,
                     studentId: studentId,
@@ -3852,46 +4389,110 @@ extension KmpBridge {
                     deviceId: change.deviceId,
                     syncVersion: 1
                 )
+                return true
             }
+            return false
         case "notebook_column_category":
             let categoryId = (payloadObject["id"] as? String) ?? change.id
             let classId = int64Value(payloadObject["classId"]) ?? notebookViewModel.currentClassId?.int64Value ?? 0
             if classId > 0 && !categoryId.isEmpty {
+                let existing = try? await container.notebookConfigRepository
+                    .listColumnCategories(classId: classId, tabId: nil)
+                    .first { $0.id == categoryId }
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: [categoryId]
+                ) else { return false }
                 let preserveColumns = (payloadObject["preserveColumns"] as? Bool) ?? true
                 try await container.notebookRepository.deleteColumnCategory(classId: classId, categoryId: categoryId, preserveColumns: preserveColumns)
+                return true
             }
+            return false
         case "rubric_bundle":
             let rubricId = int64Value(payloadObject["rubricId"]) ?? Int64(change.id) ?? 0
             if rubricId > 0 {
+                let existing = try? await container.rubricsRepository.getRubricDetail(rubricId: rubricId)?.rubric
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existing?.trace.updatedAt.toEpochMilliseconds(),
+                    existingDeviceId: existing?.trace.deviceId,
+                    alternatePendingIds: ["\(rubricId)"]
+                ) else { return false }
                 try await container.rubricsRepository.deleteRubric(rubricId: rubricId)
+                return true
             }
+            return false
         case "planning_session":
             let sessionId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
             if sessionId > 0 {
+                let existingRow = container.database.plannerQueries.selectSessionById(id: sessionId).executeAsOneOrNull()
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existingRow?.updated_at_epoch_ms,
+                    existingDeviceId: existingRow?.device_id,
+                    alternatePendingIds: ["\(sessionId)"]
+                ) else { return false }
                 try await container.plannerRepository.deleteSession(sessionId: sessionId)
+                return true
             }
+            return false
         case "session_journal":
             let planningSessionId = int64Value(payloadObject["planningSessionId"]) ?? Int64(change.id) ?? 0
             if planningSessionId > 0 {
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: nil,
+                    existingDeviceId: nil,
+                    alternatePendingIds: ["\(planningSessionId)"]
+                ) else { return false }
                 try await container.sessionJournalRepository.deleteJournalForSession(planningSessionId: planningSessionId)
+                return true
             }
+            return false
         case "teaching_unit":
             let unitId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
             if unitId > 0 {
+                let existingRow = container.database.plannerQueries.selectAllTeachingUnits().executeAsList().first(where: { $0.id == unitId })
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: existingRow?.updated_at_epoch_ms,
+                    existingDeviceId: existingRow?.device_id,
+                    alternatePendingIds: ["\(unitId)"]
+                ) else { return false }
                 _ = try await container.plannerRepository.deleteTeachingUnit(unitId: unitId)
+                return true
             }
+            return false
         case "teacher_schedule_slot":
             let slotId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
             if slotId > 0 {
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: nil,
+                    existingDeviceId: nil,
+                    alternatePendingIds: ["\(slotId)"]
+                ) else { return false }
                 try await container.teacherScheduleRepository.deleteScheduleSlot(slotId: slotId)
+                return true
             }
+            return false
         case "planner_evaluation_period":
             let periodId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
             if periodId > 0 {
+                guard shouldApplyIncomingLanChange(
+                    change,
+                    existingUpdatedAtEpochMs: nil,
+                    existingDeviceId: nil,
+                    alternatePendingIds: ["\(periodId)"]
+                ) else { return false }
                 try await container.teacherScheduleRepository.deleteEvaluationPeriod(periodId: periodId)
+                return true
             }
+            return false
         default:
-            break
+            return false
         }
     }
 
@@ -4624,7 +5225,12 @@ extension KmpBridge {
                 #if os(macOS)
                 let shouldForceFullPull = false
                 #else
+                // Una sola descarga completa tras actualizar: recupera las rúbricas nuevas
+                // que versiones anteriores descartaron al recibirlas del Mac.
+                let rubricRecoveryKey = "sync.recovery.rubricas-nuevas.v1"
+                let needsRubricRecovery = !UserDefaults.standard.bool(forKey: rubricRecoveryKey)
                 let shouldForceFullPull = forceFullPull
+                    || needsRubricRecovery
                     || now.timeIntervalSince(persistedLastFullPullAt) > Self.fullPullSafetyInterval
                 #endif
                 try await performPullSync(
@@ -4633,6 +5239,10 @@ extension KmpBridge {
                 )
                 if shouldForceFullPull {
                     persistedLastFullPullAt = now
+                    #if !os(macOS)
+                    // Solo aquí: si la descarga falla, se reintenta en la siguiente pasada.
+                    UserDefaults.standard.set(true, forKey: "sync.recovery.rubricas-nuevas.v1")
+                    #endif
                 }
                 lastSuccessfulSyncAt = now
 

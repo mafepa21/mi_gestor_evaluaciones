@@ -11,7 +11,13 @@ import AppKit
 /// conservan las correspondencias privadas y se importan lotes. La pantalla ya
 /// no depende de un único grupo ni del formulario más reciente.
 struct WebSubmissionsWorkspaceView: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (allStudents, classes, selectedStudentsClassId),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    private var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.allStudents), .init($0.classes), .init($0.selectedStudentsClassId)] }
+    }
 
     @AppStorage("webSubmissions.baseURL") private var baseURL = "https://projectosef.alwaysdata.net"
     @AppStorage("webSubmissions.deliveryEmail") private var deliveryEmail = ""
@@ -42,6 +48,7 @@ struct WebSubmissionsWorkspaceView: View {
     @State private var publishResult: WebPublishResult?
     @State private var emailTask: WebSubmissionTaskInfo?
     @State private var passportTask: WebSubmissionTaskInfo?
+    @State private var peerTask: WebSubmissionTaskInfo?
     @State private var taskToRevoke: WebSubmissionTaskInfo?
     @State private var selectionMode = false
     @State private var selectedTaskIDs: Set<String> = []
@@ -87,7 +94,7 @@ struct WebSubmissionsWorkspaceView: View {
                 baseURL: $baseURL,
                 deliveryEmail: $deliveryEmail,
                 isPublishing: publishing,
-                onPublish: { columnId, url, correo, caducidad, modo, idioma in
+                onPublish: { columnId, url, correo, caducidad, modo, idioma, dibujos, coevaluacion in
                     Task {
                         await publish(
                             columnId: columnId,
@@ -95,7 +102,9 @@ struct WebSubmissionsWorkspaceView: View {
                             deliveryEmail: correo,
                             expiresAt: caducidad,
                             mode: modo,
-                            locale: idioma
+                            locale: idioma,
+                            visuals: dibujos,
+                            peer: coevaluacion
                         )
                     }
                 },
@@ -111,6 +120,15 @@ struct WebSubmissionsWorkspaceView: View {
                 links: linksByFormInstanceId[task.formInstanceId] ?? []
             )
         }
+        #if os(macOS)
+        .sheet(item: $peerTask) { task in
+            WebPeerResultsSheet(
+                task: task,
+                load: { await bridge.loadWebPeerResults(formInstanceId: task.formInstanceId) },
+                collect: { await collectFromInbox(reportErrors: false) }
+            )
+        }
+        #endif
         .sheet(item: $passportTask) { task in
             WebPassportProgressSheet(
                 task: task,
@@ -537,6 +555,16 @@ struct WebSubmissionsWorkspaceView: View {
                 .disabled(revoking || bulkProcessing)
             }
 
+            if task.mode == "peer" {
+                Button {
+                    peerTask = task
+                } label: {
+                    Label("Ver coevaluación", systemImage: "person.2")
+                }
+                .buttonStyle(.borderless)
+                .disabled(revoking || bulkProcessing)
+            }
+
             if task.status == .active && !task.isArchived {
                 Button {
                     Task {
@@ -688,7 +716,9 @@ struct WebSubmissionsWorkspaceView: View {
         deliveryEmail correo: String,
         expiresAt: Date,
         mode: String = "self",
-        locale: String = "es"
+        locale: String = "es",
+        visuals: [String: String] = [:],
+        peer: WebPeerPublishOptions = WebPeerPublishOptions()
     ) async {
         guard let classId = creationClassId else { return }
         publishing = true
@@ -701,7 +731,10 @@ struct WebSubmissionsWorkspaceView: View {
                 deliveryEmail: cleanEmail(correo),
                 expiresAt: expiresAt,
                 mode: mode,
-                locale: locale
+                locale: locale,
+                visuals: visuals,
+                peerPick: peer.peerPick,
+                includeSelf: peer.includeSelf
             )
             await reload()
             await reloadCreationInstruments()

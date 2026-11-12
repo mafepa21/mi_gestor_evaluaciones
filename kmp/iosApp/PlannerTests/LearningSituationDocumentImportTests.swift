@@ -239,6 +239,72 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertTrue(instrument.note?.contains("Las 2 preguntas abiertas no puntúan") == true)
     }
 
+    func testHockeyRubricImportsWithStopwatchCutsAndVisualKeysFromBothDocuments() throws {
+        let service = LearningSituationAssessmentInstrumentsImportService()
+        let instrumentosBody = [
+            paragraph("SA 2: Hockey - Instrumentos de evaluación", style: "Heading1"),
+            paragraph("2. Rúbrica Analítica de Técnica con Implemento (visual y con cronómetro) - CE 2.2 - 34%"),
+            """
+            <w:tbl>
+              <w:tr><w:tc><w:p><w:r><w:t>Criterio</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Nivel 1 (1.0-4.9)</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Nivel 2 (5.0-6.9)</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Nivel 3 (7.0-8.9)</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Nivel 4 (9.0-10.0)</w:t></w:r></w:p></w:tc></w:tr>
+              <w:tr><w:tc><w:p><w:r><w:t>Tiempo total del circuito (ida, pared y vuelta) (25 %)</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>18 s o más, o no completa el recorrido de ida y vuelta.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>De 15 a 18 s.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>De 12 a 15 s.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Menos de 12 s sin derribar ni saltarse conos.</w:t></w:r></w:p></w:tc></w:tr>
+              <w:tr><w:tc><w:p><w:r><w:t>Slalom de ida en 4 conos (30 cm) con cara plana (25 %)</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Toca la bola con la cara redondeada o se salta conos del slalom.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Usa la cara plana pero derriba algún cono o pierde el control en los giros estrechos (30 cm).</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Supera los 4 conos a 30 cm usando solo la cara plana y sin tocarlos.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Slalom rápido y fluido en los 4 conos a 30 cm con cambios limpios de mano y bola pegada al stick.</w:t></w:r></w:p></w:tc></w:tr>
+              <w:tr><w:tc><w:p><w:r><w:t>Pase push a la pared y control tras rebote (25 %)</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Golpea seco levantando el stick o el pase no llega a rebotar en la pared.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Empuja a la pared pero la bola se le escapa al volver y tiene que perseguirla.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Pase push raso a la pared y recepción amortiguada con la cara plana en 1-2 toques.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Push firme y tenso a la pared con control orientado tras el rebote que enlaza directo con el regreso.</w:t></w:r></w:p></w:tc></w:tr>
+              <w:tr><w:tc><w:p><w:r><w:t>Vuelta al slalom y finalización antes de la línea de inicio (25 %)</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>No completa el slalom de vuelta o pierde la bola antes de llegar.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Completa la vuelta pero no frena a tiempo y la bola rebasa suelta la línea de inicio.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Completa el slalom de vuelta y detiene la bola controlada justo antes de la línea de inicio.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Vuelta rápida sin tocar los 4 conos y parada en seco sobre la zona previa a la línea de inicio.</w:t></w:r></w:p></w:tc></w:tr>
+            </w:tbl>
+            """
+        ].joined(separator: "\n")
+        let instrumentosURL = try makeDocx(named: "hockey-instrumentos", body: instrumentosBody)
+        defer { try? FileManager.default.removeItem(at: instrumentosURL.deletingLastPathComponent()) }
+
+        let draft = try service.preview(from: instrumentosURL, data: Data(contentsOf: instrumentosURL))
+        let rubric = try XCTUnwrap(draft.instruments.first?.rubric)
+        XCTAssertEqual(rubric.criteria.count, 4)
+        XCTAssertEqual(rubric.criteria.map(\.timingConfig), ["lower;12.0;15.0;18.0", nil, nil, nil])
+        XCTAssertEqual(rubric.criteria.map(\.visualKey), [
+            nil,
+            "hockey.dribble_flat_face",
+            "hockey.push_flick",
+            "hockey.shot_on_goal"
+        ])
+
+        let standaloneBody = [
+            paragraph("Rúbrica visual de técnica · Hockey", style: "Heading1"),
+            paragraph("SA 2 · Hockey (4º ESO) · CE 2.2 · Colegio Sagrado Corazón (Mislata) · Curso 2026-2027"),
+            paragraph("1. Tiempo total del circuito (ida, pared y vuelta)   25 %"),
+            "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>1  Nivel 1 (1.0-4.9) 1 punto</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>2  Nivel 2 (5.0-6.9) 2 puntos</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>3  Nivel 3 (7.0-8.9) 3 puntos</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>4  Nivel 4 (9.0-10.0) 4 puntos</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>18 s o más, o no completa el recorrido de ida y vuelta.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>De 15 a 18 s.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>De 12 a 15 s.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Menos de 12 s sin derribar ni saltarse conos.</w:t></w:r></w:p></w:tc></w:tr></w:tbl>",
+            paragraph("2. Slalom de ida en 4 conos (30 cm) con cara plana   25 %"),
+            "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>1  Nivel 1 (1.0-4.9) 1 punto</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>2  Nivel 2 (5.0-6.9) 2 puntos</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>3  Nivel 3 (7.0-8.9) 3 puntos</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>4  Nivel 4 (9.0-10.0) 4 puntos</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>Toca la bola con la cara redondeada o se salta conos del slalom.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Usa la cara plana pero derriba algún cono o pierde el control en los giros estrechos (30 cm).</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Supera los 4 conos a 30 cm usando solo la cara plana y sin tocarlos.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Slalom rápido y fluido en los 4 conos a 30 cm con cambios limpios de mano y bola pegada al stick.</w:t></w:r></w:p></w:tc></w:tr></w:tbl>",
+            paragraph("3. Pase push a la pared y control tras rebote   25 %"),
+            "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>1  Nivel 1 (1.0-4.9) 1 punto</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>2  Nivel 2 (5.0-6.9) 2 puntos</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>3  Nivel 3 (7.0-8.9) 3 puntos</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>4  Nivel 4 (9.0-10.0) 4 puntos</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>Golpea seco levantando el stick o el pase no llega a rebotar en la pared.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Empuja a la pared pero la bola se le escapa al volver y tiene que perseguirla.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Pase push raso a la pared y recepción amortiguada con la cara plana en 1-2 toques.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Push firme y tenso a la pared con control orientado tras el rebote que enlaza directo con el regreso.</w:t></w:r></w:p></w:tc></w:tr></w:tbl>",
+            paragraph("4. Vuelta al slalom y finalización antes de la línea de inicio   25 %"),
+            "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>1  Nivel 1 (1.0-4.9) 1 punto</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>2  Nivel 2 (5.0-6.9) 2 puntos</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>3  Nivel 3 (7.0-8.9) 3 puntos</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>4  Nivel 4 (9.0-10.0) 4 puntos</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>No completa el slalom de vuelta o pierde la bola antes de llegar.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Completa la vuelta pero no frena a tiempo y la bola rebasa suelta la línea de inicio.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Completa el slalom de vuelta y detiene la bola controlada justo antes de la línea de inicio.</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Vuelta rápida sin tocar los 4 conos y parada en seco sobre la zona previa a la línea de inicio.</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"
+        ].joined(separator: "\n")
+        let standaloneURL = try makeDocx(named: "rubrica-visual-hockey", body: standaloneBody)
+        defer { try? FileManager.default.removeItem(at: standaloneURL.deletingLastPathComponent()) }
+
+        let standaloneDraft = try service.preview(from: standaloneURL, data: Data(contentsOf: standaloneURL))
+        let standaloneInstrument = try XCTUnwrap(standaloneDraft.instruments.first)
+        XCTAssertEqual(standaloneDraft.instruments.count, 1)
+        XCTAssertEqual(standaloneInstrument.title, "Rúbrica visual de técnica · Hockey")
+        XCTAssertEqual(standaloneInstrument.criterionLabel, "CE 2.2")
+        XCTAssertEqual(standaloneInstrument.kind, .rubric)
+        let standaloneRubric = try XCTUnwrap(standaloneInstrument.rubric)
+        XCTAssertEqual(standaloneRubric.criteria.map(\.title), [
+            "Tiempo total del circuito (ida, pared y vuelta)",
+            "Slalom de ida en 4 conos (30 cm) con cara plana",
+            "Pase push a la pared y control tras rebote",
+            "Vuelta al slalom y finalización antes de la línea de inicio"
+        ])
+        XCTAssertEqual(standaloneRubric.criteria.map(\.timingConfig), ["lower;12.0;15.0;18.0", nil, nil, nil])
+        XCTAssertEqual(standaloneRubric.criteria.map(\.visualKey), [
+            nil,
+            "hockey.dribble_flat_face",
+            "hockey.push_flick",
+            "hockey.shot_on_goal"
+        ])
+    }
+
     func testDevelopmentPayloadDecodesV1V2AndCorruptInputWithoutCrashing() throws {
         let section = LearningSituationSessionSectionDraft(title: "Bloque", lines: ["0'-10' · Entrada · Actividad"])
         let legacy = String(data: try JSONEncoder().encode([section]), encoding: .utf8)!
@@ -1409,8 +1475,11 @@ final class LearningSituationDocumentImportTests: XCTestCase {
     }
 
     func testBachilleratoSA2BadmintonSessionsImportBothRoutes() throws {
-        let url = URL(fileURLWithPath: "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/1º Bachillerato/SA 2 - Smash Together Badminton (1 BAC)/02_SESIONES/sesiones_secuenciadas.docx")
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        let candidates = [
+            URL(fileURLWithPath: "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/1º Bachillerato/SA 2 - Smash Together Badminton (1 BAC)/02_SESIONES/sesiones_secuenciadas.docx"),
+            URL(fileURLWithPath: "/Users/mariofernandez/Documents/3. Documents HHDC/Curso 2026:2027/Programaciones/output/Programación aula/Situaciones de aprendizaje/1º Bachillerato/SA 2 - Smash Together Badminton (1 BAC)/02_SESIONES/sesiones_secuenciadas.docx")
+        ]
+        guard let url = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) else { return }
         let draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
         for route in [LearningSituationWeeklySequenceRoute.shortFirst, .longFirst] {
             let plans = try XCTUnwrap(draft.routeVariants[route])
@@ -1421,6 +1490,17 @@ final class LearningSituationDocumentImportTests: XCTestCase {
                 print("SA2-IMPORT \(route.rawValue) \(plan.sourceLabel.prefix(30)) type=\(plan.sessionType) min=\(plan.effectiveMinutes) acts=\(plan.activities.count) units=\(unitKeys.sorted()) sum=\(plan.activities.compactMap(\.plannedMinutes).reduce(0, +)) dev=\(plan.development.count)")
                 XCTAssertEqual(plan.effectiveMinutes, expected)
                 XCTAssertEqual(plan.activities.compactMap(\.plannedMinutes).reduce(0, +), expected, "\(route.rawValue) \(plan.sourceLabel)")
+            }
+            let session6 = try XCTUnwrap(plans.first(where: { $0.sessionNumber == 6 }))
+            XCTAssertTrue(
+                session6.objective.contains("Double-Rotation") ||
+                session6.sourceLabel.contains("Lightning Ladder") ||
+                session6.title.contains("Lightning Ladder") ||
+                session6.title.contains("Escalafón")
+            )
+            if route == .longFirst {
+                XCTAssertEqual(session6.effectiveMinutes, 30)
+                XCTAssertEqual(session6.activities.count, 4)
             }
         }
     }

@@ -217,8 +217,17 @@ struct WebPublishableInstrument: Identifiable, Hashable {
     /// Paradas que tendría como pasaporte («Parada 1 · 3 preguntas»). Se calculan
     /// con los títulos de los apartados: ver `WebPassportSections`.
     var passportStops: [String] = []
+    /// Apartados de escala 1-4, los únicos que admiten rúbrica visual.
+    var scaleItems: [WebPublishableScaleItem] = []
+    /// La columna entra en la media. Una coevaluación solo informativa no debería.
+    var countsTowardAverage: Bool = true
 
     var canPublish: Bool { blockingIssue == nil }
+}
+
+struct WebPublishableScaleItem: Identifiable, Hashable {
+    let id: String
+    let title: String
 }
 
 struct WebPublishedLink: Identifiable, Hashable {

@@ -52,6 +52,7 @@ extension TournamentPlan {
         savedSchedule = []
         savedResults = []
         savedKnockoutResults = []
+        leagueClosedEarly = nil
         status = .draft
     }
 }

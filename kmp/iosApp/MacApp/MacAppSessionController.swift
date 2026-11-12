@@ -50,6 +50,7 @@ final class MacAppSessionController: ObservableObject {
     func start() {
         guard bootstrapState == .idle else { return }
         bootstrapState = .loading
+        MainThreadHangWatchdog.startIfDebug()
         Task {
             await bridge.bootstrap()
             bridge.onAppDidBecomeActive()

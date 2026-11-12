@@ -1416,7 +1416,9 @@ class RubricsRepositorySqlDelight(
                         updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                         deviceId = it.device_id,
                         syncVersion = it.sync_version,
-                    )
+                    ),
+                    visualKey = it.visual_key,
+                    timingConfig = it.timing_config,
                 )
             }
             val levels = levelRows.map {
@@ -1464,7 +1466,9 @@ class RubricsRepositorySqlDelight(
                     updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                     deviceId = it.device_id,
                     syncVersion = it.sync_version,
-                )
+                ),
+                visualKey = it.visual_key,
+                timingConfig = it.timing_config,
             )
         }
         val levels = db.appDatabaseQueries.selectAllLevels().executeAsList().map {
@@ -1562,6 +1566,18 @@ class RubricsRepositorySqlDelight(
         }
     }
 
+    override suspend fun saveCriterionPresentation(
+        criterionId: Long,
+        visualKey: String?,
+        timingConfig: String?,
+    ) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.updateCriterionPresentation(
+            visualKey?.takeIf { it.isNotBlank() },
+            timingConfig?.takeIf { it.isNotBlank() },
+            criterionId,
+        )
+    }
+
     override suspend fun deleteCriterion(criterionId: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteCriterion(criterionId)
     }
@@ -1624,6 +1640,15 @@ class RubricsRepositorySqlDelight(
         db.appDatabaseQueries.selectWeightedRubricScore(studentId, evaluationId).executeAsOneOrNull()?.score
     }
 
+    override suspend fun saveRubricAssessmentMeasurement(
+        studentId: Long,
+        evaluationId: Long,
+        criterionId: Long,
+        measuredValue: Double?,
+    ) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.updateRubricAssessmentMeasurement(measuredValue, studentId, evaluationId, criterionId)
+    }
+
     override suspend fun listRubricAssessments(studentId: Long, evaluationId: Long): List<RubricAssessment> = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.selectRubricAssessments(studentId, evaluationId).executeAsList().map {
             RubricAssessment(
@@ -1637,6 +1662,7 @@ class RubricsRepositorySqlDelight(
                     deviceId = it.device_id,
                     syncVersion = it.sync_version,
                 ),
+                measuredValue = it.measured_value,
             )
         }
     }
@@ -1654,6 +1680,7 @@ class RubricsRepositorySqlDelight(
                     deviceId = it.device_id,
                     syncVersion = it.sync_version,
                 ),
+                measuredValue = it.measured_value,
             )
         }
     }
@@ -1675,7 +1702,9 @@ class RubricsRepositorySqlDelight(
                     updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                     deviceId = it.device_id,
                     syncVersion = it.sync_version,
-                )
+                ),
+                visualKey = it.visual_key,
+                timingConfig = it.timing_config,
             )
         }
     }

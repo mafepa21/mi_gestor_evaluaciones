@@ -85,8 +85,28 @@ public struct AppleStudentEmailImportPreview: Identifiable, Sendable {
 public enum StudentEmailImportService {
 
     /// Extrae los componentes de nombre y apellidos a partir de un correo como:
-    /// `a.nombre.apellido@dominio` o `a.nombre.apellido.2apellido@dominio`
+    /// `a.nombre.apellido@dominio` o `a.nombre.apellido.2apellido@dominio`.
+    /// Con tres o más trozos, los dos últimos son los apellidos (`a.juan.carlos.garcia.lopez`
+    /// -> "Juan Carlos" / "Garcia Lopez").
     public static func parseEmailIdentity(email: String) -> (firstName: String, lastName: String, cleanEmail: String)? {
+        guard let (segments, cleanEmail) = emailNameSegments(email: email) else { return nil }
+        let primary = splitNameSegments(segments, surnameCount: min(2, segments.count - 1))
+        return (primary.firstName, primary.lastName, cleanEmail)
+    }
+
+    /// Todas las formas razonables de partir el correo en nombre y apellidos, empezando por la principal.
+    /// Cubre alumnado con un solo apellido (`a.juan.carlos.garcia`) y el reparto antiguo (nombre simple).
+    public static func candidateEmailIdentities(email: String) -> [(firstName: String, lastName: String)] {
+        guard let (segments, _) = emailNameSegments(email: email) else { return [] }
+        guard segments.count > 1 else { return [splitNameSegments(segments, surnameCount: 0)] }
+
+        var surnameCounts = [min(2, segments.count - 1), 1, segments.count - 1]
+        var seen = Set<Int>()
+        surnameCounts = surnameCounts.filter { seen.insert($0).inserted }
+        return surnameCounts.map { splitNameSegments(segments, surnameCount: $0) }
+    }
+
+    private static func emailNameSegments(email: String) -> (segments: [String], cleanEmail: String)? {
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard trimmed.contains("@") else { return nil }
 
@@ -102,23 +122,47 @@ public enum StudentEmailImportService {
         }
 
         guard !segments.isEmpty else { return nil }
+        return (segments, trimmed)
+    }
 
-        let firstName: String
-        let lastName: String
+    private static func splitNameSegments(_ segments: [String], surnameCount: Int) -> (firstName: String, lastName: String) {
+        let nameCount = segments.count - surnameCount
+        let firstName = segments.prefix(nameCount).map { $0.capitalized }.joined(separator: " ")
+        let lastName = segments.suffix(surnameCount).map { $0.capitalized }.joined(separator: " ")
+        return (firstName, lastName)
+    }
 
-        if segments.count == 1 {
-            firstName = segments[0].capitalized
-            lastName = ""
-        } else if segments.count == 2 {
-            firstName = segments[0].capitalized
-            lastName = segments[1].capitalized
-        } else {
-            // Caso con 2 apellidos: ej: ["antonio", "garcia", "lopez"] -> firstName="Antonio", lastName="Garcia Lopez"
-            firstName = segments[0].capitalized
-            lastName = segments.dropFirst().map { $0.capitalized }.joined(separator: " ")
+    /// Parte local del correo cuando viene "pegada", sin puntos (`nombreapellido@sjosetav.hhdc.net`).
+    /// Devuelve nil si el correo usa puntos, porque entonces se parte por segmentos.
+    public static func compactEmailLocalPart(email: String) -> String? {
+        guard let (segments, _) = emailNameSegments(email: email), segments.count == 1 else { return nil }
+        let compact = compactName(segments[0])
+        return compact.isEmpty ? nil : compact
+    }
+
+    /// Compara un correo pegado con el alumno: nombre + 1er apellido o nombre + los dos apellidos.
+    /// Con el nombre completo vale 1.0; solo con el primer nombre ("juan" de "Juan Carlos"), 0.9.
+    public static func compactMatchScore(localPart: String, candidateFirst: String, candidateLast: String) -> Double {
+        let firstTokens = normalizeString(candidateFirst).split(separator: " ").map(String.init)
+        let lastTokens = normalizeString(candidateLast).split(separator: " ").map(String.init)
+        guard !firstTokens.isEmpty, !lastTokens.isEmpty else { return 0 }
+
+        let surnameOptions = [lastTokens[0], lastTokens.joined()]
+        let firstNameOptions: [(name: String, score: Double)] = [
+            (firstTokens.joined(), 1.0),
+            (firstTokens[0], 0.9)
+        ]
+        var best = 0.0
+        for option in firstNameOptions {
+            for surname in surnameOptions where option.name + surname == localPart {
+                best = max(best, option.score)
+            }
         }
+        return best
+    }
 
-        return (firstName, lastName, trimmed)
+    private static func compactName(_ text: String) -> String {
+        normalizeString(text).replacingOccurrences(of: " ", with: "")
     }
 
     /// Normaliza un texto para comparaciones diacríticas y fonéticas seguras
@@ -186,6 +230,7 @@ public enum StudentEmailImportService {
         var normalized = name
             .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "es_ES"))
             .uppercased()
+            .replacingOccurrences(of: "BATXILLERAT", with: "BAC")
             .replacingOccurrences(of: "BACHILLERATO", with: "BAC")
             .replacingOccurrences(of: "BACH", with: "BAC")
             .replacingOccurrences(of: "º", with: "")
@@ -204,6 +249,37 @@ public enum StudentEmailImportService {
             options: .regularExpression
         )
         return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Convierte el curso de la hoja en una clave compacta de nivel: "/Alumnes/Batxillerat/1BACH 2026-27"
+    /// -> "1BAC", "1º ESO A" -> "1ESOA". Se queda con el último trozo de la ruta y quita el año escolar.
+    public static func courseKey(_ rawCourse: String) -> String {
+        let lastSegment = rawCourse
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .last
+            .map(String.init) ?? rawCourse
+        let withoutSchoolYear = lastSegment.replacingOccurrences(
+            of: #"\b\d{4}\s*[-/]\s*\d{2,4}\b"#,
+            with: " ",
+            options: .regularExpression
+        )
+        return compactClassKey(withoutSchoolYear)
+    }
+
+    private static func compactClassKey(_ name: String) -> String {
+        normalizeClassName(name).replacingOccurrences(of: " ", with: "")
+    }
+
+    /// Clases que encajan con el curso de la hoja. Si la hoja no distingue grupo (1BACH),
+    /// devuelve todos los grupos de ese nivel (1º BACH A, 1º BACH B…).
+    public static func matchingClasses(forCourse rawCourse: String, in classes: [SchoolClass]) -> [SchoolClass] {
+        let key = courseKey(rawCourse)
+        guard !key.isEmpty else { return [] }
+        return classes.filter { schoolClass in
+            let classKey = compactClassKey(schoolClass.name)
+            guard !classKey.isEmpty else { return false }
+            return classKey == key || classKey.contains(key) || key.contains(classKey)
+        }
     }
 
     /// Procesa filas de hoja de cálculo y genera la previsualización de emparejamiento.
@@ -234,36 +310,37 @@ public enum StudentEmailImportService {
             let cleanEmail = identity.cleanEmail
             let extractedFirst = identity.firstName
             let extractedLast = identity.lastName
+            let nameVariants = candidateEmailIdentities(email: colA)
+            let compactLocalPart = compactEmailLocalPart(email: colA)
 
-            // 1. Identificar la clase correspondiente según la columna B
-            var targetClass: SchoolClass? = nil
-            if !colB.isEmpty {
-                let normCourse = normalizeClassName(colB)
-                targetClass = classes.first(where: {
-                    let normClassName = normalizeClassName($0.name)
-                    return normClassName == normCourse ||
-                           normClassName.contains(normCourse) ||
-                           normCourse.contains(normClassName)
-                })
+            // 1. Identificar las clases del nivel según la columna B (puede haber varios grupos)
+            let targetClasses = colB.isEmpty ? [] : matchingClasses(forCourse: colB, in: classes)
+
+            // 2. Determinar el grupo de búsqueda de alumnos: todos los grupos del nivel
+            var searchPool: [Student] = []
+            var seenStudentIds = Set<Int64>()
+            for targetClass in targetClasses {
+                for student in studentsByClass[targetClass.id] ?? [] where seenStudentIds.insert(student.id).inserted {
+                    searchPool.append(student)
+                }
             }
-
-            // 2. Determinar el grupo de búsqueda de alumnos
-            let searchPool: [Student]
-            if let targetClass, let classStudents = studentsByClass[targetClass.id], !classStudents.isEmpty {
-                searchPool = classStudents
-            } else {
+            if searchPool.isEmpty {
                 searchPool = allStudents
             }
 
-            // 3. Evaluar emparejamiento contra el searchPool
+            // 3. Evaluar emparejamiento contra el searchPool; el nombre del correo decide
             var scoredCandidates: [(student: Student, score: Double)] = []
             for candidate in searchPool {
-                let score = matchScore(
-                    extractedFirst: extractedFirst,
-                    extractedLast: extractedLast,
-                    candidateFirst: candidate.firstName,
-                    candidateLast: candidate.lastName
-                )
+                let score = compactLocalPart.map {
+                    compactMatchScore(localPart: $0, candidateFirst: candidate.firstName, candidateLast: candidate.lastName)
+                } ?? nameVariants.map { variant in
+                    matchScore(
+                        extractedFirst: variant.firstName,
+                        extractedLast: variant.lastName,
+                        candidateFirst: candidate.firstName,
+                        candidateLast: candidate.lastName
+                    )
+                }.max() ?? 0
                 if score >= 0.5 {
                     scoredCandidates.append((candidate, score))
                 }
@@ -297,7 +374,19 @@ public enum StudentEmailImportService {
             } else {
                 matchStatus = .notFound
                 matchedStudent = nil
-                detail = targetClass != nil ? "No encontrado en \(targetClass!.name)" : "No encontrado en la app"
+                detail = targetClasses.isEmpty
+                    ? "No encontrado en la app"
+                    : "No encontrado en \(targetClasses.map(\.name).joined(separator: ", "))"
+            }
+
+            // Grupo real del alumno emparejado (el curso de la hoja puede abarcar varios)
+            let matchedClassName: String?
+            if let matchedStudent {
+                matchedClassName = targetClasses.first(where: { schoolClass in
+                    (studentsByClass[schoolClass.id] ?? []).contains(where: { $0.id == matchedStudent.id })
+                })?.name
+            } else {
+                matchedClassName = targetClasses.count == 1 ? targetClasses[0].name : nil
             }
 
             let item = StudentEmailRowMatch(
@@ -309,7 +398,7 @@ public enum StudentEmailImportService {
                 extractedLastName: extractedLast,
                 status: matchStatus,
                 matchedStudent: matchedStudent,
-                matchedClassName: targetClass?.name,
+                matchedClassName: matchedClassName,
                 currentEmail: matchedStudent?.email,
                 detail: detail
             )

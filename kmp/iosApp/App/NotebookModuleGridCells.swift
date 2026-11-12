@@ -654,7 +654,31 @@ extension NotebookModuleView {
     }
 
     @MainActor
+    @ViewBuilder
     private func columnRowCell(
+        column: NotebookColumnDefinition,
+        item: NotebookTableRow,
+        data: NotebookUiStateData,
+        rowIndex: Int,
+        allRows: [NotebookTableRow],
+        navigableSegments: [NotebookDisplaySegment]
+    ) -> some View {
+        if let pair = gridNavigationContext.physicalPairsByScoreId[column.id] {
+            physicalTestRowCell(pair: pair, column: column, item: item, data: data, rowIndex: rowIndex)
+        } else {
+            editableColumnRowCell(
+                column: column,
+                item: item,
+                data: data,
+                rowIndex: rowIndex,
+                allRows: allRows,
+                navigableSegments: navigableSegments
+            )
+        }
+    }
+
+    @MainActor
+    private func editableColumnRowCell(
         column: NotebookColumnDefinition,
         item: NotebookTableRow,
         data: NotebookUiStateData,
@@ -793,6 +817,35 @@ extension NotebookModuleView {
                     }
                 }
 
+                if column.inputKind.isStructuredInstrument {
+                    Button("Evaluar grupo…") {
+                        focusMode = .editing
+                        openStructuredBulk(column: column, data: data)
+                    }
+                }
+
+                Divider()
+                if let anchor = inspectorSelection,
+                   anchor.columnId == column.id,
+                   anchor.studentId != item.student.id {
+                    Button("Seleccionar hasta aquí", systemImage: "arrow.up.and.down.text.horizontal") {
+                        selectedCellRange = NotebookCellRange(
+                            columnId: column.id,
+                            anchorStudentId: anchor.studentId,
+                            endStudentId: item.student.id
+                        )
+                    }
+                }
+                Button("Copiar", systemImage: "doc.on.doc") {
+                    selectCellForClipboard(studentId: item.student.id, column: column)
+                    copySelectedCell(data: data)
+                }
+                Button("Pegar", systemImage: "clipboard") {
+                    selectCellForClipboard(studentId: item.student.id, column: column)
+                    pasteIntoSelectedCell(data: data)
+                }
+                Divider()
+
                 if column.type == .rubric {
                     Button("Evaluar alumno…") {
                         focusMode = .editing
@@ -908,6 +961,20 @@ extension NotebookModuleView {
         let stampIcon = annotation.icon
         let hasNote = !(annotation.note?.isEmpty ?? true)
         let attachmentCount = annotation.attachmentCount
+
+        // Instrumento estructurado que no es columna numérica (formulario, quiz, observación):
+        // la nota derivada vive en las notas guardadas y el progreso ("Completo", "3/5") en
+        // `displayValue`. Se pasan los dos para que la celda enseñe la nota y, al lado, el estado.
+        if column.inputKind.isStructuredInstrument, column.type != .numeric {
+            return NotebookCellDisplaySnapshot(
+                numericText: persistedRawNumericText(for: item, columnId: column.id)
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                text: persistedStructuredText(for: item, column: column),
+                stampIcon: stampIcon,
+                hasNote: hasNote,
+                attachmentCount: attachmentCount
+            )
+        }
 
         switch column.type {
         case .numeric:
@@ -1148,6 +1215,11 @@ extension NotebookModuleView {
             if column.type == .calculated {
                 Button("Editar fórmula…") {
                     presentFormulaEditor(for: column)
+                }
+            }
+            if column.inputKind.isStructuredInstrument {
+                Button("Evaluar grupo…") {
+                    openStructuredBulk(column: column, data: data)
                 }
             }
             if column.type == .rubric {

@@ -22,7 +22,7 @@ struct WebSubmissionPublishSheet: View {
     /// Correo al que el alumnado enviará su entrega.
     @Binding var deliveryEmail: String
     let isPublishing: Bool
-    let onPublish: (_ columnId: String, _ baseURL: String, _ deliveryEmail: String, _ expiresAt: Date, _ mode: String, _ locale: String) -> Void
+    let onPublish: (_ columnId: String, _ baseURL: String, _ deliveryEmail: String, _ expiresAt: Date, _ mode: String, _ locale: String, _ visuals: [String: String], _ peer: WebPeerPublishOptions) -> Void
     var onDetectPeerGroups: ((_ columnId: String) async -> KmpBridge.WebPeerDetectionResult)? = nil
     let result: WebPublishResult?
 
@@ -34,6 +34,10 @@ struct WebSubmissionPublishSheet: View {
     @State private var selectedLocale: String = "es"
     @State private var peerDetection: KmpBridge.WebPeerDetectionResult?
     @State private var isDetectingPeers: Bool = false
+    /// Dibujo elegido para cada apartado de escala (id del apartado → clave).
+    @State private var visuals: [String: String] = [:]
+    /// Coevaluación: a quién evalúa cada alumno y si hay autoevaluación.
+    @State private var peerOptions = WebPeerPublishOptions()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -70,6 +74,8 @@ struct WebSubmissionPublishSheet: View {
             }
         }
         .onChange(of: selectedColumnId) { _, newColId in
+            // Los dibujos van por apartado: con otro instrumento no valen.
+            visuals = [:]
             if selectedMode == "peer", let colId = newColId {
                 runPeerDetection(for: colId)
             }
@@ -118,6 +124,7 @@ struct WebSubmissionPublishSheet: View {
             HStack(alignment: .top, spacing: 24) {
                 VStack(alignment: .leading, spacing: 16) {
                     modeCard
+                    visualsCard
                     settingsCard
                     privacyCard
                 }
@@ -130,6 +137,7 @@ struct WebSubmissionPublishSheet: View {
 
             VStack(alignment: .leading, spacing: 18) {
                 modeCard
+                visualsCard
                 settingsCard
                 privacyCard
                 instrumentList
@@ -164,7 +172,7 @@ struct WebSubmissionPublishSheet: View {
 
             switch selectedMode {
             case "peer":
-                coevaluationDetailsView
+                peerOptionsView
             case "passport":
                 passportDetailsView
             default:
@@ -175,6 +183,65 @@ struct WebSubmissionPublishSheet: View {
         }
         .padding(16)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    /// Coevaluación: grupo de la SA o pareja que elige el alumnado en cada partido,
+    /// y si cada alumno se autoevalúa además.
+    private var peerOptionsView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("¿A quién evalúa cada alumno?")
+                .font(.caption.weight(.semibold))
+            VStack(alignment: .leading, spacing: 8) {
+                peerSourceRow(
+                    pick: false,
+                    title: "A los compañeros de su grupo de la SA",
+                    detail: "Como hasta ahora: los grupos de trabajo del Cuaderno."
+                )
+                peerSourceRow(
+                    pick: true,
+                    title: "A la pareja que elija en cada partido",
+                    detail: "Elige de la lista de la clase. Puede enviar un partido nuevo cada vez que juegue y la celda hace la media de todos."
+                )
+            }
+
+            if !peerOptions.peerPick {
+                coevaluationDetailsView
+            }
+
+            Toggle("Incluir autoevaluación", isOn: $peerOptions.includeSelf)
+                .font(.caption)
+            Text(peerOptions.includeSelf
+                 ? "Cada alumno se evalúa también a sí mismo."
+                 : (peerOptions.peerPick ? "Ahora: solo evalúan a su pareja." : "Ahora: solo evalúan a sus compañeros."))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func peerSourceRow(pick: Bool, title: String, detail: String) -> some View {
+        let elegido = peerOptions.peerPick == pick
+        return Button {
+            peerOptions.peerPick = pick
+            if !pick, let colId = selectedColumnId { runPeerDetection(for: colId) }
+        } label: {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: elegido ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(elegido ? Color.accentColor : .secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.caption.weight(elegido ? .semibold : .regular))
+                    Text(detail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(elegido ? [.isSelected] : [])
     }
 
     @ViewBuilder
@@ -257,6 +324,65 @@ struct WebSubmissionPublishSheet: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// Rúbrica visual: cada apartado de escala 1-4 puede llevar un juego de dibujos
+    /// de la web. Solo aparece si el instrumento elegido tiene escalas.
+    @ViewBuilder
+    private var visualsCard: some View {
+        if let instrumento = selectedInstrument, !instrumento.scaleItems.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Dibujos para el alumnado")
+                    .font(.headline)
+                Text("Cada nivel se elige mirando una pista que se mueve. Escribe los niveles del apartado en el idioma del formulario.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ForEach(instrumento.scaleItems) { apartado in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(apartado.title)
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(2)
+                        Picker(apartado.title, selection: visualBinding(for: apartado.id)) {
+                            Text("Sin dibujo").tag("")
+                            ForEach(WebRubricVisual.options) { opcion in
+                                Text(opcion.title).tag(opcion.key)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .help(WebRubricVisual.options.first { $0.key == visuals[apartado.id] }?.summary ?? "Se verá como una rúbrica normal.")
+                    }
+                }
+
+                if !visuals.isEmpty && instrumento.countsTowardAverage {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(.orange)
+                        Text("Esta columna cuenta para la media. Si la coevaluación es solo informativa, desactiva «Cuenta para la media» en la columna del Cuaderno.")
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(.caption)
+                    .padding(10)
+                    .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+            .padding(16)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    private var selectedInstrument: WebPublishableInstrument? {
+        instruments.first { $0.columnId == selectedColumnId }
+    }
+
+    private func visualBinding(for itemId: String) -> Binding<String> {
+        Binding(
+            get: { visuals[itemId] ?? "" },
+            set: { visuals[itemId] = $0.isEmpty ? nil : $0 }
+        )
     }
 
     /// Pasaporte: se rellena por partes. Enseña las paradas que saldrán del
@@ -601,7 +727,7 @@ struct WebSubmissionPublishSheet: View {
 
                 Button {
                     if let columnId = selectedColumnId {
-                        onPublish(columnId, baseURL, deliveryEmail, expiresAt, selectedMode, selectedLocale)
+                        onPublish(columnId, baseURL, deliveryEmail, expiresAt, selectedMode, selectedLocale, visuals, peerOptions)
                     }
                 } label: {
                     if isPublishing {
@@ -612,7 +738,7 @@ struct WebSubmissionPublishSheet: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(isPublishing || selectedColumnId == nil || baseURL.isEmpty || (selectedMode == "peer" && (peerDetection?.groups.isEmpty ?? true)))
+                .disabled(isPublishing || selectedColumnId == nil || baseURL.isEmpty || (selectedMode == "peer" && !peerOptions.peerPick && (peerDetection?.groups.isEmpty ?? true)))
             } else {
                 Button("Hecho") { dismiss() }
                     .buttonStyle(.borderedProminent)
@@ -671,7 +797,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 baseURL: .constant("https://projectosef.alwaysdata.net"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _, _, _, _ in },
+                onPublish: { _, _, _, _, _, _, _, _ in },
                 result: nil
             )
             .previewDisplayName("Antes de publicar")
@@ -683,7 +809,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 baseURL: .constant("https://projectosef.alwaysdata.net"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _, _, _, _ in },
+                onPublish: { _, _, _, _, _, _, _, _ in },
                 result: WebPublishResult(
                     formInstanceId: "11111111-1111-4111-8111-111111111111",
                     title: "Rúbrica de portafolio técnico",
@@ -706,7 +832,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 baseURL: .constant("https://projectosef.alwaysdata.net"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _, _, _, _ in },
+                onPublish: { _, _, _, _, _, _, _, _ in },
                 result: nil
             )
             .previewDisplayName("Sin instrumentos")
@@ -714,3 +840,11 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
     }
 }
 #endif
+
+/// Opciones de una coevaluación al publicar.
+struct WebPeerPublishOptions: Equatable {
+    /// Cada alumno elige en cada partido a quién evalúa, de toda la clase.
+    var peerPick = false
+    /// Cada alumno recibe también su autoevaluación.
+    var includeSelf = true
+}

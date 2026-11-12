@@ -46,6 +46,9 @@ struct RubricTemplateCriterion: Identifiable, Hashable {
     let name: String
     let weight: Double
     let levels: [RubricTemplateLevel]
+    /// Dibujos por nivel (`RubricVisuals`) y cortes de cronómetro (`RubricTiming`).
+    var visualKey: String? = nil
+    var timingConfig: String? = nil
 }
 
 /// Plantilla oficial de rúbrica lista para importación.
@@ -443,7 +446,66 @@ enum RubricTemplateCatalog {
                     ]
                 )
             ]
-        )
+        ),
+        // 9. Hockey: técnica con dibujos y cronómetro
+        RubricTemplateItem(
+            id: "ef-hockey-tecnica-visual",
+            title: "Hockey · Técnica con cronómetro (4º ESO)",
+            category: .sportsAndGames,
+            subject: "Educación Física",
+            stage: "4º ESO",
+            description: "CE 2.2. Circuito de habilidad técnica en 4 fases: salida y slalom de ida entre 4 conos a 30 cm con la cara plana, pase push contra la pared con control tras el rebote, y vuelta al slalom parando la bola antes de la línea de inicio. Cronómetro con cortes de 12, 15 y 18 s y dibujos por nivel.",
+            criteria: [
+                RubricTemplateCriterion(
+                    id: "c1",
+                    name: "Tiempo total del circuito (ida, pared y vuelta)",
+                    weight: 0.25,
+                    levels: [
+                        RubricTemplateLevel(id: "c1_l1", order: 1, name: "Nivel 1 (1.0-4.9)", points: 1, description: "18 s o más, o no completa el recorrido de ida y vuelta."),
+                        RubricTemplateLevel(id: "c1_l2", order: 2, name: "Nivel 2 (5.0-6.9)", points: 2, description: "De 15 a 18 s."),
+                        RubricTemplateLevel(id: "c1_l3", order: 3, name: "Nivel 3 (7.0-8.9)", points: 3, description: "De 12 a 15 s."),
+                        RubricTemplateLevel(id: "c1_l4", order: 4, name: "Nivel 4 (9.0-10.0)", points: 4, description: "Menos de 12 s sin derribar ni saltarse conos.")
+                    ],
+                    timingConfig: "lower;12.0;15.0;18.0"
+                ),
+                RubricTemplateCriterion(
+                    id: "c2",
+                    name: "Slalom de ida en 4 conos (30 cm) con cara plana",
+                    weight: 0.25,
+                    levels: [
+                        RubricTemplateLevel(id: "c2_l1", order: 1, name: "Nivel 1 (1.0-4.9)", points: 1, description: "Toca la bola con la cara redondeada o se salta conos del slalom."),
+                        RubricTemplateLevel(id: "c2_l2", order: 2, name: "Nivel 2 (5.0-6.9)", points: 2, description: "Usa la cara plana pero derriba algún cono o pierde el control en los giros estrechos (30 cm)."),
+                        RubricTemplateLevel(id: "c2_l3", order: 3, name: "Nivel 3 (7.0-8.9)", points: 3, description: "Supera los 4 conos a 30 cm usando solo la cara plana y sin tocarlos."),
+                        RubricTemplateLevel(id: "c2_l4", order: 4, name: "Nivel 4 (9.0-10.0)", points: 4, description: "Slalom rápido y fluido en los 4 conos a 30 cm con cambios limpios de mano y bola pegada al stick.")
+                    ],
+                    visualKey: "hockey.dribble_flat_face"
+                ),
+                RubricTemplateCriterion(
+                    id: "c3",
+                    name: "Pase push a la pared y control tras rebote",
+                    weight: 0.25,
+                    levels: [
+                        RubricTemplateLevel(id: "c3_l1", order: 1, name: "Nivel 1 (1.0-4.9)", points: 1, description: "Golpea seco levantando el stick o el pase no llega a rebotar en la pared."),
+                        RubricTemplateLevel(id: "c3_l2", order: 2, name: "Nivel 2 (5.0-6.9)", points: 2, description: "Empuja a la pared pero la bola se le escapa al volver y tiene que perseguirla."),
+                        RubricTemplateLevel(id: "c3_l3", order: 3, name: "Nivel 3 (7.0-8.9)", points: 3, description: "Pase push raso a la pared y recepción amortiguada con la cara plana en 1-2 toques."),
+                        RubricTemplateLevel(id: "c3_l4", order: 4, name: "Nivel 4 (9.0-10.0)", points: 4, description: "Push firme y tenso a la pared con control orientado tras el rebote que enlaza directo con el regreso.")
+                    ],
+                    visualKey: "hockey.push_flick"
+                ),
+                RubricTemplateCriterion(
+                    id: "c4",
+                    name: "Vuelta al slalom y finalización antes de la línea de inicio",
+                    weight: 0.25,
+                    levels: [
+                        RubricTemplateLevel(id: "c4_l1", order: 1, name: "Nivel 1 (1.0-4.9)", points: 1, description: "No completa el slalom de vuelta o pierde la bola antes de llegar."),
+                        RubricTemplateLevel(id: "c4_l2", order: 2, name: "Nivel 2 (5.0-6.9)", points: 2, description: "Completa la vuelta pero no frena a tiempo y la bola rebasa suelta la línea de inicio."),
+                        RubricTemplateLevel(id: "c4_l3", order: 3, name: "Nivel 3 (7.0-8.9)", points: 3, description: "Completa el slalom de vuelta y detiene la bola controlada justo antes de la línea de inicio."),
+                        RubricTemplateLevel(id: "c4_l4", order: 4, name: "Nivel 4 (9.0-10.0)", points: 4, description: "Vuelta rápida sin tocar los 4 conos y parada en seco sobre la zona previa a la línea de inicio.")
+                    ],
+                    visualKey: "hockey.shot_on_goal"
+                )
+            ]
+        ),
     ]
 
     /// Genera la representación TSV que entiende `KmpBridge.importRubricDraft(tsv:)`.
@@ -482,6 +544,9 @@ enum RubricTemplateCatalog {
         }
         for (idx, criterion) in template.criteria.enumerated() {
             bridge.updateRubricCriterionWeight(at: idx, weight: criterion.weight)
+            if criterion.visualKey != nil || criterion.timingConfig != nil {
+                bridge.updateRubricCriterionPresentation(at: idx, visualKey: criterion.visualKey, timingConfig: criterion.timingConfig)
+            }
         }
         return try await bridge.saveRubricFromBuilderReturningId()
     }

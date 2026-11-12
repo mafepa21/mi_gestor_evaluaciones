@@ -584,6 +584,7 @@ class ModuleRecordsSync(
                     parts.getOrNull(1)?.toIntOrNull() ?: return false,
                     parts.getOrNull(2)?.toIntOrNull() ?: return false,
                 ) ?: return false
+                if (plan.trace.updatedAt.toEpochMilliseconds() > change.updatedAtEpochMs) return false
                 container.plannerWeekPlanRepository.delete(plan.id)
                 true
             }
@@ -592,6 +593,7 @@ class ModuleRecordsSync(
                 val studentId = parts.getOrNull(1)?.toLongOrNull() ?: return false
                 val schoolYear = parts.getOrNull(2) ?: return false
                 val task = findInclusionTask(studentId, schoolYear, change.id) ?: return false
+                if (task.updatedAtEpochMs > change.updatedAtEpochMs) return false
                 container.inclusionTaskRepository.delete(task.id)
                 true
             }

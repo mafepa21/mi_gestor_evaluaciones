@@ -112,6 +112,7 @@ struct NotebookModuleView: View {
     @State var isFillColumnDialogPresented = false
     @State var pendingCopyTabStructureSource: NotebookTab? = nil
     @State var undoStack: [NotebookCellUndoEntry] = []
+    @State var structuredClipboard: NotebookStructuredClipboard? = nil
     @State var redoStack: [NotebookCellUndoEntry] = []
     @State var selectedCellRange: NotebookCellRange? = nil
     @State var structuralGridRevision = 0
@@ -125,6 +126,7 @@ struct NotebookModuleView: View {
     @State var notebookAISheetRequest: NotebookAISheetRequest? = nil
     @State var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
     @State var columnStatisticsRequest: NotebookColumnStatisticsRequest? = nil
+    @State var physicalGroupTimerRequest: NotebookPhysicalGroupTimerRequest? = nil
     @State var cellStampRequest: NotebookCellStampRequest? = nil
     @State var studentProfile360Request: StudentProfile360Request? = nil
     @State var isAverageConfigurationPresented = false
@@ -146,10 +148,15 @@ struct NotebookModuleView: View {
     @State var isPrecomputingRiskLevels = false
     @AppStorage("notebook.fixedZoneWidth") var fixedZoneWidthStored = 240.0
     @State var isDraggingFixedZoneDivider = false
+    /// La tabla se monta en la vuelta siguiente a la del resto del Cuaderno: así la
+    /// primera apertura no bloquea la pantalla de un tirón (y las filas, otra vuelta
+    /// después, ver `NotebookScrollSyncCoordinator.install`).
+    @State var isGridMounted = false
     @State var fixedZoneDragStartWidth: CGFloat = 0
     @State var fixedZoneLiveWidth: CGFloat? = nil
     @State var formulaEditRequest: NotebookFormulaEditRequest? = nil
     @State var structuredInstrumentRequest: StructuredInstrumentEvaluationRequest? = nil
+    @State var structuredBulkRequest: StructuredInstrumentBulkRequest? = nil
     @State var formulaDraft = ""
     @State var formulaAIPrompt = ""
     @State var formulaAIMessage: String? = nil
@@ -379,13 +386,17 @@ struct NotebookModuleView: View {
     }
 
     var body: some View {
+        // `AnyView` entre bloques de modificadores: sin estos cortes, el tipo de la
+        // vista anida decenas de hojas, avisos y `onChange`, y la primera apertura
+        // del Cuaderno congelaba la pantalla ~450 ms (Swift resuelve ese tipo
+        // gigante nivel a nivel). Solo bloques enteros, nunca filas ni celdas.
         if isMacInspectorOnly {
-            notebookLifecycleCleanup(notebookContentWithDialogs)
+            notebookLifecycleCleanup(AnyView(notebookContentWithDialogs))
         } else {
             notebookLifecycleCleanup(
-                notebookObservationModifiers(
-                    notebookSheetAndTaskModifiers(notebookContentWithDialogs)
-                )
+                AnyView(notebookObservationModifiers(
+                    AnyView(notebookSheetAndTaskModifiers(AnyView(notebookContentWithDialogs)))
+                ))
             )
         }
     }
@@ -506,7 +517,18 @@ struct NotebookModuleView: View {
                         }
                     )
                 }
-                spreadsheetContent(data: data, rows: rows)
+                Group {
+                    if isGridMounted {
+                        spreadsheetContent(data: data, rows: rows)
+                    } else {
+                        Color.clear
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .onAppear {
+                                // `.task` arrancaría en la misma vuelta: hace falta la cola principal.
+                                DispatchQueue.main.async { isGridMounted = true }
+                            }
+                    }
+                }
                     // Tarjeta elevada: el grid flota como superficie redondeada
                     // sobre el lienzo neutro del módulo (margen a los lados y
                     // abajo), en vez de ir a sangre completa. Es lo que da el aire
@@ -584,6 +606,7 @@ struct NotebookModuleView: View {
                     data.sheet.columnCategories.map { ($0.id, tint(for: $0)) },
                     uniquingKeysWith: { first, _ in first }
                 ),
+                physicalPairsByScoreId: NotebookPhysicalColumns.pairsByScoreId(in: data.sheet.columns),
                 selectedCellRange: selectedCellRange
             )
         }
@@ -1146,6 +1169,11 @@ struct NotebookModuleView: View {
 
     func copySelectedCell(data: NotebookUiStateData) {
         guard let selected = selectedNotebookCell(data: data) else { return }
+        if selected.column.inputKind.isStructuredInstrument || selected.column.type == .rubric {
+            copyStructuredCells(column: selected.column, data: data)
+            return
+        }
+        structuredClipboard = nil
         let rows = filteredRows(data: data)
         if let range = selectedCellRange,
            range.columnId == selected.column.id,
@@ -1165,12 +1193,25 @@ struct NotebookModuleView: View {
     func pasteIntoSelectedCell(data: NotebookUiStateData) {
         guard let selected = selectedNotebookCell(data: data),
               let rawClipboard = clipboardText() else { return }
+        if selected.column.inputKind.isStructuredInstrument {
+            pasteStructuredCells(into: selected.column, rawClipboard: rawClipboard, data: data)
+            return
+        }
+        if selected.column.type == .rubric {
+            pasteRubricCells(into: selected.column, rawClipboard: rawClipboard, data: data)
+            return
+        }
         guard isToolbarEditableCellColumn(selected.column) else {
             showToast("Esta columna se edita desde su acción específica", style: .warning)
             return
         }
 
-        let pastedValues = notebookClipboardColumnValues(from: rawClipboard)
+        var pastedValues = notebookClipboardColumnValues(from: rawClipboard)
+        // Un solo valor sobre un rango seleccionado rellena todo el rango.
+        let rangeRows = selectedRangeRows(column: selected.column, data: data)
+        if pastedValues.count == 1, rangeRows.count > 1 {
+            pastedValues = Array(repeating: pastedValues[0], count: rangeRows.count)
+        }
         let isNumericTarget = selected.column.type == .numeric
         guard pastedValues.count > 1 else {
             let value = pastedValues.first ?? rawClipboard.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1191,7 +1232,8 @@ struct NotebookModuleView: View {
         }
 
         let rows = filteredRows(data: data)
-        guard let startIndex = rows.firstIndex(where: { $0.student.id == selected.selection.studentId }) else { return }
+        let startStudentId = rangeRows.count > 1 ? rangeRows[0].student.id : selected.selection.studentId
+        guard let startIndex = rows.firstIndex(where: { $0.student.id == startStudentId }) else { return }
         let targetRows = rows[startIndex...]
 
         var changes: [NotebookCellUndoChange] = []
@@ -1476,9 +1518,9 @@ struct NotebookModuleView: View {
         }
 
         if isMacInspectorOnly {
-            content
+            AnyView(content)
         } else {
-            content
+            AnyView(content)
                 .sheet(item: $addColumnContext) { context in
                     addColumnSheetPresentation(for: context)
                 }
@@ -1500,6 +1542,12 @@ struct NotebookModuleView: View {
                         bridge: bridge,
                         classTitle: activeClassLabel
                     )
+                }
+                .sheet(item: $physicalGroupTimerRequest) { request in
+                    physicalGroupTimerSheet(request: request, data: data)
+                }
+                .task(id: physicalColumnRepairKey(data: data)) {
+                    await repairPhysicalColumnsIfNeeded(data: data)
                 }
                 .sheet(item: $cellStampRequest) { request in
                     cellStampSheet(request: request, data: data)
@@ -1555,6 +1603,24 @@ struct NotebookModuleView: View {
                     .presentationDetents([.large])
                     #endif
                 }
+                .sheet(item: $structuredBulkRequest) { request in
+                    StructuredInstrumentBulkEvaluationSheet(
+                        bridge: bridge,
+                        request: request,
+                        onSaved: { studentIds in
+                            studentIds.forEach { reloadNotebookRow($0) }
+                            showToast("Guardados \(studentIds.count) alumnos", style: .success)
+                        },
+                        onClose: {
+                            structuredBulkRequest = nil
+                        }
+                    )
+                    #if os(macOS)
+                    .frame(minWidth: 1000, minHeight: 680)
+                    #else
+                    .presentationDetents([.large])
+                    #endif
+                }
                 .sheet(isPresented: $isGroupManagementPresented, onDismiss: {
                     bridge.refreshCurrentNotebook()
                     if let classId = currentClassId {
@@ -1593,7 +1659,7 @@ struct NotebookModuleView: View {
                     }
                 )) {
                     RubricEvaluationView()
-                        .environmentObject(bridge)
+                        .kmpBridgeEnvironment(bridge)
                         #if os(macOS)
                         .frame(minWidth: 1180, minHeight: 700)
                         #endif

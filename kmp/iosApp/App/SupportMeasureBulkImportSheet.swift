@@ -11,7 +11,9 @@ import MiGestorKit
 /// (nombres/apellidos abreviados) o ambigua exige que el docente elija a mano en un
 /// desplegable — asignar una medida NEE al alumno equivocado es un error grave.
 struct SupportMeasureBulkImportSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 

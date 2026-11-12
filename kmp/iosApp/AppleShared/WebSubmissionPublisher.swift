@@ -65,6 +65,9 @@ enum WebSubmissionPublisher {
         let helpText: String?
         let scaleLabels: [String]?
         let sectionId: String?
+        /// Solo para escalas 1-4: clave de un juego de dibujos de la PWA
+        /// (`WebRubricVisual`). El alumnado elige el nivel mirando su dibujo.
+        var visual: String? = nil
     }
 
     struct SectionToPublish {
@@ -122,6 +125,9 @@ enum WebSubmissionPublisher {
         formInstanceId: String = UUID().uuidString,
         mode: String = "self",
         peerTargets: [PeerTargetToPublish] = [],
+        /// Coevaluación con pareja elegida: `peerTargets` trae a toda la clase y en
+        /// cada partido el alumnado elige a quién evalúa (`peerPick` en el manifiesto).
+        peerPick: Bool = false,
         /// Buzón de entregas (`WebSubmissionInbox.path`) y su clave de depósito. Con los
         /// dos, la web envía la entrega directa; sin ellos, solo por correo.
         inboxPath: String? = nil,
@@ -166,6 +172,7 @@ enum WebSubmissionPublisher {
                 json["options"] = item.options
             case .scale1To4:
                 if let labels = item.scaleLabels, labels.count == 4 { json["scaleLabels"] = labels }
+                if let visual = item.visual, WebRubricVisual.isKnown(visual) { json["visual"] = visual }
             case .check, .text, .number:
                 break
             }
@@ -185,6 +192,7 @@ enum WebSubmissionPublisher {
         if mode == "peer" || mode == "passport" {
             manifiesto["mode"] = mode
         }
+        if mode == "peer" && peerPick { manifiesto["peerPick"] = true }
         if let subtitle, !subtitle.isEmpty { manifiesto["subtitle"] = subtitle }
         if let deliveryEmail, !deliveryEmail.isEmpty {
             manifiesto["deliveryEmail"] = deliveryEmail
@@ -369,5 +377,30 @@ enum WebSubmissionPublisher {
         formato.timeZone = TimeZone(identifier: "UTC")
         formato.formatOptions = [.withInternetDateTime]
         return formato.string(from: Date(timeIntervalSince1970: Double(epochMs) / 1000))
+    }
+}
+
+/// Juegos de dibujos que trae la PWA para las rúbricas visuales. La clave viaja en
+/// el manifiesto (`visual`) y los dibujos viven en la web
+/// (`entregas-alumnado/src/vista/visuales.mjs`): añadir uno exige tocar los dos.
+enum WebRubricVisual {
+    struct Option: Identifiable, Hashable {
+        let key: String
+        let title: String
+        let summary: String
+        var id: String { key }
+    }
+
+    static let options: [Option] = [
+        Option(key: "badminton.shot_placement", title: "Bádminton · Colocación del golpe",
+               summary: "Adónde manda el volante: al rival, siempre igual, a los huecos o con engaño."),
+        Option(key: "badminton.back_to_base", title: "Bádminton · Vuelta a la base",
+               summary: "Qué hace tras golpear: se queda, vuelve tarde, vuelve al centro o se anticipa."),
+        Option(key: "badminton.serve", title: "Bádminton · Saque",
+               summary: "Falta, siempre igual, corto y largo, o el saque como ataque."),
+    ]
+
+    static func isKnown(_ key: String) -> Bool {
+        options.contains { $0.key == key }
     }
 }

@@ -33,6 +33,10 @@ struct TournamentRegistration: Equatable, Codable, Sendable {
     /// Buzón donde la web deposita las respuestas, si se publicó con él. La clave de
     /// lectura no va aquí: está en el llavero (`WebSubmissionInbox.readTokenName`).
     var inboxURL: String?
+    /// Formularios anteriores, de cuando se amplió el plazo. El plazo va firmado en el
+    /// enlace y no se puede cambiar: ampliar es publicar otro formulario. Los viejos se
+    /// guardan para seguir importando las respuestas que lleguen tarde.
+    var previousRounds: [TournamentRegistrationRound] = []
 
     static let yesOption = "Sí, me apunto"
     static let noOption = "No"
@@ -41,6 +45,94 @@ struct TournamentRegistration: Equatable, Codable, Sendable {
     static let teamNameItemId = "equipo"
 
     static let noPartnerOption = "Sin pareja, que me asigne la app"
+}
+
+/// Un formulario ya sustituido por una ampliación de plazo. Solo lo necesario para leer
+/// sus respuestas: las respuestas en sí viven en `TournamentRegistration.entries`.
+struct TournamentRegistrationRound: Equatable, Codable, Sendable {
+    var formInstanceId: String
+    var privateKeyRef: String
+    var expiresAtEpochMs: Int64
+    var manifestJSON: String
+    var studentIdByAlias: [String: String]
+    var itemIdByWebItemId: [String: String]
+    var studentIdByPartnerOption: [String: String]
+    var inboxURL: String?
+}
+
+extension TournamentRegistration {
+    private enum CodingKeys: String, CodingKey {
+        case formInstanceId, privateKeyRef, expiresAtEpochMs, manifestJSON, studentIdByAlias,
+             linkByStudentId, itemIdByWebItemId, studentIdByPartnerOption, entries,
+             importedSubmissionIds, inboxURL, previousRounds
+    }
+
+    /// A mano para que las inscripciones guardadas antes de las ampliaciones se sigan leyendo.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            formInstanceId: try c.decode(String.self, forKey: .formInstanceId),
+            privateKeyRef: try c.decode(String.self, forKey: .privateKeyRef),
+            expiresAtEpochMs: try c.decode(Int64.self, forKey: .expiresAtEpochMs),
+            manifestJSON: try c.decode(String.self, forKey: .manifestJSON),
+            studentIdByAlias: try c.decode([String: String].self, forKey: .studentIdByAlias),
+            linkByStudentId: try c.decode([String: String].self, forKey: .linkByStudentId),
+            itemIdByWebItemId: try c.decode([String: String].self, forKey: .itemIdByWebItemId),
+            studentIdByPartnerOption: try c.decode([String: String].self, forKey: .studentIdByPartnerOption),
+            entries: try c.decodeIfPresent([String: TournamentRegistrationEntry].self, forKey: .entries) ?? [:],
+            importedSubmissionIds: try c.decodeIfPresent([String].self, forKey: .importedSubmissionIds) ?? [],
+            inboxURL: try c.decodeIfPresent(String.self, forKey: .inboxURL),
+            previousRounds: try c.decodeIfPresent([TournamentRegistrationRound].self, forKey: .previousRounds) ?? []
+        )
+    }
+
+    /// El formulario actual, como ronda.
+    var currentRound: TournamentRegistrationRound {
+        TournamentRegistrationRound(
+            formInstanceId: formInstanceId,
+            privateKeyRef: privateKeyRef,
+            expiresAtEpochMs: expiresAtEpochMs,
+            manifestJSON: manifestJSON,
+            studentIdByAlias: studentIdByAlias,
+            itemIdByWebItemId: itemIdByWebItemId,
+            studentIdByPartnerOption: studentIdByPartnerOption,
+            inboxURL: inboxURL
+        )
+    }
+
+    /// Cada formulario (el actual primero) visto como inscripción, con las respuestas
+    /// comunes. Sirve para validar e importar entregas de cualquier ronda.
+    var allForms: [TournamentRegistration] {
+        [self] + previousRounds.map { round in
+            var form = self
+            form.formInstanceId = round.formInstanceId
+            form.privateKeyRef = round.privateKeyRef
+            form.expiresAtEpochMs = round.expiresAtEpochMs
+            form.manifestJSON = round.manifestJSON
+            form.studentIdByAlias = round.studentIdByAlias
+            form.itemIdByWebItemId = round.itemIdByWebItemId
+            form.studentIdByPartnerOption = round.studentIdByPartnerOption
+            form.inboxURL = round.inboxURL
+            form.linkByStudentId = [:]
+            form.previousRounds = []
+            return form
+        }
+    }
+
+    /// Sustituye el formulario por uno recién publicado sin perder nada: las respuestas
+    /// se quedan y el formulario actual pasa a `previousRounds`.
+    func extended(with newForm: TournamentRegistration) -> TournamentRegistration {
+        var result = newForm
+        result.entries = entries
+        result.importedSubmissionIds = importedSubmissionIds
+        result.previousRounds = previousRounds + [currentRound]
+        return result
+    }
+
+    /// Alumnado del curso que aún no ha respondido.
+    func pendingStudentIds(rosterIds: [String]) -> [String] {
+        rosterIds.filter { entries[$0] == nil }
+    }
 }
 
 /// Lo que respondió un alumno.
@@ -267,11 +359,22 @@ extension TournamentRegistration {
         baseURL: String,
         deliveryEmail: String?,
         expiresAt: Date,
+        linkStudentIds: Set<Int64>? = nil,
         session: URLSession = .shared
     ) async throws -> Published {
+        // La lista de parejas es siempre todo el curso; los enlaces, solo para `linkStudentIds`
+        // (en una ampliación, quien aún no ha respondido).
         let labels = TournamentRegistrationNames.optionLabels(
             for: students.map { (id: String($0.id), firstName: $0.firstName, lastName: $0.lastName) }
         )
+        let linkStudents = linkStudentIds.map { ids in students.filter { ids.contains($0.id) } } ?? students
+        guard !linkStudents.isEmpty else {
+            throw NSError(
+                domain: "TournamentRegistration",
+                code: 400,
+                userInfo: [NSLocalizedDescriptionKey: "No queda nadie sin responder."]
+            )
+        }
         let options = labels.values.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
 
         let inbox = WebSubmissionInbox.prepareRegistration(baseURL: baseURL)
@@ -290,7 +393,7 @@ extension TournamentRegistration {
                 .init(itemId: teamNameItemId, title: "Nombre del equipo (opcional)", type: .text, required: false,
                       options: [], helpText: nil, scaleLabels: nil, sectionId: nil),
             ],
-            students: students.map {
+            students: linkStudents.map {
                 .init(id: $0.id, name: "\($0.firstName) \($0.lastName)".trimmingCharacters(in: .whitespaces))
             },
             baseURL: baseURL,
@@ -359,9 +462,11 @@ extension TournamentRegistration {
     @discardableResult
     mutating func absorb(_ drafts: [WebSubmissionDraft]) -> Int {
         var count = 0
-        for draft in drafts where draft.formInstanceId == formInstanceId {
-            guard let studentId = draft.studentId,
-                  let entry = entry(studentId: studentId, answers: draft.answers) else { continue }
+        let forms = allForms
+        for draft in drafts {
+            guard let form = forms.first(where: { $0.formInstanceId == draft.formInstanceId }),
+                  let studentId = draft.studentId,
+                  let entry = form.entry(studentId: studentId, answers: draft.answers) else { continue }
             entries[entry.studentId] = entry
             if !importedSubmissionIds.contains(draft.submissionId) {
                 importedSubmissionIds.append(draft.submissionId)

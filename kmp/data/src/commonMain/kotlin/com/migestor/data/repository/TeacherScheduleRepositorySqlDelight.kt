@@ -112,6 +112,7 @@ class TeacherScheduleRepositorySqlDelight(
     private suspend fun saveScheduleBlocking(schedule: TeacherSchedule): Long {
         return runCatching {
             val now = Clock.System.now().toEpochMilliseconds()
+            val updatedAt = schedule.trace.updatedAt.toEpochMilliseconds().takeIf { it > 0L } ?: now
             db.appDatabaseQueries.upsertTeacherSchedule(
                 id = schedule.id.takeIf { it != 0L },
                 owner_user_id = schedule.ownerUserId,
@@ -121,8 +122,8 @@ class TeacherScheduleRepositorySqlDelight(
                 end_date = schedule.endDateIso,
                 active_weekdays = schedule.activeWeekdaysCsv,
                 author_user_id = schedule.trace.authorUserId,
-                created_at_epoch_ms = schedule.trace.createdAt.toEpochMilliseconds().takeIf { it > 0 } ?: now,
-                updated_at_epoch_ms = now,
+                created_at_epoch_ms = schedule.trace.createdAt.toEpochMilliseconds().takeIf { it > 0 } ?: updatedAt,
+                updated_at_epoch_ms = updatedAt,
                 associated_group_id = schedule.trace.associatedGroupId,
                 device_id = schedule.trace.deviceId,
                 sync_version = schedule.trace.syncVersion

@@ -85,4 +85,45 @@ final class WebSubmissionSharingTests: XCTestCase {
         XCTAssertTrue(WebSubmissionTaskFilter.all.matches(task))
         XCTAssertTrue(WebSubmissionTaskFilter.archived.matches(task))
     }
+
+    // MARK: - Rúbrica visual
+
+    func testElDibujoSoloViajaEnEscalasYConClaveConocida() throws {
+        func item(_ id: String, _ tipo: WebManifestItemType, _ visual: String?) -> WebSubmissionPublisher.ItemToPublish {
+            WebSubmissionPublisher.ItemToPublish(
+                itemId: id, title: id, type: tipo, required: true,
+                options: tipo == .choice ? ["a", "b"] : [], helpText: nil, scaleLabels: nil, sectionId: nil,
+                visual: visual
+            )
+        }
+        let publicado = try WebSubmissionPublisher.publish(
+            title: "Coevaluación",
+            subtitle: nil,
+            locale: "en",
+            sections: [],
+            items: [
+                item("saque", .scale1To4, "badminton.serve"),
+                item("inventado", .scale1To4, "badminton.smash"),
+                item("texto", .text, "badminton.serve"),
+            ],
+            students: [WebSubmissionPublisher.StudentToPublish(id: 1, name: "Prueba")],
+            baseURL: "https://example.test",
+            deliveryEmail: nil,
+            expiresAtEpochMs: 1_900_000_000_000
+        )
+        let raiz = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(publicado.manifestJSON.utf8)) as? [String: Any])
+        let items = try XCTUnwrap(raiz["items"] as? [[String: Any]])
+        XCTAssertEqual(items[0]["visual"] as? String, "badminton.serve")
+        XCTAssertNil(items[1]["visual"], "una clave que la web no conoce no se publica")
+        XCTAssertNil(items[2]["visual"], "el contrato solo admite dibujos en escalas 1-4")
+    }
+
+    func testLasClavesDeDibujoTienenLaFormaDelContrato() {
+        let forma = try! NSRegularExpression(pattern: "^[a-z0-9_]{1,32}\\.[a-z0-9_]{1,32}$")
+        for opcion in WebRubricVisual.options {
+            let rango = NSRange(opcion.key.startIndex..., in: opcion.key)
+            XCTAssertNotNil(forma.firstMatch(in: opcion.key, range: rango), opcion.key)
+        }
+        XCTAssertEqual(Set(WebRubricVisual.options.map(\.key)).count, WebRubricVisual.options.count)
+    }
 }

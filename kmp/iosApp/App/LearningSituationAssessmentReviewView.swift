@@ -436,8 +436,20 @@ struct LearningSituationAssessmentReviewView: View {
                     Text("Estructura de Rúbrica").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                     ForEach(rubric.criteria, id: \.title) { criterion in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(criterion.title)
-                                .font(.caption.weight(.bold))
+                            HStack(spacing: 6) {
+                                Text(criterion.title)
+                                    .font(.caption.weight(.bold))
+                                if criterion.timingConfig != nil {
+                                    Label("Cronómetro", systemImage: "stopwatch")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(NotebookStyle.primaryTint)
+                                }
+                                if criterion.visualKey != nil {
+                                    Label("Dibujos", systemImage: "photo")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(NotebookStyle.primaryTint)
+                                }
+                            }
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
                                     ForEach(Array(criterion.descriptors.enumerated()), id: \.offset) { levelIndex, desc in

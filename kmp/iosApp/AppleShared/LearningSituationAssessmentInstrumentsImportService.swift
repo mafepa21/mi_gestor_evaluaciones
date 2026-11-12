@@ -190,6 +190,8 @@ struct RubricCriterionDraft: Codable {
     var title: String
     var descriptors: [String]
     var weight: Double
+    var visualKey: String? = nil
+    var timingConfig: String? = nil
 }
 
 struct ChecklistItemDraft: Codable {
@@ -254,6 +256,18 @@ struct LearningSituationAssessmentInstrumentsImportService {
         let documentHasPassportStops = blocks.contains { block in
             if case .paragraph(let text) = block { return passportStopHeading(clean(text)) != nil }
             return false
+        }
+
+        if let standaloneRubric = makeStandaloneVisualRubricInstrument(from: blocks) {
+            return LearningSituationAssessmentImportDraft(
+                sourceFileName: url.lastPathComponent,
+                instruments: [standaloneRubric],
+                gradingFormula: nil,
+                warnings: [],
+                sourceURL: url,
+                sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
+                sizeBytes: Int64(data.count)
+            )
         }
 
         func flushCurrent() {
@@ -682,14 +696,221 @@ struct LearningSituationAssessmentInstrumentsImportService {
         let rawWeights = rows.map { criterionWeight(from: $0) }
         let normalizedWeights = normalizedCriterionWeights(rawWeights, count: rows.count)
         let criteria = rows.enumerated().map { index, row in
+            let title = criterionTitle(from: row.first ?? "Criterio")
             let descriptors = Array(row.dropFirst()).map(clean)
+            let presentation = Self.inferCriterionPresentation(title: title, descriptors: descriptors, levelCount: levels.count)
             return RubricCriterionDraft(
-                title: criterionTitle(from: row.first ?? "Criterio"),
+                title: title,
                 descriptors: descriptors,
-                weight: normalizedWeights[index]
+                weight: normalizedWeights[index],
+                visualKey: presentation.visualKey,
+                timingConfig: presentation.timingConfig
             )
         }
         return RubricDraft(levels: levels, criteria: criteria)
+    }
+
+    /// Detecta si un criterio de rúbrica lleva dibujo por nivel (`visual_key`) o cortes de
+    /// cronómetro (`timing_config`, p. ej. «menos de 10 s» / «15 s o más»).
+    static func inferCriterionPresentation(
+        title: String,
+        descriptors: [String],
+        levelCount: Int = 4
+    ) -> (visualKey: String?, timingConfig: String?) {
+        let normTitle = title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        let normAll = ([title] + descriptors)
+            .joined(separator: " ")
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+
+        let visualKey: String?
+        if normTitle.contains("vuelta") && (normTitle.contains("slalom") || normTitle.contains("linea") || normTitle.contains("inicio") || normAll.contains("linea de inicio")) {
+            visualKey = "hockey.shot_on_goal"
+        } else if normTitle.contains("cara plana") || (normTitle.contains("conduccion") && normAll.contains("cara plana")) || (normTitle.contains("slalom") && normAll.contains("cara plana")) {
+            visualKey = "hockey.dribble_flat_face"
+        } else if normTitle.contains("push") && (normTitle.contains("pared") || normTitle.contains("rebote") || normTitle.contains("flick") || normAll.contains("pared")) {
+            visualKey = "hockey.push_flick"
+        } else if normTitle.contains("tiro a porteria") && (normAll.contains("portero") || normAll.contains("esquina")) {
+            visualKey = "hockey.shot_on_goal"
+        } else {
+            visualKey = nil
+        }
+
+        let timingConfig = inferTimingConfig(title: normTitle, descriptors: descriptors, levelCount: levelCount)
+        return (visualKey, timingConfig)
+    }
+
+    private static func inferTimingConfig(
+        title: String,
+        descriptors: [String],
+        levelCount: Int
+    ) -> String? {
+        guard descriptors.count == levelCount, levelCount >= 2 else { return nil }
+        let looksLikeTimeCriterion = title.contains("tiempo") || title.contains("cronometro") || title.contains("circuito") || title.contains("slalom")
+        guard looksLikeTimeCriterion else { return nil }
+
+        // Extraemos los segundos mencionados en los descriptores (p. ej. "15 s o más", "De 12 a 15 s", "Menos de 10 s")
+        let perDescriptorNumbers: [[Double]] = descriptors.map { desc in
+            guard let regex = try? NSRegularExpression(
+                pattern: #"([0-9]+(?:[.,][0-9]+)?)\s*(?:s\b|seg\b|segundos?\b)"#,
+                options: [.caseInsensitive]
+            ) else { return [] }
+            let ns = desc as NSString
+            return regex.matches(in: desc, range: NSRange(location: 0, length: ns.length)).compactMap { match in
+                guard let range = Range(match.range(at: 1), in: desc) else { return nil }
+                return Double(desc[range].replacingOccurrences(of: ",", with: "."))
+            }
+        }
+        // Si algún descriptor intermedio lleva rango "De X a Y s", el primer número tampoco puede llevar "s" explícita:
+        // extraemos también números de patrones "de X a Y s"
+        var allNumbers = Set<Double>(perDescriptorNumbers.flatMap { $0 })
+        for desc in descriptors {
+            if let regex = try? NSRegularExpression(
+                pattern: #"\bde\s+([0-9]+(?:[.,][0-9]+)?)\s+a\s+([0-9]+(?:[.,][0-9]+)?)\s*(?:s\b|seg\b|segundos?\b)"#,
+                options: [.caseInsensitive]
+            ) {
+                let ns = desc as NSString
+                for match in regex.matches(in: desc, range: NSRange(location: 0, length: ns.length)) {
+                    if let r1 = Range(match.range(at: 1), in: desc),
+                       let v1 = Double(desc[r1].replacingOccurrences(of: ",", with: ".")) {
+                        allNumbers.insert(v1)
+                    }
+                    if let r2 = Range(match.range(at: 2), in: desc),
+                       let v2 = Double(desc[r2].replacingOccurrences(of: ",", with: ".")) {
+                        allNumbers.insert(v2)
+                    }
+                }
+            }
+        }
+
+        let sortedCuts = allNumbers.sorted()
+        guard sortedCuts.count == levelCount - 1 else { return nil }
+
+        // Determinamos si menos tiempo es mejor (el nivel más alto menciona el corte menor o "menos de")
+        let firstDesc = descriptors.first?.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current) ?? ""
+        let lastDesc = descriptors.last?.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current) ?? ""
+        let lowerIsBetter: Bool
+        if lastDesc.contains("menos de") || firstDesc.contains("o mas") {
+            lowerIsBetter = true
+        } else if firstDesc.contains("menos de") || lastDesc.contains("o mas") {
+            lowerIsBetter = false
+        } else {
+            let firstMax = perDescriptorNumbers.first?.max() ?? 0
+            let lastMin = perDescriptorNumbers.last?.min() ?? 0
+            lowerIsBetter = firstMax >= lastMin
+        }
+
+        let prefix = lowerIsBetter ? "lower" : "higher"
+        let cutsText = sortedCuts.map { value -> String in
+            if value.rounded() == value {
+                return String(format: "%.1f", value)
+            }
+            return String(value)
+        }.joined(separator: ";")
+        return "\(prefix);\(cutsText)"
+    }
+
+    /// Detecta un documento de rúbrica visual independiente (como `rubrica_visual_tecnica_hockey.docx`),
+    /// donde cada apartado numerado («1. Tiempo del slalom… 25 %») va seguido de su propia tabla 2×4
+    /// con los 4 niveles en cabecera y los 4 descriptores debajo.
+    private func makeStandaloneVisualRubricInstrument(from blocks: [WordDocumentBlock]) -> AssessmentInstrumentDraft? {
+        var docTitle: String?
+        var docCriterion: String?
+        var currentSection: (title: String, weight: Double?)?
+        var criteria: [RubricCriterionDraft] = []
+        var levels: [RubricLevelDraft] = []
+        var notes: [String] = []
+
+        for block in blocks {
+            switch block {
+            case .paragraph(let rawText):
+                let text = clean(rawText)
+                guard !text.isEmpty else { continue }
+                if docTitle == nil {
+                    let norm = normalized(text)
+                    guard norm.contains("rubrica") && (norm.contains("visual") || norm.contains("tecnica") || norm.contains("cronometro")) else {
+                        return nil
+                    }
+                    docTitle = text
+                    continue
+                }
+                if docCriterion == nil {
+                    let codes = allCriterionCodes(in: text)
+                    if !codes.isEmpty {
+                        docCriterion = codes.joined(separator: " · ")
+                    }
+                }
+                if let match = standaloneCriterionHeading(from: text) {
+                    currentSection = match
+                } else if currentSection == nil {
+                    notes.append(text)
+                }
+            case .table(let rawRows):
+                let rows = rawRows
+                    .map { $0.map(clean).filter { !$0.isEmpty } }
+                    .filter { !$0.isEmpty }
+                guard let section = currentSection,
+                      rows.count == 2,
+                      rows[0].count >= 4,
+                      rows[1].count == rows[0].count else {
+                    return nil
+                }
+                if levels.isEmpty {
+                    levels = rows[0].enumerated().map { index, headerCell in
+                        RubricLevelDraft(label: standaloneLevelLabel(from: headerCell, index: index), points: index + 1)
+                    }
+                }
+                let descriptors = rows[1]
+                let presentation = Self.inferCriterionPresentation(
+                    title: section.title,
+                    descriptors: descriptors,
+                    levelCount: rows[0].count
+                )
+                criteria.append(
+                    RubricCriterionDraft(
+                        title: section.title,
+                        descriptors: descriptors,
+                        weight: section.weight ?? 1.0,
+                        visualKey: presentation.visualKey,
+                        timingConfig: presentation.timingConfig
+                    )
+                )
+                currentSection = nil
+            }
+        }
+
+        guard let title = docTitle, !criteria.isEmpty, !levels.isEmpty else { return nil }
+        let normalizedWeights = normalizedCriterionWeights(criteria.map { Optional($0.weight) }, count: criteria.count)
+        for index in criteria.indices {
+            criteria[index].weight = normalizedWeights[index]
+        }
+
+        return AssessmentInstrumentDraft(
+            title: title,
+            kind: .rubric,
+            criterionLabel: docCriterion,
+            weightPercent: 100,
+            isSelected: true,
+            countsTowardAverage: true,
+            scoreStrategy: .rubric,
+            rubric: RubricDraft(levels: levels, criteria: criteria),
+            note: notes.isEmpty ? nil : notes.joined(separator: "\n")
+        )
+    }
+
+    private func standaloneCriterionHeading(from text: String) -> (title: String, weight: Double?)? {
+        guard text.range(of: #"^\s*\d+[\.\)]\s+"#, options: .regularExpression) != nil else { return nil }
+        let withoutNumber = text.replacingOccurrences(of: #"^\s*\d+[\.\)]\s*"#, with: "", options: .regularExpression)
+        let weight = criterionWeight(from: [withoutNumber])
+        let cleanTitle = criterionTitle(from: withoutNumber)
+        guard !cleanTitle.isEmpty else { return nil }
+        return (cleanTitle, weight)
+    }
+
+    private func standaloneLevelLabel(from headerCell: String, index: Int) -> String {
+        if let match = firstString(in: headerCell, pattern: #"(Nivel\s+\d+(?:\s*\([^)]+\))?)"#) {
+            return match
+        }
+        return "Nivel \(index + 1)"
     }
 
     private func criterionWeight(from row: [String]) -> Double? {

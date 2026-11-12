@@ -929,6 +929,12 @@ final class PlannerMonthGridTests: XCTestCase {
         )
     }
 
+    func testRubricBundleNuevaSinClaseNiUnidadNoSeDescarta() {
+        XCTAssertFalse(RubricBundleSyncMerge.shouldSkipBundle(existingFound: false, criteriaNeedPrevious: false))
+        XCTAssertTrue(RubricBundleSyncMerge.shouldSkipBundle(existingFound: false, criteriaNeedPrevious: true))
+        XCTAssertFalse(RubricBundleSyncMerge.shouldSkipBundle(existingFound: true, criteriaNeedPrevious: true))
+    }
+
     func testRubricBundleSyncKeepsClassAndCriterionWeightWhenKeysAreMissing() {
         XCTAssertEqual(
             RubricBundleSyncMerge.optionalText(
@@ -2042,6 +2048,189 @@ final class PlannerMonthGridTests: XCTestCase {
         XCTAssertTrue(
             SyncLanPushPendingPolicy.shouldClearSentPending(failed: 2, desktopAuthoritative: true)
         )
+    }
+
+    private func lanChange(_ id: Int, payloadBytes: Int = 10, entity: String = "student") -> LanSyncChange {
+        LanSyncChange(
+            entity: entity,
+            id: "\(id)",
+            updatedAtEpochMs: Int64(id),
+            deviceId: "ipad",
+            payload: String(repeating: "x", count: payloadBytes)
+        )
+    }
+
+    private func lanAck(applied: Int, failed: Int = 0, authoritative: Bool = false) -> LanPushResult {
+        LanPushResult(applied: applied, ignored: 0, failed: failed, serverEpochMs: 1, desktopAuthoritative: authoritative)
+    }
+
+    private func encodedPushBodySize(_ changes: [LanSyncChange]) throws -> Int {
+        try JSONEncoder().encode(
+            LanPushRequest(clientDeviceId: "ipad", lastKnownServerEpochMs: 0, changes: changes)
+        ).count
+    }
+
+    func testLanPushBatcherKeepsEveryBodyUnderTheHelperLimitAndTheOrder() throws {
+        // Unos 5 MB en total: en un solo envío el helper respondería 413.
+        let changes = (0..<500).map { lanChange($0, payloadBytes: 10_000) }
+        XCTAssertGreaterThan(try encodedPushBodySize(changes), 2 * 1024 * 1024)
+
+        let plan = try LanSyncPushBatcher.plan(changes)
+
+        XCTAssertGreaterThan(plan.batches.count, 1)
+        XCTAssertTrue(plan.oversized.isEmpty)
+        XCTAssertEqual(plan.batches.flatMap { $0 }, changes)
+        for batch in plan.batches {
+            XCTAssertLessThanOrEqual(try encodedPushBodySize(batch), 2 * 1024 * 1024)
+        }
+    }
+
+    func testLanPushBatcherCountsEscapedPayloadBytes() throws {
+        // Las comillas ocupan el doble al codificarse en JSON.
+        let quoted = (0..<40).map { index in
+            LanSyncChange(
+                entity: "rubric",
+                id: "\(index)",
+                updatedAtEpochMs: 1,
+                deviceId: "ipad",
+                payload: String(repeating: "\"", count: 60_000)
+            )
+        }
+        let plan = try LanSyncPushBatcher.plan(quoted)
+        for batch in plan.batches {
+            XCTAssertLessThanOrEqual(try encodedPushBodySize(batch), 2 * 1024 * 1024)
+        }
+    }
+
+    func testLanPushBatcherCapsTheNumberOfChangesPerBatch() throws {
+        let plan = try LanSyncPushBatcher.plan((0..<1_201).map { lanChange($0) })
+        XCTAssertEqual(plan.batches.map(\.count), [500, 500, 201])
+    }
+
+    func testLanPushBatcherSendsALargeRecordAloneAndSetsAsideOneThatDoesNotFit() throws {
+        let large = lanChange(1, payloadBytes: 1_500_000)
+        let tooLarge = lanChange(2, payloadBytes: 3_000_000, entity: "learning_situation")
+        let small = lanChange(3)
+
+        let plan = try LanSyncPushBatcher.plan([small, large, tooLarge])
+
+        XCTAssertEqual(plan.batches, [[small], [large]])
+        XCTAssertEqual(plan.oversized, [tooLarge])
+        XCTAssertTrue(LanSyncBatchedPushCopy.oversizedMessage(plan.oversized).contains("learning_situation"))
+    }
+
+    func testLanBatchedPushDeliversEverythingWhenTheMacAcceptsIt() async throws {
+        let changes = (0..<1_100).map { lanChange($0) }
+        var delivered: [LanSyncChange] = []
+
+        let result = try await LanSyncBatchedPush.run(
+            changes: changes,
+            retryFailedBatches: false,
+            send: { self.lanAck(applied: $0.count) },
+            onDelivered: { delivered += $0 }
+        )
+
+        XCTAssertEqual(result.applied, 1_100)
+        XCTAssertEqual(result.failed, 0)
+        XCTAssertEqual(result.sentTotal, 1_100)
+        XCTAssertEqual(delivered, changes)
+    }
+
+    func testLanBatchedPushKeepsPendingTheBatchWithFailures() async throws {
+        let changes = (0..<700).map { lanChange($0) }
+        var delivered: [LanSyncChange] = []
+
+        let result = try await LanSyncBatchedPush.run(
+            changes: changes,
+            retryFailedBatches: false,
+            send: { batch in
+                batch.first?.id == "0" ? self.lanAck(applied: 499, failed: 1) : self.lanAck(applied: batch.count)
+            },
+            onDelivered: { delivered += $0 }
+        )
+
+        XCTAssertEqual(result.failed, 1)
+        XCTAssertEqual(delivered, Array(changes[500...]))
+    }
+
+    func testLanBatchedPushRetryRecoversAChildThatArrivedBeforeItsParent() async throws {
+        let changes = (0..<700).map { lanChange($0) }
+        var attemptsOfFirstBatch = 0
+        var delivered: [LanSyncChange] = []
+
+        let result = try await LanSyncBatchedPush.run(
+            changes: changes,
+            retryFailedBatches: true,
+            send: { batch in
+                guard batch.first?.id == "0" else { return self.lanAck(applied: batch.count) }
+                attemptsOfFirstBatch += 1
+                return attemptsOfFirstBatch == 1
+                    ? self.lanAck(applied: 499, failed: 1)
+                    : self.lanAck(applied: batch.count)
+            },
+            onDelivered: { delivered += $0 }
+        )
+
+        XCTAssertEqual(attemptsOfFirstBatch, 2)
+        XCTAssertEqual(result.failed, 0)
+        XCTAssertEqual(Set(delivered), Set(changes))
+    }
+
+    func testLanBatchedPushReportsFailuresThatSurviveTheRetry() async throws {
+        let changes = (0..<10).map { lanChange($0) }
+        var delivered: [LanSyncChange] = []
+
+        let result = try await LanSyncBatchedPush.run(
+            changes: changes,
+            retryFailedBatches: true,
+            send: { _ in self.lanAck(applied: 8, failed: 2) },
+            onDelivered: { delivered += $0 }
+        )
+
+        XCTAssertEqual(result.failed, 2)
+        XCTAssertTrue(delivered.isEmpty)
+    }
+
+    func testLanBatchedPushKeepsDeliveredBatchesWhenTheConnectionDropsHalfway() async {
+        struct ConnectionLost: Error {}
+        let changes = (0..<700).map { lanChange($0) }
+        var delivered: [LanSyncChange] = []
+
+        do {
+            _ = try await LanSyncBatchedPush.run(
+                changes: changes,
+                retryFailedBatches: true,
+                send: { batch in
+                    guard batch.first?.id == "0" else { throw ConnectionLost() }
+                    return self.lanAck(applied: batch.count)
+                },
+                onDelivered: { delivered += $0 }
+            )
+            XCTFail("El corte de conexión debe llegar a quien llama")
+        } catch {
+            XCTAssertTrue(error is ConnectionLost)
+        }
+        XCTAssertEqual(delivered, Array(changes[..<500]))
+    }
+
+    func testLanBatchedPushStopsAndDropsTheRestWhenTheMacIsAuthoritative() async throws {
+        let changes = (0..<700).map { lanChange($0) }
+        var sends = 0
+        var delivered: [LanSyncChange] = []
+
+        let result = try await LanSyncBatchedPush.run(
+            changes: changes,
+            retryFailedBatches: true,
+            send: { _ in
+                sends += 1
+                return self.lanAck(applied: 0, failed: 3, authoritative: true)
+            },
+            onDelivered: { delivered += $0 }
+        )
+
+        XCTAssertEqual(sends, 1)
+        XCTAssertTrue(result.desktopAuthoritative)
+        XCTAssertEqual(delivered, changes)
     }
 
     func testSyncLanPushCloseIsNotSuccessWhenAckReportsFailures() {

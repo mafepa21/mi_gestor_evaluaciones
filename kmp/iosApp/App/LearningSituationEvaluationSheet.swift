@@ -41,6 +41,7 @@ struct LearningSituationEvaluationSheet: View {
     @State private var showingInstrumentImporter = false
     @State private var showingRubricImporter = false
     @State private var showingRubricBuilder = false
+    @State private var showingTemplateCatalog = false
     @State private var instrumentImportDraft: LearningSituationAssessmentImportDraft?
     @State private var instrumentReviewDraft: LearningSituationAssessmentImportDraft?
     @State private var showingPhysicalTestsImporter = false
@@ -204,7 +205,7 @@ struct LearningSituationEvaluationSheet: View {
                     attachRubric(rubricId)
                     showingRubricBuilder = false
                 })
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
 #if os(macOS)
                 .frame(minWidth: 1_120, idealWidth: 1_280, maxWidth: 1_600, minHeight: 720, idealHeight: 900)
 #else
@@ -212,6 +213,13 @@ struct LearningSituationEvaluationSheet: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
 #endif
+            }
+            .sheet(isPresented: $showingTemplateCatalog) {
+                RubricTemplateCatalogSheet(targetClassId: selectedClassIds.first) { rubricId in
+                    attachRubric(rubricId)
+                    showingTemplateCatalog = false
+                }
+                .kmpBridgeEnvironment(bridge)
             }
         }
 #if os(macOS)
@@ -448,6 +456,13 @@ struct LearningSituationEvaluationSheet: View {
                 startRubricBuilder(for: proposal.wrappedValue)
             } label: {
                 Label("Crear rúbrica", systemImage: "plus.square")
+            }
+
+            Button {
+                activeProposalId = proposal.wrappedValue.id
+                showingTemplateCatalog = true
+            } label: {
+                Label("Del catálogo oficial…", systemImage: "books.vertical")
             }
 
             Button {

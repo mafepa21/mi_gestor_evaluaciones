@@ -112,8 +112,9 @@ class PlannerSessionStoreTest {
             )
         )
 
-        val latest = AppDatabase.Schema.version
-        AppDatabase.Schema.migrate(driver, latest - 1, latest)
+        // La 48 añade columnas con ALTER y no se puede repetir sobre una base recién creada;
+        // la copia de sesiones antiguas la hace runRescueMigrations.
+        AppDatabase.Schema.migrate(driver, 47, 48)
         runRescueMigrations(driver)
 
         assertEquals(

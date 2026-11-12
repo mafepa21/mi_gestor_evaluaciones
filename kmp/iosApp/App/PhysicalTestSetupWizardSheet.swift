@@ -11,6 +11,10 @@ struct PhysicalTestSetupWizardSheet: View {
     let initialClassId: Int64?
     var onSaved: (PhysicalTestSetupOutcome) -> Void = { _ in }
     var onOpenNotebook: ((Int64) -> Void)?
+    /// Solo guarda la prueba y su baremo: se añade a un grupo desde «Grupos».
+    var saveOnly = false
+    /// Abre una prueba ya guardada para cambiar su baremo.
+    var initialDefinitionId: String?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -565,12 +569,14 @@ struct PhysicalTestSetupWizardSheet: View {
         Form {
             if let outcome {
                 doneSection(outcome)
-            } else if classes.isEmpty {
+            } else if !asksForGroup {
                 Section {
                     ContentUnavailableView(
-                        "Aún no tienes grupos",
-                        systemImage: "person.2",
-                        description: Text("Guarda la prueba y su baremo ahora. La añades al cuaderno cuando crees un grupo.")
+                        saveOnly ? "Lista para guardar" : "Aún no tienes grupos",
+                        systemImage: saveOnly ? "checkmark.circle" : "person.2",
+                        description: Text(saveOnly
+                            ? "Después podrás añadirla al cuaderno de cada grupo desde «Grupos»."
+                            : "Guarda la prueba y su baremo ahora. La añades al cuaderno cuando crees un grupo.")
                     )
                 } header: {
                     stepHeader(3)
@@ -597,9 +603,10 @@ struct PhysicalTestSetupWizardSheet: View {
                 }
 
                 Section {
-                    columnPreview(title: "\(trimmedName) · \(unit.measurement == .level ? "Nivel" : "Marca")", detail: "Marca en \(unitSymbol). No cuenta en la media.")
                     if willHaveScale {
-                        columnPreview(title: "\(trimmedName) · Nota", detail: "Nota de 0 a 10 según el baremo. Cuenta en la media.")
+                        columnPreview(title: trimmedName, detail: "Una columna «marca | nota». La nota sale del baremo y cuenta en la media.")
+                    } else {
+                        columnPreview(title: "\(trimmedName) · \(unit.measurement == .level ? "Nivel" : "Marca")", detail: "Marca en \(unitSymbol). No cuenta en la media.")
                     }
                 } header: {
                     Text("Así aparecerá en el cuaderno")
@@ -637,7 +644,7 @@ struct PhysicalTestSetupWizardSheet: View {
                         ProgressView()
                             .accessibilityLabel("Guardando")
                     } else {
-                        Button(classes.isEmpty ? "Guardar" : (saveError == nil ? "Guardar y añadir" : "Reintentar")) {
+                        Button(!asksForGroup ? "Guardar" : (saveError == nil ? "Guardar y añadir" : "Reintentar")) {
                             Task { await save() }
                         }
                     }
@@ -865,7 +872,14 @@ struct PhysicalTestSetupWizardSheet: View {
         definitions = ((try? await bridge.listPhysicalDefinitions()) ?? [])
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         await loadTabs()
+        if let initialDefinitionId, existingDefinitionId == nil,
+           let definition = definitions.first(where: { $0.id == initialDefinitionId }) {
+            await selectExisting(definition)
+            path = [.scale]
+        }
     }
+
+    private var asksForGroup: Bool { !saveOnly && !classes.isEmpty }
 
     @MainActor
     private func loadTabs() async {
@@ -949,8 +963,8 @@ struct PhysicalTestSetupWizardSheet: View {
             attempts: attempts,
             resultMode: attempts > 1 ? resultMode : .last,
             scaleGroups: scaleGroups,
-            classId: classes.isEmpty ? nil : classId,
-            notebookTab: classes.isEmpty ? nil : tabSelection,
+            classId: asksForGroup ? classId : nil,
+            notebookTab: asksForGroup ? tabSelection : nil,
             date: date
         )
         do {

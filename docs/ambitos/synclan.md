@@ -17,6 +17,8 @@
 ## Trampas
 
 - Igualar dispositivos sustituye la base entera. Las tablas `web_*` no viajan por la sync (su llave vive en el llavero de cada equipo): `carryOverLocalOnlyWebForms` (llamada en `createAppleDriver` tras migrar) las devuelve desde la copia `*_pre_adopt_*`. Una tabla nueva que tampoco viaje y deba sobrevivir a igualar hay que añadirla ahí.
+- El helper rechaza con 413 los envíos de más de 2 MB (`SYNC_BODY_LIMIT_BYTES`): todo envío a `/sync/push` pasa por `pushInBatches` (`LanSyncBatchedPush`), nunca directo a `lanSyncClient.push`. Cada paquete emite su aviso SSE.
+- La fusión inteligente no tiene vuelta atrás en el Mac: la copia previa (`createBackup`) solo cubre el dispositivo que la lanza. Compara por id: dos registros distintos con el mismo id autoincremental se tratan como uno solo (riesgo abierto).
 - La cola del iPad (`pendingOutboundChanges`) solo se llena con `enqueueLocalChange`: una escritura nueva que no lo llame nunca viaja.
 - `SqlDelightSyncAdapter` cuenta como `ignored` (no `failed`) cualquier entidad que no conoce, y el iPad suelta la cola si `failed == 0`: una entidad nueva sin apply se pierde en silencio. `SyncEntityCoverageTest` lo vigila leyendo el código; `planner_week_plan` está en su lista de pendientes.
 - Entidades nuevas de actas/Inclusión: añadirlas solo en `SchoolRecordsSync` (lo usan el Mac y Apple). Nada de `REPLACE` en tablas con hijas en cascada (reuniones).
@@ -43,3 +45,4 @@
 - Estado «iPad conectado» en el Mac: el helper emite `State: peer|online=0/1` según haya una conexión SSE no-loopback.
 - **Regla para pantallas nuevas**: si una vista carga sus datos en `.task`/`.task(id:)` y los guarda en `@State` o en un store propio, tiene que llevar `.reloadOnLanSync(.pantalla) { … }` con la misma carga. Si no, lo llegado del otro dispositivo no se ve hasta tocar la sección. Las hojas de edición abiertas no deben recargarse solas.
 - El POST `/sync/local-changes` solo se acepta desde loopback (decisión de seguridad, no tocar).
+- Si un paquete de Mac a iPad deja sin una clave un dato opcional, el iPad no debe descartar la entidad nueva: no hay nada que conservar. Pasó con `rubric_bundle` (sin `classId`/`teachingUnitId`): la columna llegaba y la rúbrica no («No se pudo abrir la rúbrica»). `sync.recovery.rubricas-nuevas.v1` fuerza una descarga completa única para recuperarlas.

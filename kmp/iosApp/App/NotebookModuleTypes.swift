@@ -430,16 +430,20 @@ final class NotebookGridNavigationContext {
     private(set) var categoryTintById: [String: Color] = [:]
     /// Límites del rango seleccionado precalculados una vez por render (evita 3x firstIndex en cada celda).
     private(set) var selectedRangeBounds: (columnId: String, lower: Int, upper: Int)?
+    /// Pruebas físicas: columna de nota visible -> pareja marca/nota (una vez por render).
+    private(set) var physicalPairsByScoreId: [String: NotebookPhysicalColumnPair] = [:]
 
     func update(
         rows: [NotebookTableRow],
         segments: [NotebookDisplaySegment],
         categoryTintById: [String: Color],
+        physicalPairsByScoreId: [String: NotebookPhysicalColumnPair] = [:],
         selectedCellRange: NotebookCellRange? = nil
     ) {
         self.rows = rows
         self.segments = segments
         self.categoryTintById = categoryTintById
+        self.physicalPairsByScoreId = physicalPairsByScoreId
         if let range = selectedCellRange,
            let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
            let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }) {
@@ -460,6 +464,20 @@ struct NotebookCellUndoChange {
     let column: NotebookColumnDefinition
     let previousValue: String
     let previousDisplayLabel: String?
+    /// Respuestas previas de un instrumento estructurado. Si existe, deshacer restaura las
+    /// respuestas (y Kotlin recalcula la nota) en vez de escribir `previousValue` como nota.
+    var structuredSnapshot: StructuredInstrumentEvaluationModel? = nil
+    /// Niveles previos de una celda de rúbrica (criterio → nivel). Si existe, deshacer
+    /// vuelve a guardar esos niveles y su nota.
+    var rubricSnapshot: [Int64: Int64]? = nil
+}
+
+/// Lo último copiado desde celdas de lista de cotejo. Solo vale mientras el portapapeles del
+/// sistema siga teniendo el mismo texto: si el docente copia otra cosa, se ignora.
+struct NotebookStructuredClipboard {
+    let columnId: String
+    let studentIds: [Int64]
+    let text: String
 }
 
 struct NotebookCellUndoEntry {

@@ -343,7 +343,17 @@ extension NotebookModuleView {
             refreshNotebookEditMenu()
             return
         }
-        let inverse = entry.changes.map { change -> NotebookCellUndoChange in
+        // Las listas de cotejo se restauran por respuestas, en segundo plano. No tienen rehacer:
+        // escribir su nota como texto dejaría las respuestas desalineadas.
+        let structuredChanges = entry.changes.filter { $0.structuredSnapshot != nil }
+        if !structuredChanges.isEmpty {
+            restoreStructuredSnapshots(structuredChanges)
+        }
+        let rubricChanges = entry.changes.filter { $0.rubricSnapshot != nil }
+        if !rubricChanges.isEmpty {
+            restoreRubricSnapshots(rubricChanges)
+        }
+        let inverse = entry.changes.filter { $0.structuredSnapshot == nil && $0.rubricSnapshot == nil }.map { change -> NotebookCellUndoChange in
             let current = notebookHistoryDisplayValue(for: change)
             bridge.flushPendingColumnGradeSave(studentId: change.studentId, columnId: change.column.id)
             bridge.saveColumnGrade(studentId: change.studentId, column: change.column, value: change.previousValue)
@@ -355,7 +365,9 @@ extension NotebookModuleView {
                 previousDisplayLabel: nil
             )
         }
-        destination.append(NotebookCellUndoEntry(changes: inverse))
+        if !inverse.isEmpty {
+            destination.append(NotebookCellUndoEntry(changes: inverse))
+        }
         AppleInteractionFeedback.play(.success)
         if let first = entry.changes.first {
             withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
@@ -636,8 +648,10 @@ final class NotebookVoiceGradeDictationService: ObservableObject {
     @Published private(set) var lastTranscript = ""
     @Published var errorMessage: String?
 
-    private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "es-ES"))
-    private let audioEngine = AVAudioEngine()
+    // Se crean al primer dictado, no al abrir el Cuaderno: la primera vez que se
+    // crea el reconocedor cuesta unos 45 ms en el hilo de la pantalla.
+    private lazy var recognizer = SFSpeechRecognizer(locale: Locale(identifier: "es-ES"))
+    private var audioEngine: AVAudioEngine?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var autoStopTask: Task<Void, Never>?
@@ -685,6 +699,8 @@ final class NotebookVoiceGradeDictationService: ObservableObject {
         request.shouldReportPartialResults = true
         recognitionRequest = request
 
+        let audioEngine = audioEngine ?? AVAudioEngine()
+        self.audioEngine = audioEngine
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         inputNode.removeTap(onBus: 0)
@@ -741,8 +757,8 @@ final class NotebookVoiceGradeDictationService: ObservableObject {
     func stopListening() {
         autoStopTask?.cancel()
         autoStopTask = nil
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        audioEngine?.stop()
+        audioEngine?.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
         recognitionTask?.cancel()
         recognitionRequest = nil

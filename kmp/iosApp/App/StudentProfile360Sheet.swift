@@ -171,7 +171,7 @@ struct StudentProfile360Sheet: View {
             TutoringSessionFormSheet(studentId: studentId) {
                 Task { await loadProfileData() }
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
         #if os(macOS)
         .frame(width: 680, height: 740)

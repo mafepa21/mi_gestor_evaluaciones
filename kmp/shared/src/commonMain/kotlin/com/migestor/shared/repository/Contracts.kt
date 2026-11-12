@@ -391,6 +391,13 @@ interface NotebookInstrumentsRepository {
         deviceId: String? = null,
         syncVersion: Long = 0,
     ): NotebookInstrumentCellSummary
+
+    /// Calcula y guarda la nota derivada de las celdas de instrumento que tienen respuestas
+    /// pero ninguna nota guardada (respuestas llegadas por Sync LAN, entregas antiguas o
+    /// guardadas con versiones previas al cálculo). Nunca cambia una nota que ya existe.
+    /// Devuelve cuántas notas ha guardado.
+    @Throws(Throwable::class)
+    suspend fun backfillMissingDerivedGrades(classId: Long): Int = 0
 }
 
 interface NotebookRepository {
@@ -714,6 +721,9 @@ interface RubricsRepository {
     ): Long
     @Throws(Throwable::class)
     suspend fun deleteCriterion(criterionId: Long)
+    /** Dibujos y cronómetro de un criterio. `saveCriterion` los conserva; solo cambian aquí. */
+    @Throws(Throwable::class)
+    suspend fun saveCriterionPresentation(criterionId: Long, visualKey: String?, timingConfig: String?) {}
     @Throws(Throwable::class)
     suspend fun saveLevel(
         id: Long? = null,
@@ -738,6 +748,15 @@ interface RubricsRepository {
         deviceId: String? = null,
         syncVersion: Long = 0,
     ): Double?
+    /** Marca medida con el cronómetro. Va después de `saveRubricAssessment` (necesita la fila;
+     *  si esa llamada cambia el nivel, borra la marca anterior). */
+    @Throws(Throwable::class)
+    suspend fun saveRubricAssessmentMeasurement(
+        studentId: Long,
+        evaluationId: Long,
+        criterionId: Long,
+        measuredValue: Double?,
+    ) {}
     @Throws(Throwable::class)
     suspend fun listRubricAssessments(studentId: Long, evaluationId: Long): List<RubricAssessment>
 

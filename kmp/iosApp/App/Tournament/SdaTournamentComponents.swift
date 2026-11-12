@@ -46,6 +46,7 @@ struct SdaStepperRow: View {
     @Binding var value: Int
     let range: ClosedRange<Int>
     var unit: String = ""
+    var step: Int = 1
     @ScaledMetric(relativeTo: .body) private var tapSize: CGFloat = 44
 
     var body: some View {
@@ -64,8 +65,8 @@ struct SdaStepperRow: View {
         .accessibilityValue(unit.isEmpty ? "\(value)" : "\(value) \(unit)")
         .accessibilityAdjustableAction { direction in
             switch direction {
-            case .increment: change(by: 1)
-            case .decrement: change(by: -1)
+            case .increment: change(by: step)
+            case .decrement: change(by: -step)
             @unknown default: break
             }
         }
@@ -78,7 +79,7 @@ struct SdaStepperRow: View {
 
     private var controls: some View {
         HStack(spacing: 8) {
-            Button { change(by: -1) } label: {
+            Button { change(by: -step) } label: {
                 Image(systemName: "minus")
                     .frame(minWidth: tapSize, minHeight: tapSize)
                     .contentShape(Rectangle())
@@ -88,7 +89,7 @@ struct SdaStepperRow: View {
             Text("\(value)")
                 .font(.body.weight(.semibold).monospacedDigit())
                 .frame(minWidth: 32)
-            Button { change(by: 1) } label: {
+            Button { change(by: step) } label: {
                 Image(systemName: "plus")
                     .frame(minWidth: tapSize, minHeight: tapSize)
                     .contentShape(Rectangle())

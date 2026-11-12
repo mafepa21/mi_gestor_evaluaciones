@@ -26,6 +26,8 @@ struct SdaTournamentRegistrationSheet: View {
     @State private var importMessage: String?
     @State private var errorMessage: String?
     @State private var pairing: TournamentPairingResult?
+    /// Clase entera: quien no ha respondido entra también y se sortea su pareja.
+    @State private var includeNotResponded = false
     @State private var isCollecting = false
     @State private var inboxFingerprint: String? = WebSubmissionInbox.accountKey.map(WebSubmissionInbox.fingerprint)
     @State private var isConfirmingCreate = false
@@ -228,15 +230,21 @@ struct SdaTournamentRegistrationSheet: View {
             }
             LabeledContent("Se apuntan", value: "\(participants)")
             LabeledContent("No participan", value: "\(result.declined.count)")
-            if !result.notResponded.isEmpty {
-                DisclosureGroup("Sin responder (\(result.notResponded.count))") {
-                    ForEach(result.notResponded, id: \.self) { Text(name($0)) }
+            let notResponded = TournamentPairing.pair(entries: Array(registration.entries.values), rosterIds: rosterIds).notResponded
+            if !notResponded.isEmpty {
+                DisclosureGroup("Sin responder (\(notResponded.count))") {
+                    ForEach(notResponded, id: \.self) { Text(name($0)) }
                 }
+                Toggle("Incluir a quien no ha respondido", isOn: $includeNotResponded)
+                    .onChange(of: includeNotResponded) { _, _ in
+                        // Las parejas ya formadas se rehacen con la nueva lista.
+                        if pairing != nil { pairing = currentPairing(registration) }
+                    }
             }
         } header: {
             Text("Respuestas")
         } footer: {
-            Text("Guarda los ficheros .mgsub que llegan al correo y elígelos aquí. Puedes importar varias veces.")
+            Text("Guarda los ficheros .mgsub que llegan al correo y elígelos aquí. Puedes importar varias veces. Si incluyes a quien no ha respondido, se le sortea pareja; quien dijo que no participa sigue fuera.")
         }
     }
 
@@ -289,7 +297,7 @@ struct SdaTournamentRegistrationSheet: View {
                     Text("Toca un nombre para cambiarlo por otro inscrito.")
                 }
             }
-        } else if let registration, registration.entries.values.contains(where: \.participates) {
+        } else if let registration, registration.entries.values.contains(where: \.participates) || includeNotResponded {
             Section {
                 Button {
                     pairing = currentPairing(registration)
@@ -379,7 +387,11 @@ struct SdaTournamentRegistrationSheet: View {
     }
 
     private func currentPairing(_ registration: TournamentRegistration) -> TournamentPairingResult {
-        TournamentPairing.pair(entries: Array(registration.entries.values), rosterIds: rosterIds)
+        TournamentPairing.pair(
+            entries: Array(registration.entries.values),
+            rosterIds: rosterIds,
+            includeNotResponded: includeNotResponded
+        )
     }
 
     private func loadStudents() async {

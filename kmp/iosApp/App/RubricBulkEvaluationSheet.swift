@@ -5,7 +5,13 @@ import UIKit
 #endif
 
 struct RubricBulkEvaluationSheet: View {
-    @ObservedObject var bridge: KmpBridge
+    /// Referencia sin suscripción: la hoja solo se redibuja cuando cambia lo que
+    /// lee del bridge (`bulkRubricEvaluationState` y `classes`), vía `bridgeWatch`.
+    /// Con `@ObservedObject` cualquier cambio de la app (sync, Cuaderno) la repintaba entera.
+    let bridge: KmpBridge
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    /// Conversión de niveles y notas hecha una vez por estado, no en cada pintado.
+    @StateObject private var snapshotMemo = BulkRubricSnapshotMemo()
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -33,8 +39,19 @@ struct RubricBulkEvaluationSheet: View {
     @State private var previousLevelsBeforeAutofill: [BulkRubricCellKey: Int64?]? = nil
     @State private var aiOrchestrator = AppleAIOrchestrator()
 
+    private var watchedBridge: KmpBridge {
+        bridgeWatch.bridge(bridge) { [.init($0.bulkRubricEvaluationState), .init($0.classes)] }
+    }
+
     private var state: BulkRubricEvaluationUiState? {
-        bridge.bulkRubricEvaluationState
+        watchedBridge.bulkRubricEvaluationState
+    }
+
+    /// Caché del estado actual del bridge (para acciones fuera del pintado).
+    private func currentCache() -> BulkRubricEvaluationCache? {
+        guard let state = bridge.bulkRubricEvaluationState,
+              let rubric = state.rubricDetail else { return nil }
+        return snapshotMemo.cache(for: state, rubric: rubric, bridge: bridge)
     }
 
     var body: some View {
@@ -50,12 +67,7 @@ struct RubricBulkEvaluationSheet: View {
                     GeometryReader { proxy in
                         let isWide = proxy.size.width >= 720
                         let className = className(for: state)
-                        let cache = BulkRubricEvaluationCache(
-                            state: state,
-                            rubric: rubric,
-                            assessments: bridge.bulkAssessmentSnapshot(),
-                            scores: bridge.bulkScoreSnapshot()
-                        )
+                        let cache = snapshotMemo.cache(for: state, rubric: rubric, bridge: bridge)
 
                         ScrollView {
                             VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
@@ -191,8 +203,9 @@ struct RubricBulkEvaluationSheet: View {
                    let state,
                    let rubric = state.rubricDetail,
                    let student = state.students.first(where: { $0.id == studentId }) {
-                    let studentLevels = bridge.bulkAssessmentSnapshot()[student.id] ?? [:]
-                    let studentScore = bridge.bulkScoreSnapshot()[student.id] ?? 0.0
+                    let cache = snapshotMemo.cache(for: state, rubric: rubric, bridge: bridge)
+                    let studentLevels = cache.levels(for: student.id)
+                    let studentScore = cache.score(for: student.id) ?? 0.0
                     RubricExportFamilyPDFSheet(
                         rubricDetail: rubric,
                         selectedLevelIds: studentLevels,
@@ -1095,13 +1108,7 @@ struct RubricBulkEvaluationSheet: View {
                                 Spacer()
                                 Button {
                                     Task {
-                                        guard let rubric = state.rubricDetail else { return }
-                                        let cache = BulkRubricEvaluationCache(
-                                            state: state,
-                                            rubric: rubric,
-                                            assessments: bridge.bulkAssessmentSnapshot(),
-                                            scores: bridge.bulkScoreSnapshot()
-                                        )
+                                        guard let cache = currentCache() else { return }
                                         await toggleInjuryStatus(for: student, classId: state.classId, cache: cache)
                                     }
                                 } label: {
@@ -1161,7 +1168,7 @@ struct RubricBulkEvaluationSheet: View {
     }
 
     private func className(for state: BulkRubricEvaluationUiState) -> String {
-        bridge.classes.first(where: { $0.id == state.classId })?.name ?? "Clase"
+        watchedBridge.classes.first(where: { $0.id == state.classId })?.name ?? "Clase"
     }
 
     private func initials(for student: Student) -> String {
@@ -1199,7 +1206,7 @@ struct RubricBulkEvaluationSheet: View {
         guard !isRunningSelfAssessmentAutofill else { return }
 
         aiOrchestrator.prewarmIfUseful(for: .studentInsight)
-        let currentAssessments = bridge.bulkAssessmentSnapshot()
+        let currentAssessments = currentCache()?.assessmentsByStudentId ?? [:]
 
         let criteriaInputs: [RubricSelfAssessmentCriterionInput] = rubric.criteria.enumerated().map { idx, item in
             let levelInputs: [RubricSelfAssessmentCriterionLevelInput] = item.levels.enumerated().map { lIdx, lvl in
@@ -1285,7 +1292,7 @@ struct RubricBulkEvaluationSheet: View {
                 }
                 if case let .rubricSelfAssessmentMapping(draft) = generation.result {
                     var studentChanged = false
-                    let existingStudentLevels = bridge.bulkAssessmentSnapshot()[student.id] ?? [:]
+                    let existingStudentLevels = currentCache()?.levels(for: student.id) ?? [:]
                     for suggestion in draft.suggestions {
                         let cellKey = BulkRubricCellKey(studentId: student.id, criterionId: suggestion.criterionId)
                         if autofillOnlyPending, existingStudentLevels[suggestion.criterionId] != nil {
@@ -1362,8 +1369,35 @@ private struct BulkRubricCellKey: Hashable {
     let criterionId: Int64
 }
 
+/// Guarda la última caché y el estado del que salió. Los estados Kotlin son
+/// inmutables: mismo objeto, mismo contenido; un estado nuevo la invalida.
+@MainActor
+private final class BulkRubricSnapshotMemo: ObservableObject {
+    private var lastState: BulkRubricEvaluationUiState?
+    private var lastCache: BulkRubricEvaluationCache?
+
+    func cache(
+        for state: BulkRubricEvaluationUiState,
+        rubric: RubricDetail,
+        bridge: KmpBridge
+    ) -> BulkRubricEvaluationCache {
+        if let lastCache, lastState === state {
+            return lastCache
+        }
+        let cache = BulkRubricEvaluationCache(
+            state: state,
+            rubric: rubric,
+            assessments: bridge.bulkAssessmentSnapshot(from: state),
+            scores: bridge.bulkScoreSnapshot(from: state)
+        )
+        lastState = state
+        lastCache = cache
+        return cache
+    }
+}
+
 private struct BulkRubricEvaluationCache {
-    private let selectedLevels: [BulkRubricCellKey: Int64]
+    let assessmentsByStudentId: [Int64: [Int64: Int64]]
     private let scores: [Int64: Double]
     private let criteriaCount: Int
     private let completedCriteriaCountByStudentId: [Int64: Int]
@@ -1382,7 +1416,6 @@ private struct BulkRubricEvaluationCache {
         scores: [Int64: Double]
     ) {
         criteriaCount = rubric.criteria.count
-        var selectedLevels: [BulkRubricCellKey: Int64] = [:]
         var completedCriteriaCountByStudentId: [Int64: Int] = [:]
 
         for student in state.students {
@@ -1391,21 +1424,22 @@ private struct BulkRubricEvaluationCache {
 
         for (studentId, studentMap) in assessments {
             var completedCount = completedCriteriaCountByStudentId[studentId] ?? 0
-            for (criterionId, levelId) in studentMap {
-                selectedLevels[BulkRubricCellKey(studentId: studentId, criterionId: criterionId)] = levelId
-                completedCount += 1
-            }
+            completedCount += studentMap.count
             completedCriteriaCountByStudentId[studentId] = min(completedCount, criteriaCount)
         }
 
-        self.selectedLevels = selectedLevels
+        self.assessmentsByStudentId = assessments
         self.scores = scores
         self.completedCriteriaCountByStudentId = completedCriteriaCountByStudentId
         self.injuredStudentIds = Set(state.injuredStudents.map(\.id))
     }
 
     func selectedLevelId(studentId: Int64, criterionId: Int64) -> Int64? {
-        selectedLevels[BulkRubricCellKey(studentId: studentId, criterionId: criterionId)]
+        assessmentsByStudentId[studentId]?[criterionId]
+    }
+
+    func levels(for studentId: Int64) -> [Int64: Int64] {
+        assessmentsByStudentId[studentId] ?? [:]
     }
 
     func score(for studentId: Int64) -> Double? {

@@ -3,6 +3,123 @@ import CoreText
 import Foundation
 import MiGestorKit
 
+/// Guion de clase de una sesión: lo que el docente dice, muestra y comprueba, sacado de
+/// las líneas etiquetadas («Muestra:», «Di:», «Comprueba:», «Regla:», «Corrección:»,
+/// «Seguridad:», «Pizarra:») del texto docente de cada actividad.
+struct PlannerSessionClassScript: Equatable {
+    /// Etiquetas encontradas en el texto de una actividad.
+    struct Labels: Equatable {
+        struct Check: Equatable {
+            let question: String
+            let answer: String?
+        }
+
+        var show: String?
+        var say: [String] = []
+        var checks: [Check] = []
+        var rules: [String] = []
+        var corrections: [String] = []
+        var safety: [String] = []
+        var board: String?
+
+        /// Hay algo que contar en el guion (la pizarra es de la sesión, no de la actividad).
+        var hasActivityContent: Bool {
+            show != nil || !say.isEmpty || !checks.isEmpty || !rules.isEmpty || !corrections.isEmpty || !safety.isEmpty
+        }
+    }
+
+    struct Activity: Equatable {
+        let title: String
+        let minutes: Int?
+        let labels: Labels
+    }
+
+    /// Palabras clave de la sesión (primera «Pizarra:» que aparezca).
+    var board: String?
+    var activities: [Activity] = []
+
+    static let empty = PlannerSessionClassScript()
+
+    var isEmpty: Bool { board == nil && activities.isEmpty }
+
+    /// Entrada pura: título, minutos y texto docente crudo de cada actividad, en orden.
+    init(activities source: [(title: String, minutes: Int?, teacherText: String)] = []) {
+        var board: String?
+        var activities: [Activity] = []
+        for item in source {
+            let labels = Self.labels(in: item.teacherText)
+            if board == nil { board = labels.board }
+            if labels.hasActivityContent {
+                activities.append(Activity(title: item.title, minutes: item.minutes, labels: labels))
+            }
+        }
+        self.board = board
+        self.activities = activities
+    }
+
+    private static let labelPattern = try! NSRegularExpression(
+        pattern: #"^(muestra|d[ií]|comprueba|regla|correcci[oó]n|seguridad|pizarra)\s*:\s*(.*)$"#,
+        options: [.caseInsensitive]
+    )
+
+    /// Quita viñetas, asteriscos de markdown y espacios; normaliza tildes sueltas (NFD).
+    private static func cleanedLine(_ line: String) -> String {
+        line.precomposedStringWithCanonicalMapping
+            .replacingOccurrences(of: #"^[\s\-\u2022*#]+"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: "*", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Etiqueta (en minúsculas y sin tilde) y texto de una línea, o `nil` si no lleva etiqueta.
+    /// Solo la primera palabra cuenta: «Di:» sí, «Dibujo:» o «Dinámica:» no.
+    static func labelAndText(of line: String) -> (label: String, text: String)? {
+        let cleaned = cleanedLine(line)
+        let range = NSRange(cleaned.startIndex..., in: cleaned)
+        guard let match = labelPattern.firstMatch(in: cleaned, range: range),
+              let labelRange = Range(match.range(at: 1), in: cleaned),
+              let textRange = Range(match.range(at: 2), in: cleaned) else { return nil }
+        let label = cleaned[labelRange].lowercased()
+            .folding(options: .diacriticInsensitive, locale: nil)
+        return (label, cleaned[textRange].trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    static func labels(in teacherText: String) -> Labels {
+        var result = Labels()
+        for line in teacherText.components(separatedBy: .newlines) {
+            guard let parsed = labelAndText(of: line), !parsed.text.isEmpty else { continue }
+            let (label, text) = (parsed.label, parsed.text)
+            switch label {
+            case "muestra": if result.show == nil { result.show = text }
+            case "di": result.say.append(text)
+            case "comprueba":
+                let parts = text.components(separatedBy: "→").count > 1
+                    ? text.components(separatedBy: "→")
+                    : text.components(separatedBy: "->")
+                let question = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+                let answer = parts.dropFirst().joined(separator: "→").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !question.isEmpty {
+                    result.checks.append(.init(question: question, answer: answer.isEmpty ? nil : answer))
+                }
+            case "regla": result.rules.append(text)
+            case "correccion": result.corrections.append(text)
+            case "seguridad": result.safety.append(text)
+            case "pizarra": if result.board == nil { result.board = text }
+            default: break
+            }
+        }
+        return result
+    }
+
+    /// Quita del texto las líneas etiquetadas para no repetirlas en el resumen del paso.
+    /// Sin etiquetas devuelve el texto tal cual.
+    static func removingLabelLines(from text: String) -> String {
+        let lines = text.components(separatedBy: .newlines)
+        let kept = lines.filter { labelAndText(of: $0) == nil }
+        guard kept.count != lines.count else { return text }
+        return kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 /// Esquema corto de una sesión para la hoja del día.
 struct PlannerDaySheetEntry: Equatable {
     struct Step: Equatable {
@@ -32,6 +149,8 @@ struct PlannerDaySheetEntry: Equatable {
     let steps: [Step]
     let materials: [String]
     let attention: [String]
+    /// Guion de clase (vacío si ninguna actividad lleva etiquetas).
+    var script: PlannerSessionClassScript = .empty
 
     static let maxSteps = 14
     static let maxListItems = 4
@@ -59,11 +178,25 @@ struct PlannerDaySheetEntry: Equatable {
 
         let projection = PlannerSessionDetailProjection(plan: plan)
         self.objective = projection.reviewObjective
-        self.steps = projection.guideBlocks
-            .flatMap(\.steps)
-            .filter { !$0.isCollection }
+        let planSteps = projection.guideBlocks.flatMap(\.steps).filter { !$0.isCollection }
+        // `reviewDetail` altera las líneas (viñetas, listas en línea): las etiquetas se leen del
+        // texto docente crudo de la actividad, que se empareja por clave con el paso.
+        var teacherTextByKey: [String: String] = [:]
+        for activity in projection.activities where teacherTextByKey[activity.activityKey] == nil {
+            teacherTextByKey[activity.activityKey] = activity.teacherActions
+        }
+        self.script = PlannerSessionClassScript(activities: planSteps.map {
+            (title: $0.title, minutes: $0.minutes, teacherText: teacherTextByKey[$0.activityKey] ?? "")
+        })
+        self.steps = planSteps
             .prefix(Self.maxSteps)
-            .map { Step(minutes: $0.minutes, title: $0.title, detail: Step.shortDetail($0.detail)) }
+            .map {
+                Step(
+                    minutes: $0.minutes,
+                    title: $0.title,
+                    detail: Step.shortDetail(PlannerSessionClassScript.removingLabelLines(from: $0.detail))
+                )
+            }
         let materials = Self.materialItems(plan.material)
         self.materials = Array((materials.isEmpty ? projection.setupBullets : materials).prefix(Self.maxListItems))
         self.attention = Array(projection.attentionNotes.prefix(Self.maxListItems))
@@ -100,7 +233,8 @@ struct PlannerDaySheetEntry: Equatable {
         return items
     }
 
-    init(time: String, group: String, title: String, objective: String, steps: [Step], materials: [String], attention: [String]) {
+    init(time: String, group: String, title: String, objective: String, steps: [Step], materials: [String], attention: [String], script: PlannerSessionClassScript = .empty) {
+        self.script = script
         self.time = time
         self.group = group
         self.title = title
@@ -128,6 +262,29 @@ enum PlannerDaySheetPDFRenderer {
         }
     }
 
+    /// Páginas del guion de clase: solo las sesiones con guion, en el mismo orden.
+    static func scriptPages(for entries: [PlannerDaySheetEntry]) -> [[PlannerDaySheetEntry]] {
+        pages(for: entries.filter { !$0.script.isEmpty })
+    }
+
+    private static func drawPage(
+        title: String,
+        entries: [PlannerDaySheetEntry],
+        context: CGContext,
+        column: (PlannerDaySheetEntry, CGRect) -> Void
+    ) {
+        context.beginPDFPage(nil)
+        drawText(
+            NSAttributedString(string: title, attributes: attributes(size: 10, bold: true, gray: 0.35)),
+            in: CGRect(x: margin, y: pageSize.height - margin - 14, width: pageSize.width - margin * 2, height: 16),
+            context: context
+        )
+        for (index, entry) in entries.enumerated() {
+            column(entry, columnRect(index: index))
+        }
+        context.endPDFPage()
+    }
+
     static func columnRect(index: Int) -> CGRect {
         let width = (pageSize.width - margin * 2 - gutter * CGFloat(columnsPerPage - 1)) / CGFloat(columnsPerPage)
         return CGRect(
@@ -147,17 +304,15 @@ enum PlannerDaySheetPDFRenderer {
 
         let allPages = pages(for: entries)
         for (pageIndex, page) in allPages.enumerated() {
-            context.beginPDFPage(nil)
             let pageTitle = allPages.count > 1 ? "\(dayLabel) · hoja \(pageIndex + 1) de \(allPages.count)" : dayLabel
-            drawText(
-                NSAttributedString(string: pageTitle, attributes: attributes(size: 10, bold: true, gray: 0.35)),
-                in: CGRect(x: margin, y: pageSize.height - margin - 14, width: pageSize.width - margin * 2, height: 16),
-                context: context
-            )
-            for (index, entry) in page.enumerated() {
-                drawColumn(entry, in: columnRect(index: index), context: context)
+            drawPage(title: pageTitle, entries: page, context: context) { drawColumn($0, in: $1, context: context) }
+        }
+        let scriptPages = scriptPages(for: entries)
+        for (pageIndex, page) in scriptPages.enumerated() {
+            let suffix = scriptPages.count > 1 ? " · hoja \(pageIndex + 1) de \(scriptPages.count)" : ""
+            drawPage(title: "\(dayLabel) · guion de clase" + suffix, entries: page, context: context) {
+                drawScriptColumn($0, in: $1, context: context)
             }
-            context.endPDFPage()
         }
         context.closePDF()
         return data as Data
@@ -179,8 +334,8 @@ enum PlannerDaySheetPDFRenderer {
 
     // MARK: Dibujo
 
-    private static func drawColumn(_ entry: PlannerDaySheetEntry, in rect: CGRect, context: CGContext) {
-        let padding: CGFloat = 12
+    /// Marco y cabecera de columna (hora · grupo, título). Devuelve el rectángulo de la cabecera.
+    private static func drawColumnFrame(_ entry: PlannerDaySheetEntry, in rect: CGRect, padding: CGFloat, context: CGContext) -> CGRect {
         context.saveGState()
         context.setStrokeColor(gray: 0.6, alpha: 1)
         context.setLineWidth(0.8)
@@ -201,6 +356,34 @@ enum PlannerDaySheetPDFRenderer {
         )
         header.append(NSAttributedString(string: entry.title, attributes: attributes(size: 18, bold: true)))
         drawText(header, in: headerRect.insetBy(dx: padding, dy: 8), context: context)
+        return headerRect
+    }
+
+    private static func drawOverflowMark(in bodyRect: CGRect, context: CGContext) {
+        drawText(
+            NSAttributedString(string: "…", attributes: attributes(size: 12, bold: true, gray: 0.35)),
+            in: CGRect(x: bodyRect.maxX - 12, y: bodyRect.minY - 8, width: 12, height: 16),
+            context: context
+        )
+    }
+
+    private static func drawScriptColumn(_ entry: PlannerDaySheetEntry, in rect: CGRect, context: CGContext) {
+        let padding: CGFloat = 12
+        let headerRect = drawColumnFrame(entry, in: rect, padding: padding, context: context)
+        let bodyRect = CGRect(
+            x: rect.minX + padding,
+            y: rect.minY + padding,
+            width: rect.width - padding * 2,
+            height: headerRect.minY - rect.minY - padding - 10
+        )
+        if !drawText(scriptBody(for: entry.script), in: bodyRect, context: context) {
+            drawOverflowMark(in: bodyRect, context: context)
+        }
+    }
+
+    private static func drawColumn(_ entry: PlannerDaySheetEntry, in rect: CGRect, context: CGContext) {
+        let padding: CGFloat = 12
+        let headerRect = drawColumnFrame(entry, in: rect, padding: padding, context: context)
 
         // Notas a mano abajo.
         let notesRect = CGRect(x: rect.minX + padding, y: rect.minY + padding, width: rect.width - padding * 2, height: notesHeight)
@@ -228,13 +411,80 @@ enum PlannerDaySheetPDFRenderer {
             height: headerRect.minY - notesRect.maxY - 10 - 10
         )
         let fitted = drawText(body(for: entry), in: bodyRect, context: context)
-        if !fitted {
-            drawText(
-                NSAttributedString(string: "…", attributes: attributes(size: 12, bold: true, gray: 0.35)),
-                in: CGRect(x: bodyRect.maxX - 12, y: bodyRect.minY - 8, width: 12, height: 16),
-                context: context
-            )
+        if !fitted { drawOverflowMark(in: bodyRect, context: context) }
+    }
+
+    /// Texto del guion: pizarra destacada y, por actividad, muestra, di, comprueba, regla,
+    /// corrección y seguridad, con la etiqueta en gris pequeña.
+    static func scriptBody(for script: PlannerSessionClassScript) -> NSAttributedString {
+        let text = NSMutableAttributedString()
+        func label(_ title: String) {
+            text.append(NSAttributedString(string: title.uppercased() + "\n", attributes: labelAttributes))
         }
+        func line(_ value: String, bold: Bool = false) {
+            text.append(NSAttributedString(string: value + "\n", attributes: scriptTextAttributes(bold: bold)))
+        }
+
+        if let board = script.board {
+            text.append(NSAttributedString(string: "PIZARRA\n", attributes: attributes(size: 10.5, bold: true, gray: 0.35)))
+            text.append(NSAttributedString(string: board + "\n", attributes: attributes(size: 15, bold: true)))
+        }
+        for activity in script.activities {
+            if text.length > 0 { text.append(NSAttributedString(string: "\n", attributes: attributes(size: 8))) }
+            let prefix = activity.minutes.map { "\($0)′  " } ?? "•  "
+            let row = NSMutableAttributedString(string: prefix, attributes: attributes(size: 13, bold: true))
+            row.append(NSAttributedString(string: activity.title + "\n", attributes: attributes(size: 13, bold: true)))
+            text.append(row)
+
+            let labels = activity.labels
+            if let show = labels.show {
+                label("Muestra")
+                line(show)
+            }
+            if !labels.say.isEmpty {
+                label("Di")
+                for (index, phrase) in labels.say.enumerated() {
+                    line(labels.say.count > 1 ? "\(index + 1). " + phrase : phrase)
+                }
+            }
+            if !labels.checks.isEmpty {
+                label("Comprueba")
+                for check in labels.checks {
+                    let row = NSMutableAttributedString(string: check.question, attributes: scriptTextAttributes())
+                    if let answer = check.answer {
+                        row.append(NSAttributedString(string: " → ", attributes: scriptTextAttributes()))
+                        row.append(NSAttributedString(string: answer, attributes: scriptTextAttributes(gray: 0.45)))
+                    }
+                    row.append(NSAttributedString(string: "\n", attributes: scriptTextAttributes()))
+                    text.append(row)
+                }
+            }
+            if !labels.rules.isEmpty {
+                label("Regla")
+                labels.rules.forEach { line($0) }
+            }
+            if !labels.corrections.isEmpty {
+                label("Corrección")
+                labels.corrections.forEach { line($0, bold: true) }
+            }
+            if !labels.safety.isEmpty {
+                label("Seguridad")
+                labels.safety.forEach { line($0) }
+            }
+        }
+        return text
+    }
+
+    private static var labelAttributes: [NSAttributedString.Key: Any] {
+        var result = attributes(size: 9, bold: true, gray: 0.5)
+        result[NSAttributedString.Key(kCTParagraphStyleAttributeName as String)] = indentedStyle
+        return result
+    }
+
+    private static func scriptTextAttributes(bold: Bool = false, gray: CGFloat = 0) -> [NSAttributedString.Key: Any] {
+        var result = attributes(size: 12, bold: bold, gray: gray)
+        result[NSAttributedString.Key(kCTParagraphStyleAttributeName as String)] = indentedStyle
+        return result
     }
 
     static func body(for entry: PlannerDaySheetEntry) -> NSAttributedString {

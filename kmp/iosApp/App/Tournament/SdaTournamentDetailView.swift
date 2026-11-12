@@ -29,6 +29,7 @@ struct SdaTournamentDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var rosterPhase: RosterPhase = .loading
     @State private var students: [(id: String, name: String)] = []
+    @State private var firstNames: [String: String] = [:]
     @State private var situationTitle: String?
     @State private var selectedTab: Tab = .calendar
     @State private var scoreTarget: SdaScoreTarget?
@@ -148,7 +149,7 @@ struct SdaTournamentDetailView: View {
         }
         .sheet(isPresented: $showingMembers) {
             SdaTournamentMembersSheet(teams: plan.teams, students: students) { members in
-                try store.mutateThrowing { try $0.updateMembers(members) }
+                try store.mutateThrowing { try $0.updateMembers(members, firstNames: firstNames) }
             }
         }
         .sheet(isPresented: $showingRegistration) {
@@ -810,6 +811,7 @@ struct SdaTournamentDetailView: View {
         do {
             let classStudents = try await bridge.students(forClassId: store.record.classId)
             students = classStudents.map { (id: String($0.id), name: $0.fullName) }
+            firstNames = Dictionary(classStudents.map { (String($0.id), $0.firstName) }, uniquingKeysWith: { first, _ in first })
             if let situationId = store.record.learningSituationId {
                 situationTitle = try? await bridge.learningSituations().first(where: { $0.id == situationId })?.title
             }

@@ -162,6 +162,26 @@ final class SdaTournamentSupportTests: XCTestCase {
         XCTAssertEqual(restored.teams, plan.teams)
     }
 
+    func testAutoNamedTeamsAreRenamedEverywhere() throws {
+        let names = ["1": "Ana", "2": "Bruno", "3": "Carla", "4": "Dani", "5": "Eva", "6": "Fran"]
+        var plan = TournamentPlan(name: "Liga", teams: [
+            TournamentPlanTeam(id: "a", name: "Ana y Bruno", studentIDs: ["1", "2"]),
+            TournamentPlanTeam(id: "b", name: "Carla y Dani", studentIDs: ["3", "4"]),
+            TournamentPlanTeam(id: "c", name: "Los Rayos", studentIDs: ["5", "6"])
+        ], venueCount: 1)
+        plan.persistSchedule(try TournamentScheduleGenerator.generate(format: .roundRobin, teamNames: plan.teamNames, venueCount: 1))
+        let slot = try XCTUnwrap(plan.slots.first { [$0.match.homeTeam, $0.match.awayTeam].contains("Ana y Bruno") })
+        plan.setScore(for: slot, home: 3, away: 1)
+
+        // Bruno pasa a Los Rayos y Fran a la pareja de Ana. Los Rayos conserva su nombre.
+        try plan.updateMembers(["a": ["1", "6"], "c": ["5", "2"]], firstNames: names)
+        XCTAssertEqual(plan.teamNames, ["Ana y Fran", "Carla y Dani", "Los Rayos"])
+        let teamsInSchedule = Set(plan.savedSchedule.flatMap(\.matches).flatMap { [$0.homeTeam, $0.awayTeam] })
+        XCTAssertEqual(teamsInSchedule, Set(plan.teamNames))
+        XCTAssertTrue(plan.savedResults.allSatisfy { $0.homeTeam != "Ana y Bruno" && $0.awayTeam != "Ana y Bruno" })
+        XCTAssertEqual(plan.completedMatchCount, 1, "El resultado sigue contando")
+    }
+
     func testUpdateMembersRejectsEmptyOrRepeatedAndKeepsPlan() throws {
         let original = [group(1, "A", students: [1]), group(2, "B", students: [2])]
         var plan = TournamentPlan(name: "Liga", teams: SdaTournamentTeams.planTeams(from: original), venueCount: 1)

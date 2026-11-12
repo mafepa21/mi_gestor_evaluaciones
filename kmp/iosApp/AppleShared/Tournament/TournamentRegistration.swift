@@ -217,9 +217,12 @@ enum TournamentPairing {
     ///  - Cualquier otro caso (B no responde, no participa o eligió a otro): A queda suelto.
     ///  - Los sueltos se emparejan al azar entre ellos.
     ///  - Con número impar, uno queda en `leftOver` para que decida el docente.
+    ///  - Con `includeNotResponded`, quien no respondió entra también y se sortea con los sueltos.
+    ///    Quien respondió que no participa sigue fuera.
     static func pair<R: RandomNumberGenerator>(
         entries: [TournamentRegistrationEntry],
         rosterIds: [String],
+        includeNotResponded: Bool = false,
         using generator: inout R
     ) -> TournamentPairingResult {
         let roster = Set(rosterIds)
@@ -244,7 +247,10 @@ enum TournamentPairing {
             pairs.append(.init(first: id, second: partner, teamName: name, isMutual: true))
         }
 
+        let responded = Set(valid.map(\.studentId))
+        let notResponded = rosterIds.filter { !responded.contains($0) }
         var loose = participants.filter { !paired.contains($0) }
+        if includeNotResponded { loose += notResponded }
         loose.shuffle(using: &generator)
         var leftOver: String?
         if loose.count % 2 == 1 { leftOver = loose.removeLast() }
@@ -252,18 +258,21 @@ enum TournamentPairing {
             pairs.append(.init(first: loose[index], second: loose[index + 1], teamName: nil, isMutual: false))
         }
 
-        let responded = Set(valid.map(\.studentId))
         return TournamentPairingResult(
             pairs: pairs,
             leftOver: leftOver,
-            notResponded: rosterIds.filter { !responded.contains($0) },
+            notResponded: includeNotResponded ? [] : notResponded,
             declined: valid.filter { !$0.participates }.map(\.studentId).sorted()
         )
     }
 
-    static func pair(entries: [TournamentRegistrationEntry], rosterIds: [String]) -> TournamentPairingResult {
+    static func pair(
+        entries: [TournamentRegistrationEntry],
+        rosterIds: [String],
+        includeNotResponded: Bool = false
+    ) -> TournamentPairingResult {
         var generator = SystemRandomNumberGenerator()
-        return pair(entries: entries, rosterIds: rosterIds, using: &generator)
+        return pair(entries: entries, rosterIds: rosterIds, includeNotResponded: includeNotResponded, using: &generator)
     }
 
     /// Equipos para el torneo. Sin nombre propio: "Ana y Bruno". Nombres repetidos: "… 2".

@@ -123,6 +123,8 @@ struct TournamentPlan: Identifiable, Equatable, Codable, Sendable {
     var placementRounds: Int?
     /// Liguilla + puestos: `true` si se pasó al cuadro con partidos de liguilla sin jugar.
     var leagueClosedEarly: Bool?
+    /// `true` si los integrantes se editaron a mano: ya no se avisa de cambios en los grupos.
+    var teamsEditedManually: Bool?
 
     init(
         id: UUID = UUID(),

@@ -29,6 +29,7 @@ struct SdaTournamentDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var rosterPhase: RosterPhase = .loading
     @State private var students: [(id: String, name: String)] = []
+    @State private var firstNames: [String: String] = [:]
     @State private var situationTitle: String?
     @State private var selectedTab: Tab = .calendar
     @State private var scoreTarget: SdaScoreTarget?
@@ -38,6 +39,7 @@ struct SdaTournamentDetailView: View {
     @State private var isLive = false
     @State private var contentWidth: CGFloat = 0
     @State private var showingRegistration = false
+    @State private var showingMembers = false
     @State private var placementRound = 1
 
     /// Ancho a partir del cual la clasificación de una liga se muestra al lado del calendario.
@@ -119,7 +121,8 @@ struct SdaTournamentDetailView: View {
     private var groupsChanged: Bool {
         // Los torneos migrados (sin SdA) no tienen grupos de trabajo que releer, y los de
         // inscripción por formulario forman sus equipos con las respuestas, no con los grupos.
-        guard store.record.learningSituationId != nil, plan.registration == nil else { return false }
+        guard store.record.learningSituationId != nil, plan.registration == nil,
+              plan.teamsEditedManually != true else { return false }
         return SdaTournamentTeams.hasChanged(
             snapshot: plan.teams,
             current: currentTeams.filter { $0.classId == store.record.classId }
@@ -144,6 +147,11 @@ struct SdaTournamentDetailView: View {
         .sheet(item: $scoreTarget) { target in
             scoreSheet(for: target)
         }
+        .sheet(isPresented: $showingMembers) {
+            SdaTournamentMembersSheet(teams: plan.teams, students: students) { members in
+                try store.mutateThrowing { try $0.updateMembers(members, firstNames: firstNames) }
+            }
+        }
         .sheet(isPresented: $showingRegistration) {
             SdaTournamentRegistrationSheet(store: store, className: className)
         }
@@ -162,10 +170,13 @@ struct SdaTournamentDetailView: View {
             isPresented: $isConfirmingRefresh,
             titleVisibility: .visible
         ) {
-            Button("Actualizar y borrar resultados", role: .destructive) { refreshTeams() }
+            if !plan.savedSchedule.isEmpty {
+                Button("Copiar solo integrantes") { copyMembers() }
+            }
+            Button("Rehacer torneo y borrar resultados", role: .destructive) { refreshTeams() }
             Button("Cancelar", role: .cancel) {}
         } message: {
-            Text("Se borran el calendario y los resultados, y se crea un calendario nuevo con los grupos de hoy.")
+            Text("«Copiar solo integrantes» mantiene el calendario y los resultados. «Rehacer torneo» los borra y crea un calendario nuevo con los grupos de hoy.")
         }
         .modifier(SdaLiveModePresentation(isPresented: $isLive) {
             NavigationStack {
@@ -366,6 +377,12 @@ struct SdaTournamentDetailView: View {
             } label: {
                 Label(plan.registration == nil ? "Inscripción por formulario…" : "Inscripción…", systemImage: "person.crop.circle.badge.plus")
             }
+            Button {
+                showingMembers = true
+            } label: {
+                Label("Editar integrantes…", systemImage: "person.2")
+            }
+            .disabled(plan.teams.isEmpty || rosterPhase != .ready)
             Button(role: .destructive) {
                 isConfirmingDelete = true
             } label: {
@@ -742,6 +759,15 @@ struct SdaTournamentDetailView: View {
                     }
                     .accessibilityElement(children: .combine)
                 }
+                if !plan.teams.isEmpty {
+                    Button {
+                        showingMembers = true
+                    } label: {
+                        Label("Editar integrantes", systemImage: "person.2")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                }
                 printButton(prominent: true, fillsWidth: true)
             }
         }
@@ -785,6 +811,7 @@ struct SdaTournamentDetailView: View {
         do {
             let classStudents = try await bridge.students(forClassId: store.record.classId)
             students = classStudents.map { (id: String($0.id), name: $0.fullName) }
+            firstNames = Dictionary(classStudents.map { (String($0.id), $0.firstName) }, uniquingKeysWith: { first, _ in first })
             if let situationId = store.record.learningSituationId {
                 situationTitle = try? await bridge.learningSituations().first(where: { $0.id == situationId })?.title
             }
@@ -826,6 +853,15 @@ struct SdaTournamentDetailView: View {
             actionError = "Con estos equipos no da tiempo. No se ha cambiado nada."
         } catch {
             actionError = "No se pudo actualizar. Hacen falta al menos dos grupos en el curso."
+        }
+    }
+
+    private func copyMembers() {
+        actionError = nil
+        do {
+            try store.mutateThrowing { try $0.copyMembers(from: currentTeams.filter { $0.classId == store.record.classId }) }
+        } catch {
+            actionError = "No se pudieron copiar los integrantes. Algún alumno está en dos grupos o un grupo quedó vacío."
         }
     }
 

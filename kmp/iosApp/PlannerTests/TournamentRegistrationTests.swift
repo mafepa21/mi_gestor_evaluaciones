@@ -21,6 +21,29 @@ final class TournamentRegistrationTests: XCTestCase {
         return TournamentPairing.pair(entries: entries, rosterIds: roster, using: &generator)
     }
 
+    // MARK: Sin responder
+
+    func testSinIncluirQuienNoRespondeQuedaFuera() {
+        let result = pair([entry("1", "2"), entry("2", "1")], roster: ["1", "2", "3", "4"])
+        XCTAssertEqual(result.pairs.count, 1)
+        XCTAssertEqual(result.notResponded, ["3", "4"])
+    }
+
+    func testIncluirQuienNoRespondeLeSorteaPareja() {
+        var generator = FixedGenerator()
+        let result = TournamentPairing.pair(
+            entries: [entry("1", "2"), entry("2", "1"), entry("5", participates: false), entry("6")],
+            rosterIds: ["1", "2", "3", "4", "5", "6"],
+            includeNotResponded: true,
+            using: &generator
+        )
+        let everyone = Set(result.pairs.flatMap { [$0.first, $0.second] } + [result.leftOver].compactMap { $0 })
+        XCTAssertEqual(everyone, ["1", "2", "3", "4", "6"], "Entran todos menos quien dijo que no")
+        XCTAssertTrue(result.pairs.contains { $0.isMutual && Set([$0.first, $0.second]) == ["1", "2"] })
+        XCTAssertTrue(result.notResponded.isEmpty)
+        XCTAssertEqual(result.declined, ["5"])
+    }
+
     // MARK: Nombres
 
     func testNombreYPrimerApellido() {

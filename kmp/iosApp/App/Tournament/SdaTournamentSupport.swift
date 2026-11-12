@@ -136,6 +136,121 @@ extension TournamentPlan {
     }
 }
 
+// MARK: - Integrantes
+
+enum TournamentMembersError: Error, Equatable {
+    case unknownTeam
+    case emptyTeam(String)
+    case repeatedStudent(String)
+}
+
+extension TournamentPlan {
+    /// Cambia solo los alumnos de cada equipo. Conserva nombres, calendario y resultados
+    /// (los partidos van atados al nombre del equipo). No modifica el plan si algo falla.
+    /// Con `firstNames`, los equipos con nombre automático («Ana y Bruno») se renombran con
+    /// sus integrantes nuevos, también en calendario y resultados.
+    mutating func updateMembers(
+        _ members: [String: [String]],
+        firstNames: [String: String]? = nil,
+        markManual: Bool = true
+    ) throws {
+        let ids = Set(teams.map(\.id))
+        guard Set(members.keys).isSubset(of: ids) else { throw TournamentMembersError.unknownTeam }
+        var copy = teams
+        var seen = Set<String>()
+        for index in copy.indices {
+            let list = members[copy[index].id] ?? copy[index].studentIDs
+            guard !list.isEmpty else { throw TournamentMembersError.emptyTeam(copy[index].name) }
+            for student in list {
+                guard seen.insert(student).inserted else { throw TournamentMembersError.repeatedStudent(student) }
+            }
+            copy[index].studentIDs = list.sorted()
+        }
+        let before = teams
+        teams = copy
+        if let firstNames { renameAutoNamedTeams(previous: before, firstNames: firstNames) }
+        if markManual { teamsEditedManually = true }
+    }
+
+    /// Nombre automático a partir de los nombres de pila: «Ana y Bruno», «Ana, Bruno y Carla».
+    static func autoTeamName(for studentIDs: [String], firstNames: [String: String]) -> String {
+        let names = studentIDs.map { firstNames[$0] ?? "Alumno" }
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        guard names.count > 1 else { return names.first ?? "Equipo" }
+        return names.dropLast().joined(separator: ", ") + " y " + names[names.count - 1]
+    }
+
+    /// `true` si el nombre está hecho con los nombres de pila de esos alumnos (en cualquier orden,
+    /// con o sin el número que se añade para no repetir).
+    static func isAutoTeamName(_ name: String, studentIDs: [String], firstNames: [String: String]) -> Bool {
+        var base = name
+        if let range = base.range(of: #" \d+$"#, options: .regularExpression) { base.removeSubrange(range) }
+        let tokens = base.replacingOccurrences(of: ", ", with: " y ")
+            .components(separatedBy: " y ")
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            .sorted()
+        let expected = studentIDs.map { (firstNames[$0] ?? "Alumno").lowercased() }.sorted()
+        return !expected.isEmpty && tokens == expected
+    }
+
+    private mutating func renameAutoNamedTeams(previous: [TournamentPlanTeam], firstNames: [String: String]) {
+        let old = Dictionary(uniqueKeysWithValues: previous.map { ($0.id, $0) })
+        var used = Set(teams.map { $0.name.lowercased() })
+        var renames: [String: String] = [:]
+        for index in teams.indices {
+            let team = teams[index]
+            guard let was = old[team.id],
+                  Set(was.studentIDs) != Set(team.studentIDs),
+                  Self.isAutoTeamName(team.name, studentIDs: was.studentIDs, firstNames: firstNames) else { continue }
+            used.remove(team.name.lowercased())
+            let base = Self.autoTeamName(for: team.studentIDs, firstNames: firstNames)
+            var name = base
+            var counter = 2
+            while used.contains(name.lowercased()) {
+                name = "\(base) \(counter)"
+                counter += 1
+            }
+            used.insert(name.lowercased())
+            if name != team.name {
+                renames[team.name] = name
+                teams[index].name = name
+            }
+        }
+        guard !renames.isEmpty else { return }
+        func n(_ value: String) -> String { renames[value] ?? value }
+        savedSchedule = savedSchedule.map { round in
+            ScheduledRound(
+                id: round.id,
+                number: round.number,
+                matches: round.matches.map {
+                    ScheduledMatch(id: $0.id, homeTeam: n($0.homeTeam), awayTeam: n($0.awayTeam), venueNumber: $0.venueNumber)
+                },
+                stage: round.stage
+            )
+        }
+        savedResults = savedResults.map {
+            MatchResult(id: $0.id, matchID: $0.matchID, homeTeam: n($0.homeTeam), awayTeam: n($0.awayTeam),
+                        homeScore: $0.homeScore, awayScore: $0.awayScore)
+        }
+        savedKnockoutResults = savedKnockoutResults.map {
+            KnockoutMatchResult(matchID: $0.matchID, homeTeam: n($0.homeTeam), awayTeam: n($0.awayTeam),
+                                homeScore: $0.homeScore, awayScore: $0.awayScore)
+        }
+    }
+
+    /// Copia de los grupos de trabajo solo los integrantes (mismos equipos, mismos nombres).
+    /// Los grupos borrados o nuevos se ignoran.
+    mutating func copyMembers(from groups: [TournamentWorkGroupTeam]) throws {
+        let fresh = Dictionary(
+            uniqueKeysWithValues: groups.map { (String($0.groupId), $0.members.map { String($0.studentId) }) }
+        )
+        let members = teams.reduce(into: [String: [String]]()) { result, team in
+            if let list = fresh[team.id], !list.isEmpty { result[team.id] = list }
+        }
+        try updateMembers(members, markManual: false)
+    }
+}
+
 // MARK: - Resultados
 
 extension TournamentPlan {

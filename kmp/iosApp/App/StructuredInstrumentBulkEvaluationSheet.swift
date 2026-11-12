@@ -211,14 +211,22 @@ struct StructuredInstrumentBulkEvaluationSheet: View {
         let item = templateItems[index]
         switch item.type {
         case .scale14:
-            InstrumentEvaluationScaleControl(selection: numberBinding(studentId: student.id, index: index))
-                .frame(width: columnWidth(for: item))
-                .accessibilityLabel("\(indicatorTitle(item.title)), \(student.name)")
+            // Celda `Equatable`: un toque solo redibuja la celda tocada, no todo el grid.
+            StructuredBulkScaleCell(
+                value: models[student.id]?.items[safe: index]?.numberValue ?? "",
+                width: columnWidth(for: item),
+                accessibilityText: "\(indicatorTitle(item.title)), \(student.name)",
+                selection: numberBinding(studentId: student.id, index: index)
+            )
+            .equatable()
         case .check:
-            Toggle(isOn: boolBinding(studentId: student.id, index: index)) { EmptyView() }
-                .labelsHidden()
-                .frame(width: columnWidth(for: item))
-                .accessibilityLabel("\(indicatorTitle(item.title)), \(student.name)")
+            StructuredBulkCheckCell(
+                isOn: models[student.id]?.items[safe: index]?.boolValue ?? false,
+                width: columnWidth(for: item),
+                accessibilityText: "\(indicatorTitle(item.title)), \(student.name)",
+                binding: boolBinding(studentId: student.id, index: index)
+            )
+            .equatable()
         default:
             Text(models[student.id]?.items[safe: index].map(readOnlyText) ?? "—")
                 .font(.footnote)
@@ -448,6 +456,44 @@ struct StructuredInstrumentBulkEvaluationSheet: View {
         failedStudentIds = failed
         if !saved.isEmpty { onSaved(saved) }
         if failed.isEmpty { onClose() }
+    }
+}
+
+/// Celda 1-4 de la hoja masiva. Compara solo lo que pinta (valor, ancho, etiqueta);
+/// el `Binding` lee y escribe el estado actual de la hoja, así que no queda viejo.
+private struct StructuredBulkScaleCell: View, Equatable {
+    let value: String
+    let width: CGFloat
+    let accessibilityText: String
+    let selection: Binding<String>
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.value == rhs.value && lhs.width == rhs.width && lhs.accessibilityText == rhs.accessibilityText
+    }
+
+    var body: some View {
+        InstrumentEvaluationScaleControl(selection: selection)
+            .frame(width: width)
+            .accessibilityLabel(accessibilityText)
+    }
+}
+
+/// Casilla Sí/No de la hoja masiva. Mismo criterio que `StructuredBulkScaleCell`.
+private struct StructuredBulkCheckCell: View, Equatable {
+    let isOn: Bool
+    let width: CGFloat
+    let accessibilityText: String
+    let binding: Binding<Bool>
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.isOn == rhs.isOn && lhs.width == rhs.width && lhs.accessibilityText == rhs.accessibilityText
+    }
+
+    var body: some View {
+        Toggle(isOn: binding) { EmptyView() }
+            .labelsHidden()
+            .frame(width: width)
+            .accessibilityLabel(accessibilityText)
     }
 }
 

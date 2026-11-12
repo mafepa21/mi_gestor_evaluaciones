@@ -5,6 +5,8 @@ import SwiftUI
 struct SdaTournamentMembersSheet: View {
     let teams: [TournamentPlanTeam]
     let students: [(id: String, name: String)]
+    /// Hay nombres automáticos desfasados: Guardar los corrige aunque no se toque nada.
+    var hasStaleNames = false
     let onSave: ([String: [String]]) throws -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -14,10 +16,12 @@ struct SdaTournamentMembersSheet: View {
     init(
         teams: [TournamentPlanTeam],
         students: [(id: String, name: String)],
+        hasStaleNames: Bool = false,
         onSave: @escaping ([String: [String]]) throws -> Void
     ) {
         self.teams = teams
         self.students = students
+        self.hasStaleNames = hasStaleNames
         self.onSave = onSave
         _draft = State(initialValue: Dictionary(uniqueKeysWithValues: teams.map { ($0.id, $0.studentIDs) }))
     }
@@ -47,7 +51,7 @@ struct SdaTournamentMembersSheet: View {
     }
 
     private var hasChanges: Bool {
-        teams.contains { Set(draft[$0.id] ?? []) != Set($0.studentIDs) }
+        hasStaleNames || teams.contains { Set(draft[$0.id] ?? []) != Set($0.studentIDs) }
     }
 
     var body: some View {
@@ -57,6 +61,12 @@ struct SdaTournamentMembersSheet: View {
                     Text("Mueve alumnos entre equipos. El calendario y los resultados no cambian.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                    if hasStaleNames {
+                        Label("Algún equipo tiene un nombre que no coincide con sus integrantes. Pulsa Guardar para corregirlo.",
+                              systemImage: "exclamationmark.triangle")
+                            .font(.subheadline)
+                            .foregroundStyle(.orange)
+                    }
                 }
                 ForEach(teams) { team in
                     Section {

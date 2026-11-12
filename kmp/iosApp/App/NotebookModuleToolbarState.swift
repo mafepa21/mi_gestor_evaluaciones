@@ -241,7 +241,7 @@ extension NotebookModuleView {
             canUndo: !undoStack.isEmpty,
             isAttendanceQuickMode: isAttendanceQuickMode,
             canMarkAllPresent: canMarkAllPresent,
-            exportText: exportText(data: data),
+            exportTextProvider: makeExportTextProvider(),
             onToggleInspector: {
                 if inspectorSelection == nil {
                     openInspectorForSelection(data)
@@ -300,7 +300,7 @@ extension NotebookModuleView {
             addColumnAvailable: true,
             organizationMenuAvailable: true,
             groupManagementAvailable: true,
-            exportText: exportText(data: data),
+            exportTextProvider: makeExportTextProvider(),
             onMarkAllPresent: {
                 requestMarkAllVisibleStudentsPresent(data: data)
             },
@@ -350,6 +350,20 @@ extension NotebookModuleView {
                 isEducamosSMExportPresented = true
             }
         )
+    }
+
+    /// Proveedor perezoso del texto de exportación: lee `bridge.notebookState` al
+    /// exportar (nunca un `data` capturado al sincronizar la barra).
+    func makeExportTextProvider() -> @MainActor () -> String {
+        { [self] in
+            guard let data = bridge.notebookState as? NotebookUiStateData else { return "" }
+            return exportText(data: data)
+        }
+    }
+
+    /// Elemento para los `ShareLink` de los menús: no evalúa `exportText` al montarlos.
+    var notebookExportItem: NotebookExportTextItem {
+        NotebookExportTextItem(makeText: makeExportTextProvider())
     }
 
     func syncToolbarStateIfLoaded() {

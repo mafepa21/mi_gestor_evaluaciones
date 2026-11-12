@@ -575,11 +575,6 @@ struct NotebookModuleView: View {
             }
             scheduleNotebookSignalsRefresh()
         }
-        .appOnChange(of: toolbarStateKey(data: data)) { _ in
-            if !isMacInspectorOnly {
-                scheduleToolbarStateSync(data: data)
-            }
-        }
         .appOnChange(of: selectedGroupId) { _ in
             if NotebookColumnGradeSave.shouldPersistNow(.groupOrClassChange) {
                 bridge.flushAnyPendingColumnGradeSave()
@@ -950,7 +945,7 @@ struct NotebookModuleView: View {
             .disabled(data.sheet.rows.isEmpty || data.sheet.columns.filter(isNotebookIndividualSummaryColumn).isEmpty)
         }
 
-        ShareLink(item: exportText(data: data)) {
+        ShareLink(item: notebookExportItem, preview: SharePreview("Cuaderno")) {
             Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
         }
 
@@ -1815,7 +1810,7 @@ struct NotebookModuleView: View {
                                 }
 
                                 // 7. Exportar
-                                ShareLink(item: exportText(data: data)) {
+                                ShareLink(item: notebookExportItem, preview: SharePreview("Cuaderno")) {
                                     Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
                                 }
 

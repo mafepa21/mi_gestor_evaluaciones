@@ -1,4 +1,27 @@
 import SwiftUI
+import CoreTransferable
+
+/// Texto del Cuaderno para «Exportar»/«Compartir», calculado solo al exportar.
+///
+/// `exportText(data:)` recorre todas las filas y columnas (y evalúa fórmulas): no se
+/// calcula al pintar menús ni al sincronizar la barra, sino cuando el sistema pide
+/// el contenido a `ShareLink`.
+struct NotebookExportTextItem: Transferable {
+    let makeText: @MainActor () -> String
+
+    static var transferRepresentation: some TransferRepresentation {
+        // Exportador síncrono (el asíncrono está obsoleto desde macOS 14). El texto lee
+        // estado de SwiftUI y del puente: se calcula siempre en el hilo principal.
+        ProxyRepresentation(exporting: { (item: NotebookExportTextItem) -> String in
+            if Thread.isMainThread {
+                return MainActor.assumeIsolated { item.makeText() }
+            }
+            return DispatchQueue.main.sync {
+                MainActor.assumeIsolated { item.makeText() }
+            }
+        })
+    }
+}
 
 @MainActor
 final class NotebookMacToolbarActions: ObservableObject {
@@ -11,7 +34,10 @@ final class NotebookMacToolbarActions: ObservableObject {
     @Published var addColumnAvailable = false
     @Published var organizationMenuAvailable = false
     @Published var groupManagementAvailable = false
-    @Published var exportText: String?
+    /// Solo indica si hay exportación; el texto se genera al exportar.
+    @Published var isExportAvailable = false
+    /// Sin publicar: cambiarlo no repinta nada.
+    private(set) var exportTextProvider: (@MainActor () -> String)?
 
     private var markAllPresentAction: (() -> Void)?
     private var attendanceQuickModeAction: (() -> Void)?
@@ -43,7 +69,7 @@ final class NotebookMacToolbarActions: ObservableObject {
         addColumnAvailable: Bool,
         organizationMenuAvailable: Bool,
         groupManagementAvailable: Bool,
-        exportText: String?,
+        exportTextProvider: (@MainActor () -> String)?,
         onMarkAllPresent: @escaping () -> Void,
         onToggleAttendanceQuickMode: @escaping () -> Void,
         onToggleQuickKeypad: (() -> Void)? = nil,
@@ -67,7 +93,11 @@ final class NotebookMacToolbarActions: ObservableObject {
             self.addColumnAvailable = addColumnAvailable
             self.organizationMenuAvailable = organizationMenuAvailable
             self.groupManagementAvailable = groupManagementAvailable
-            self.exportText = exportText
+            self.exportTextProvider = exportTextProvider
+            let exportAvailable = exportTextProvider != nil
+            if self.isExportAvailable != exportAvailable {
+                self.isExportAvailable = exportAvailable
+            }
             self.markAllPresentAction = onMarkAllPresent
             self.attendanceQuickModeAction = onToggleAttendanceQuickMode
             self.toggleQuickKeypadAction = onToggleQuickKeypad
@@ -94,7 +124,8 @@ final class NotebookMacToolbarActions: ObservableObject {
             self.addColumnAvailable = false
             self.organizationMenuAvailable = false
             self.groupManagementAvailable = false
-            self.exportText = nil
+            self.exportTextProvider = nil
+            self.isExportAvailable = false
             self.markAllPresentAction = nil
             self.attendanceQuickModeAction = nil
             self.toggleQuickKeypadAction = nil
@@ -122,4 +153,12 @@ final class NotebookMacToolbarActions: ObservableObject {
     func generateSummary() { summaryAction?() }
     func refresh() { refreshAction?() }
     func exportSM() { exportSMAction?() }
+
+    /// Elemento para `ShareLink`: el texto se pide al exportar, no al montar el menú.
+    var exportItem: NotebookExportTextItem? {
+        guard isExportAvailable, exportTextProvider != nil else { return nil }
+        return NotebookExportTextItem { [weak self] in
+            self?.exportTextProvider?() ?? ""
+        }
+    }
 }

@@ -510,7 +510,9 @@ extension NotebookModuleView {
         let nextCellId = cellFocusId(studentId: nextStudentId, columnId: nextColumn.id)
 
         // Con la virtualización de filas, la celda destino puede no estar materializada:
-        // se desplaza antes de enfocar para no perder el foco al bajar.
+        // se desplaza antes de enfocar para no perder el foco al bajar. Se mira antes del
+        // scroll si la fila ya estaba montada: si lo estaba, sigue montada tras él.
+        let targetRowWasMounted = gridScrollProxy.isRowMounted?(nextRowIndex) ?? false
         gridScrollProxy.scrollToRow?(nextRowIndex)
         navigationFocusWorkItem?.cancel()
         navigationFocusWorkItem = nil
@@ -532,7 +534,16 @@ extension NotebookModuleView {
             }
         }
         navigationFocusWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: workItem)
+        if targetRowWasMounted {
+            // Fila ya pintada: foco en la vuelta siguiente del bucle principal, sin
+            // espera fija (basta con separar el `focusedCellId = nil` de arriba).
+            DispatchQueue.main.async(execute: workItem)
+        } else {
+            // Respaldo: la fila destino aún no existe (fuera de la ventana virtualizada,
+            // o viewport sin medir, donde `scrollToRow` no hace nada). Se deja tiempo a
+            // que el scroll publique la ventana nueva y SwiftUI monte la fila.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: workItem)
+        }
     }
 
 }

@@ -55,3 +55,9 @@
 - El arreglo de columnas físicas (`repairPhysicalColumnsIfNeeded`) escribe en el repositorio, no en `saveColumn` del ViewModel: ese crea una evaluación nueva al guardar una columna numérica que cuenta y no tiene `evaluationId`.
 - Toda evaluación genera una columna `eval_<id>` (`BuildNotebookSheetUseCase.mergeColumns`). El alta de una prueba física crea una evaluación con su nombre; el arreglo la oculta y la saca de la media.
 - El cronómetro de la celda y el grupal miden con `ProcessInfo.systemUptime`, no sumando ticks del `TimelineView`.
+- El texto de exportar no se publica: `notebookExportTextProvider`/`exportTextProvider` lo calculan al exportar leyendo `bridge.notebookState`. No volver a meter `exportText(data:)` en `syncToolbarState` ni en un `ShareLink(item:)` de menú.
+- El `onChange(of: toolbarStateKey)` vive solo en `notebookLoadedContent`; no duplicarlo en `centerPanel`.
+- Navegar con Enter: foco inmediato solo si `gridScrollProxy.isRowMounted` era verdad antes del scroll; si no, la espera de 0,12 s es el respaldo. No quitarla sin otra forma de saber que la fila ya está montada.
+- `selectClass(force)` cancela la carga anterior (`loadJob`). Todo `catch (e: Exception)` en cargas debe dejar pasar antes `CancellationException`, o acabará en `Error`.
+- Con la hoja masiva de rúbricas abierta, `NotebookViewModel` está en pausa (`setReactiveReloadPaused`): el observador y `NotebookRefreshBus` solo anotan. Toda vía nueva de abrir la hoja debe pausar y toda vía de cerrarla debe pasar por `closeBulkRubricEvaluation`, que reanuda. Un cambio de clase quita la pausa.
+- Rúbrica individual sin avance automático: la recarga la hace el observador de `isSaveSuccessful` en `KmpBridge.swift`, no `saveRubricEvaluation`.

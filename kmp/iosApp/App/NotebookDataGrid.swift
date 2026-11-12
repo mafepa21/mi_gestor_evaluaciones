@@ -193,6 +193,9 @@ enum NotebookRowVirtualizationDebug {
 /// Puente para que el Cuaderno pida desplazar el grid hasta una fila (p. ej. al navegar con Enter).
 final class NotebookGridScrollProxy {
     var scrollToRow: ((Int) -> Void)?
+    /// `true` si la fila ya está en la ventana pintada (filas visibles + margen).
+    /// Sirve para enfocar sin esperar cuando no hay que montar filas nuevas.
+    var isRowMounted: ((Int) -> Bool)?
 }
 
 final class NotebookScrollSyncCoordinator: ObservableObject {
@@ -237,6 +240,12 @@ final class NotebookScrollSyncCoordinator: ObservableObject {
         viewportHeight = nextHeight
         guard metrics.rowCount > 0 else { return }
         publishRangeIfNeeded()
+    }
+
+    /// Indica si la fila `index` está en la ventana publicada (ya montada en el grid).
+    /// Vacía hasta la primera medida: entonces siempre devuelve `false`.
+    func containsRow(_ index: Int) -> Bool {
+        visibleRange.contains(index)
     }
 
     /// Desplaza el grid lo justo para que la fila `index` quede completamente visible.

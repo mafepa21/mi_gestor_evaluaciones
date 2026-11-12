@@ -24,7 +24,8 @@ final class WorkspaceLayoutState: ObservableObject {
     @Published var notebookCanUndo: Bool = false
     @Published var notebookIsAttendanceQuickMode: Bool = false
     @Published var notebookCanMarkAllPresent: Bool = false
-    @Published var notebookExportText: String? = nil
+    /// Solo indica si hay exportación; el texto se genera al exportar (`notebookExportItem`).
+    @Published var notebookExportAvailable: Bool = false
     @Published var dashboardInspectorAvailable: Bool = false
     @Published var isDashboardInspectorPresented: Bool = false
     @Published var dashboardActionsAvailable: Bool = false
@@ -55,6 +56,16 @@ final class WorkspaceLayoutState: ObservableObject {
     var notebookRefreshAction: (() -> Void)?
     var notebookGenerateSummaryAction: (() -> Void)?
     var notebookExportSMAction: (() -> Void)?
+    /// Sin publicar: el texto de exportación se calcula al pulsar, no en cada toque.
+    var notebookExportTextProvider: (@MainActor () -> String)?
+
+    /// Elemento para `ShareLink`: el texto se pide al exportar, no al montar el menú.
+    var notebookExportItem: NotebookExportTextItem? {
+        guard notebookExportAvailable, notebookExportTextProvider != nil else { return nil }
+        return NotebookExportTextItem { [weak self] in
+            self?.notebookExportTextProvider?() ?? ""
+        }
+    }
 
     var dashboardInspectorAction: (() -> Void)?
     var dashboardRefreshAction: (() -> Void)?
@@ -96,7 +107,7 @@ final class WorkspaceLayoutState: ObservableObject {
         canUndo: Bool = false,
         isAttendanceQuickMode: Bool = false,
         canMarkAllPresent: Bool = false,
-        exportText: String? = nil,
+        exportTextProvider: (@MainActor () -> String)? = nil,
         onToggleInspector: @escaping () -> Void,
         onAddColumn: @escaping () -> Void,
         onSearchChange: @escaping (String) -> Void,
@@ -124,7 +135,11 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookCanUndo = canUndo
             self.notebookIsAttendanceQuickMode = isAttendanceQuickMode
             self.notebookCanMarkAllPresent = canMarkAllPresent
-            self.notebookExportText = exportText
+            self.notebookExportTextProvider = exportTextProvider
+            let exportAvailable = exportTextProvider != nil
+            if self.notebookExportAvailable != exportAvailable {
+                self.notebookExportAvailable = exportAvailable
+            }
             self.notebookInspectorAction = onToggleInspector
             self.notebookAddColumnAction = onAddColumn
             self.notebookSearchAction = onSearchChange
@@ -152,7 +167,7 @@ final class WorkspaceLayoutState: ObservableObject {
         canUndo: Bool = false,
         isAttendanceQuickMode: Bool = false,
         canMarkAllPresent: Bool = false,
-        exportText: String? = nil
+        exportTextProvider: (@MainActor () -> String)? = nil
     ) {
         publishDeferred {
             self.notebookInspectorAvailable = inspectorAvailable
@@ -166,7 +181,11 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookCanUndo = canUndo
             self.notebookIsAttendanceQuickMode = isAttendanceQuickMode
             self.notebookCanMarkAllPresent = canMarkAllPresent
-            self.notebookExportText = exportText
+            self.notebookExportTextProvider = exportTextProvider
+            let exportAvailable = exportTextProvider != nil
+            if self.notebookExportAvailable != exportAvailable {
+                self.notebookExportAvailable = exportAvailable
+            }
         }
     }
 
@@ -185,7 +204,8 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookCanUndo = false
             self.notebookIsAttendanceQuickMode = false
             self.notebookCanMarkAllPresent = false
-            self.notebookExportText = nil
+            self.notebookExportTextProvider = nil
+            self.notebookExportAvailable = false
             self.notebookInspectorAction = nil
             self.notebookAddColumnAction = nil
             self.notebookSearchAction = nil
@@ -1809,8 +1829,8 @@ struct AppWorkspaceShell: View {
                 Label("Recargar", systemImage: "arrow.clockwise")
             }
 
-            if let exportText = layoutState.notebookExportText {
-                ShareLink(item: exportText) {
+            if let exportItem = layoutState.notebookExportItem {
+                ShareLink(item: exportItem, preview: SharePreview("Cuaderno")) {
                     Label("Exportar", systemImage: "square.and.arrow.up")
                 }
             }

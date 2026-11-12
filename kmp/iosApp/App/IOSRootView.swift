@@ -520,8 +520,8 @@ struct IOSRootView: View {
                     Label("Recargar", systemImage: "arrow.clockwise")
                 }
 
-                if let exportText = layoutState.notebookExportText {
-                    ShareLink(item: exportText) {
+                if let exportItem = layoutState.notebookExportItem {
+                    ShareLink(item: exportItem, preview: SharePreview("Cuaderno")) {
                         Label("Exportar", systemImage: "square.and.arrow.up")
                     }
                 }

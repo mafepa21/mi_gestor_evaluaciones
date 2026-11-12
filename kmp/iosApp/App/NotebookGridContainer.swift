@@ -133,6 +133,9 @@ struct NotebookGridContainer<
                 scrollProxy?.scrollToRow = { [scrollSyncCoordinator] index in
                     scrollSyncCoordinator.scrollToRow(index)
                 }
+                scrollProxy?.isRowMounted = { [scrollSyncCoordinator] index in
+                    scrollSyncCoordinator.containsRow(index)
+                }
             }
             .appOnChange(of: metrics) { newMetrics in
                 scrollSyncCoordinator.install(metrics: newMetrics)

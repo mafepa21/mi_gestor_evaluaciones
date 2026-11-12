@@ -816,8 +816,8 @@ struct MacRootView: View {
                 Label("Recargar", systemImage: "arrow.clockwise")
             }
 
-            if let exportText = notebookToolbarActions.exportText {
-                ShareLink(item: exportText) {
+            if let exportItem = notebookToolbarActions.exportItem {
+                ShareLink(item: exportItem, preview: SharePreview("Cuaderno")) {
                     Label("Exportar", systemImage: "square.and.arrow.up")
                 }
             }

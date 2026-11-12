@@ -1226,6 +1226,175 @@ class NotebookViewModelTest {
     }
 
     @Test
+    fun `varias recargas forzadas seguidas cancelan las anteriores y dejan solo la mas reciente`() = runTest {
+        val classId = 1L
+        val column = NotebookColumnDefinition(id = "col_texto", title = "Texto", type = NotebookColumnType.TEXT)
+        val student = Student(id = 10L, firstName = "Ada", lastName = "Lovelace")
+        fun sheet(displayValue: String) = NotebookSheet(
+            classId = classId,
+            tabs = emptyList(),
+            columns = listOf(column),
+            rows = listOf(
+                NotebookRow(
+                    student = student,
+                    cells = emptyList(),
+                    weightedAverage = null,
+                    persistedCells = listOf(
+                        PersistedNotebookCell(classId = classId, studentId = student.id, columnId = column.id, displayValue = displayValue)
+                    ),
+                )
+            ),
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = sheet("inicial"),
+            snapshotQueue = mutableListOf(sheet("inicial"), sheet("r1"), sheet("r2"), sheet("r3")),
+            delayQueueMs = mutableListOf(0L, 100L, 100L, 100L),
+        )
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(classId)
+            advanceUntilIdle()
+            val completedBefore = repository.completedLoadNotebookSnapshotCount
+
+            viewModel.selectClass(classId, force = true)
+            advanceTimeBy(10)
+            viewModel.selectClass(classId, force = true)
+            advanceTimeBy(10)
+            viewModel.selectClass(classId, force = true)
+            advanceUntilIdle()
+
+            assertEquals(1, repository.completedLoadNotebookSnapshotCount - completedBefore, "Solo debe terminar la última carga")
+            val finalState = viewModel.state.value
+            check(finalState is NotebookUiState.Data) { "Una carga cancelada no debe acabar en error: $finalState" }
+            assertEquals("r3", finalState.sheet.rows.single().persistedCells.single().displayValue)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `con la recarga reactiva en pausa no se recarga y al reanudar hay una sola recarga`() = runTest {
+        val classId = 1L
+        val column = NotebookColumnDefinition(id = "col_texto", title = "Texto", type = NotebookColumnType.TEXT)
+        val student = Student(id = 10L, firstName = "Ada", lastName = "Lovelace")
+        fun sheet(displayValue: String) = NotebookSheet(
+            classId = classId,
+            tabs = emptyList(),
+            columns = listOf(column),
+            rows = listOf(
+                NotebookRow(
+                    student = student,
+                    cells = emptyList(),
+                    weightedAverage = null,
+                    persistedCells = listOf(
+                        PersistedNotebookCell(classId = classId, studentId = student.id, columnId = column.id, displayValue = displayValue)
+                    ),
+                )
+            ),
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = sheet("nuevo"),
+            snapshotQueue = mutableListOf(sheet("inicial")),
+        )
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(classId)
+            advanceUntilIdle()
+            assertEquals(1, repository.loadNotebookSnapshotCount)
+
+            viewModel.setReactiveReloadPaused(true)
+            assertTrue(viewModel.isReactiveReloadPaused)
+
+            // Dos cambios de notas (p. ej. autoguardados de la hoja masiva) y un aviso del bus.
+            repository.emitExternalGradeChange(7.0)
+            advanceTimeBy(500)
+            advanceUntilIdle()
+            repository.emitExternalGradeChange(8.0)
+            advanceTimeBy(500)
+            advanceUntilIdle()
+            com.migestor.shared.util.NotebookRefreshBus.emitRefresh()
+            advanceUntilIdle()
+            assertEquals(1, repository.loadNotebookSnapshotCount, "En pausa no debe recargar")
+            assertEquals(
+                "inicial",
+                (viewModel.state.value as NotebookUiState.Data).sheet.rows.single().persistedCells.single().displayValue,
+            )
+
+            viewModel.setReactiveReloadPaused(false)
+            advanceTimeBy(500)
+            advanceUntilIdle()
+            assertFalse(viewModel.isReactiveReloadPaused)
+            assertEquals(2, repository.loadNotebookSnapshotCount, "Al reanudar debe haber exactamente una recarga")
+            assertEquals(
+                "nuevo",
+                (viewModel.state.value as NotebookUiState.Data).sheet.rows.single().persistedCells.single().displayValue,
+            )
+
+            // Reanudar otra vez no recarga de nuevo.
+            viewModel.setReactiveReloadPaused(false)
+            advanceUntilIdle()
+            assertEquals(2, repository.loadNotebookSnapshotCount)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `reanudar sin cambios durante la pausa no recarga`() = runTest {
+        val repository = FakeNotebookRepository(snapshot = emptyNotebookSheet())
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(1L)
+            advanceUntilIdle()
+            viewModel.setReactiveReloadPaused(true)
+            advanceTimeBy(500)
+            advanceUntilIdle()
+            viewModel.setReactiveReloadPaused(false)
+            advanceUntilIdle()
+            assertEquals(1, repository.loadNotebookSnapshotCount)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `cambiar de clase resetea la pausa de recarga reactiva`() = runTest {
+        val repository = FakeNotebookRepository(snapshot = emptyNotebookSheet())
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(1L)
+            advanceUntilIdle()
+            viewModel.setReactiveReloadPaused(true)
+            repository.emitExternalGradeChange(6.0)
+            advanceTimeBy(500)
+            advanceUntilIdle()
+            assertEquals(1, repository.loadNotebookSnapshotCount)
+
+            viewModel.selectClass(2L)
+            advanceUntilIdle()
+            assertFalse(viewModel.isReactiveReloadPaused, "Un cambio de clase debe quitar la pausa")
+            assertEquals(2, repository.loadNotebookSnapshotCount)
+
+            // Lo pendiente era de la clase anterior: reanudar no provoca otra recarga.
+            viewModel.setReactiveReloadPaused(false)
+            advanceUntilIdle()
+            assertEquals(2, repository.loadNotebookSnapshotCount)
+
+            // Y la recarga reactiva vuelve a funcionar en la clase nueva.
+            repository.emitExternalGradeChange(9.0)
+            advanceTimeBy(500)
+            advanceUntilIdle()
+            assertEquals(3, repository.loadNotebookSnapshotCount)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun `calculated column clears its draft when the formula can no longer be evaluated`() = runTest {
         // Regresion: si la formula fallaba (variable ausente, p. ej. tras borrar la nota
         // que referenciaba), `getOrNull() ?: return@forEach` dejaba el draft calculado
@@ -1355,7 +1524,18 @@ private class FakeNotebookRepository(
         if (delayMs != null && delayMs > 0) {
             kotlinx.coroutines.delay(delayMs)
         }
+        // Solo cuenta las cargas que terminan: una cancelada salta en el `delay`.
+        completedLoadNotebookSnapshotCount += 1
         return nextSnapshot
+    }
+
+    var completedLoadNotebookSnapshotCount = 0
+
+    /** Simula un cambio de notas que no viene del Cuaderno (otra hoja, sincronización). */
+    fun emitExternalGradeChange(value: Double) {
+        gradeChanges.value = listOf(
+            Grade(id = 99L, classId = 1L, studentId = 1L, columnId = "externa", evaluationId = null, value = value)
+        )
     }
     override fun observeStudentChanges(classId: Long): Flow<List<Student>> = studentChanges
     override fun observeGradesForClass(classId: Long): Flow<List<com.migestor.shared.domain.Grade>> = gradeChanges

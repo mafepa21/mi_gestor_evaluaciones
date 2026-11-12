@@ -89,32 +89,17 @@ class RubricBulkEvaluationViewModel(
                 val classStudents = notebookRepository.listStudentsInClass(classId)
                 val injured = classStudents.filter { it.isInjured }
 
-                // 2. Load Rubric Detail
-                val allRubrics = rubricsRepository.listRubrics()
-                val rubricDetail = allRubrics.find { it.rubric.id == rubricId } ?: throw Exception("Rubric not found")
+                // 2. Detalle de la rúbrica: consulta directa, no todas las rúbricas.
+                val rubricDetail = rubricsRepository.getRubricDetail(rubricId) ?: throw Exception("Rubric not found")
 
-                // 3. Load Existing Assessments for all students
-                val initialAssessments = mutableMapOf<Long, Map<Long, Long>>()
-                val initialScores = mutableMapOf<Long, Double>()
-
-                for (student in classStudents) {
-                    val studentAssessments = if (columnId != null) {
-                        val grade = notebookRepository.getGradeForColumn(student.id, columnId)
-                        val rubricSelections = grade?.rubricSelections
-                        if (!rubricSelections.isNullOrBlank()) {
-                            parseRubricSelections(rubricSelections)
-                        } else {
-                            rubricsRepository.getStudentEvaluation(student.id, rubricId, evaluationId)
-                        }
-                    } else {
-                        rubricsRepository.getStudentEvaluation(student.id, rubricId, evaluationId)
-                    }
-                    
-                    if (studentAssessments.isNotEmpty()) {
-                        initialAssessments[student.id] = studentAssessments
-                        initialScores[student.id] = calculateScoreForAssessment(rubricDetail, studentAssessments)
-                    }
-                }
+                // 3. Valoraciones existentes de todo el grupo, por lote (número fijo de lecturas).
+                val (initialAssessments, initialScores) = loadInitialAssessments(
+                    classId = classId,
+                    students = classStudents,
+                    rubricDetail = rubricDetail,
+                    evaluationId = evaluationId,
+                    columnId = columnId
+                )
 
                 // 4. Load Groups and Members if tabId is provided
                 val workGroups = notebookRepository.listWorkGroups(classId, tabId)
@@ -135,6 +120,96 @@ class RubricBulkEvaluationViewModel(
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = e.message) }
+            }
+        }
+    }
+
+    /**
+     * Carga los niveles ya puestos de todos los alumnos con lecturas por lote.
+     *
+     * Conserva la prioridad de antes: si hay `columnId` y la nota de esa celda trae
+     * `rubricSelections`, mandan esas selecciones; si no, las valoraciones de la
+     * evaluación (lo que devolvía `getStudentEvaluation`).
+     *
+     * Equivalencias con las llamadas por alumno:
+     * - `getStudentEvaluation` = valoraciones de la evaluación cuyos criterios son de esta
+     *   rúbrica (une con `rubric_criteria` por `rubric_id`). Aquí: `listRubricAssessmentsForStudents`
+     *   filtrado por los criterios de `rubricDetail` (salen de la misma tabla y el mismo filtro).
+     *   La clave primaria (alumno, evaluación, criterio) impide duplicados.
+     * - `getGradeForColumn` con columna guardada en este grupo: busca entre las notas del alumno
+     *   en el grupo de la columna la primera con la evaluación de la columna y, si no hay, la de
+     *   ese `columnId`. Aquí se hace igual sobre `listGradesForClass`. Si hay más de una nota
+     *   candidata, "la primera" depende del orden de SQLite: para ese alumno se repite la
+     *   llamada individual. Si la columna no está guardada en este grupo (columna virtual
+     *   `eval_<id>` u otro grupo), no se conoce el grupo de la evaluación: se mantiene la
+     *   llamada individual por alumno.
+     */
+    private suspend fun loadInitialAssessments(
+        classId: Long,
+        students: List<Student>,
+        rubricDetail: RubricDetail,
+        evaluationId: Long,
+        columnId: String?
+    ): Pair<Map<Long, Map<Long, Long>>, Map<Long, Double>> {
+        val rubricId = rubricDetail.rubric.id
+        val rubricCriterionIds = rubricDetail.criteria.map { it.criterion.id }.toSet()
+        val studentIds = students.map { it.id }
+
+        val evaluationAssessmentsByStudent: Map<Long, Map<Long, Long>> = if (studentIds.isEmpty()) {
+            emptyMap()
+        } else {
+            rubricsRepository.listRubricAssessmentsForStudents(studentIds, evaluationId)
+                .filter { it.evaluationId == evaluationId && it.criterionId in rubricCriterionIds }
+                .groupBy { it.studentId }
+                .mapValues { (_, rows) -> rows.associate { it.criterionId to it.levelId } }
+        }
+
+        val cellGradeResolver: (suspend (Long) -> Grade?)? = if (columnId != null && studentIds.isNotEmpty()) {
+            resolveCellGrades(classId, columnId)
+        } else {
+            null
+        }
+
+        val assessments = mutableMapOf<Long, Map<Long, Long>>()
+        val scores = mutableMapOf<Long, Double>()
+        for (student in students) {
+            val rubricSelections = cellGradeResolver?.invoke(student.id)?.rubricSelections
+            val studentAssessments = if (!rubricSelections.isNullOrBlank()) {
+                parseRubricSelections(rubricSelections)
+            } else {
+                evaluationAssessmentsByStudent[student.id].orEmpty()
+            }
+            if (studentAssessments.isNotEmpty()) {
+                assessments[student.id] = studentAssessments
+                scores[student.id] = calculateScoreForAssessment(rubricDetail, studentAssessments)
+            }
+        }
+        return assessments to scores
+    }
+
+    /**
+     * Devuelve cómo obtener la nota de la celda de cada alumno, igual que
+     * `notebookRepository.getGradeForColumn(studentId, columnId)`.
+     */
+    private suspend fun resolveCellGrades(classId: Long, columnId: String): suspend (Long) -> Grade? {
+        val column = notebookRepository.getNotebookConfig(classId).columns.firstOrNull { it.id == columnId }
+            // Columna no guardada en este grupo: vía individual (ver loadInitialAssessments).
+            ?: return { studentId -> notebookRepository.getGradeForColumn(studentId, columnId) }
+
+        val gradesByStudent = gradesRepository.listGradesForClass(classId)
+            .filter { it.classId == classId }
+            .groupBy { it.studentId }
+        val columnEvaluationId = column.evaluationId
+
+        return { studentId ->
+            val studentGrades = gradesByStudent[studentId].orEmpty()
+            val byEvaluation = columnEvaluationId?.let { evalId -> studentGrades.filter { it.evaluationId == evalId } }.orEmpty()
+            val byColumn = studentGrades.filter { it.columnId == columnId }
+            when {
+                byEvaluation.size == 1 -> byEvaluation.first()
+                byEvaluation.size > 1 -> notebookRepository.getGradeForColumn(studentId, columnId)
+                byColumn.size <= 1 -> byColumn.firstOrNull()
+                else -> notebookRepository.getGradeForColumn(studentId, columnId)
             }
         }
     }

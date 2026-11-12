@@ -132,6 +132,39 @@ public enum StudentEmailImportService {
         return (firstName, lastName)
     }
 
+    /// Parte local del correo cuando viene "pegada", sin puntos (`nombreapellido@sjosetav.hhdc.net`).
+    /// Devuelve nil si el correo usa puntos, porque entonces se parte por segmentos.
+    public static func compactEmailLocalPart(email: String) -> String? {
+        guard let (segments, _) = emailNameSegments(email: email), segments.count == 1 else { return nil }
+        let compact = compactName(segments[0])
+        return compact.isEmpty ? nil : compact
+    }
+
+    /// Compara un correo pegado con el alumno: nombre + 1er apellido o nombre + los dos apellidos.
+    /// Con el nombre completo vale 1.0; solo con el primer nombre ("juan" de "Juan Carlos"), 0.9.
+    public static func compactMatchScore(localPart: String, candidateFirst: String, candidateLast: String) -> Double {
+        let firstTokens = normalizeString(candidateFirst).split(separator: " ").map(String.init)
+        let lastTokens = normalizeString(candidateLast).split(separator: " ").map(String.init)
+        guard !firstTokens.isEmpty, !lastTokens.isEmpty else { return 0 }
+
+        let surnameOptions = [lastTokens[0], lastTokens.joined()]
+        let firstNameOptions: [(name: String, score: Double)] = [
+            (firstTokens.joined(), 1.0),
+            (firstTokens[0], 0.9)
+        ]
+        var best = 0.0
+        for option in firstNameOptions {
+            for surname in surnameOptions where option.name + surname == localPart {
+                best = max(best, option.score)
+            }
+        }
+        return best
+    }
+
+    private static func compactName(_ text: String) -> String {
+        normalizeString(text).replacingOccurrences(of: " ", with: "")
+    }
+
     /// Normaliza un texto para comparaciones diacríticas y fonéticas seguras
     public static func normalizeString(_ text: String) -> String {
         text
@@ -278,6 +311,7 @@ public enum StudentEmailImportService {
             let extractedFirst = identity.firstName
             let extractedLast = identity.lastName
             let nameVariants = candidateEmailIdentities(email: colA)
+            let compactLocalPart = compactEmailLocalPart(email: colA)
 
             // 1. Identificar las clases del nivel según la columna B (puede haber varios grupos)
             let targetClasses = colB.isEmpty ? [] : matchingClasses(forCourse: colB, in: classes)
@@ -297,7 +331,9 @@ public enum StudentEmailImportService {
             // 3. Evaluar emparejamiento contra el searchPool; el nombre del correo decide
             var scoredCandidates: [(student: Student, score: Double)] = []
             for candidate in searchPool {
-                let score = nameVariants.map { variant in
+                let score = compactLocalPart.map {
+                    compactMatchScore(localPart: $0, candidateFirst: candidate.firstName, candidateLast: candidate.lastName)
+                } ?? nameVariants.map { variant in
                     matchScore(
                         extractedFirst: variant.firstName,
                         extractedLast: variant.lastName,

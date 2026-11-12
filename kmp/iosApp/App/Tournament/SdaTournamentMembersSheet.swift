@@ -23,7 +23,15 @@ struct SdaTournamentMembersSheet: View {
     }
 
     private func name(_ id: String) -> String {
-        students.first(where: { $0.id == id })?.name ?? SdaResolvedTeam.missingStudentName
+        students.first(where: { $0.id == id }).map { Self.displayName($0.name) } ?? SdaResolvedTeam.missingStudentName
+    }
+
+    /// «Apellidos, Nombre» -> «Nombre Apellidos». Quita comas sueltas al final.
+    static func displayName(_ raw: String) -> String {
+        let parts = raw.split(separator: ",", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        return parts.count == 2 ? "\(parts[1]) \(parts[0])" : parts.joined(separator: " ")
     }
 
     private func team(of student: String) -> String? {
@@ -34,6 +42,7 @@ struct SdaTournamentMembersSheet: View {
     private var unassigned: [(id: String, name: String)] {
         let used = Set(draft.values.flatMap { $0 })
         return students.filter { !used.contains($0.id) }
+            .map { (id: $0.id, name: Self.displayName($0.name)) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
@@ -63,7 +72,12 @@ struct SdaTournamentMembersSheet: View {
                         }
                         addMenu(to: team.id)
                     } header: {
-                        Text(team.name)
+                        HStack {
+                            Text(team.name)
+                            Spacer()
+                            Text("\(draft[team.id]?.count ?? 0)")
+                                .monospacedDigit()
+                        }
                     }
                 }
                 if let errorText {
@@ -72,6 +86,7 @@ struct SdaTournamentMembersSheet: View {
                     }
                 }
             }
+            .formStyle(.grouped)
             .navigationTitle("Editar integrantes")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -87,30 +102,49 @@ struct SdaTournamentMembersSheet: View {
             }
         }
         #if os(macOS)
-        .frame(minWidth: 460, minHeight: 520)
+        .frame(minWidth: 520, idealWidth: 560, minHeight: 600, idealHeight: 720)
         #else
         .presentationDetents([.large])
         #endif
     }
 
     private func memberRow(_ student: String, in teamId: String) -> some View {
-        HStack {
+        let others = teams.filter { $0.id != teamId }
+        return HStack {
             Text(name(student))
             Spacer(minLength: 8)
             Menu {
-                ForEach(teams.filter { $0.id != teamId }) { other in
-                    Button("Mover a \(other.name)") { move(student, to: other.id) }
+                Section("Mover a") {
+                    ForEach(others) { other in
+                        Button(other.name) { move(student, to: other.id) }
+                    }
                 }
-                Divider()
-                Button("Quitar del equipo", role: .destructive) { remove(student) }
+                Button("Quitar del equipo", systemImage: "minus.circle", role: .destructive) { remove(student) }
             } label: {
-                Image(systemName: "ellipsis.circle")
-                    .frame(minWidth: 44, minHeight: 44)
+                Image(systemName: "ellipsis")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 32, height: 28)
+                    .contentShape(Rectangle())
             }
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
+            .menuIndicator(.hidden)
             .fixedSize()
+            .help("Mover o quitar")
             .accessibilityLabel("Opciones de \(name(student))")
         }
+        .contextMenu {
+            ForEach(others) { other in
+                Button("Mover a \(other.name)", systemImage: "arrow.right") { move(student, to: other.id) }
+            }
+            Divider()
+            Button("Quitar del equipo", systemImage: "minus.circle", role: .destructive) { remove(student) }
+        }
+        #if os(iOS)
+        .swipeActions {
+            Button("Quitar", role: .destructive) { remove(student) }
+        }
+        #endif
     }
 
     private func addMenu(to teamId: String) -> some View {
@@ -124,13 +158,17 @@ struct SdaTournamentMembersSheet: View {
             if !students.isEmpty {
                 Menu("De otro equipo") {
                     ForEach(students.filter { team(of: $0.id).map { $0 != teamId } ?? false }, id: \.id) { student in
-                        Button(student.name) { move(student.id, to: teamId) }
+                        Button(Self.displayName(student.name)) { move(student.id, to: teamId) }
                     }
                 }
             }
         } label: {
-            Label("Añadir alumno", systemImage: "plus.circle")
+            Label("Añadir alumno", systemImage: "plus")
+                .foregroundStyle(.tint)
         }
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
+        .menuIndicator(.hidden)
     }
 
     private func move(_ student: String, to teamId: String) {

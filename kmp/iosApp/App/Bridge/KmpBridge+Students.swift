@@ -2585,9 +2585,9 @@ extension KmpBridge {
             let numericScore: Double? = usesTermFigures
                 ? termMetrics?.averageScore?.doubleValue
                 : (profile.averageScore > 0 ? profile.averageScore : nil)
-            let attendanceRate: Int? = usesTermFigures
-                ? termMetrics?.attendanceRate.map { Int($0.doubleValue) }
-                : profile.attendanceRate
+            // Se trunca a entero, como hace el perfil con la asistencia de curso.
+            let termAttendanceRate: Int? = (termMetrics?.attendanceRate?.doubleValue).map { Int($0) }
+            let attendanceRate: Int? = usesTermFigures ? termAttendanceRate : Optional(profile.attendanceRate)
             let attendanceLabel = usesTermFigures ? "Asistencia del trimestre" : "Asistencia estimada"
             let criterionResults = (evidence?.criterionResults ?? []).map { lomloeCriterionLine($0) }
             let qualitativeObservations = (evidence?.observations ?? []).map { lomloeObservationLine($0) }

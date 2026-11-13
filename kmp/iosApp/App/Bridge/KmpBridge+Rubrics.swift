@@ -387,7 +387,13 @@ extension KmpBridge {
     }
 
     func bulkAssessmentSnapshot() -> [Int64: [Int64: Int64]] {
-        guard let rawAssessments = bulkRubricEvaluationState?.assessments as NSDictionary? else {
+        bulkAssessmentSnapshot(from: bulkRubricEvaluationState)
+    }
+
+    /// Conversión de `assessments` (diccionario Kotlin) a tipos Swift para un estado dado.
+    /// Recorre el diccionario entero: la hoja de grupo la memoriza por estado.
+    func bulkAssessmentSnapshot(from state: BulkRubricEvaluationUiState?) -> [Int64: [Int64: Int64]] {
+        guard let rawAssessments = state?.assessments as NSDictionary? else {
             return [:]
         }
 
@@ -413,7 +419,12 @@ extension KmpBridge {
     }
 
     func bulkScoreSnapshot() -> [Int64: Double] {
-        guard let rawScores = bulkRubricEvaluationState?.scores as NSDictionary? else {
+        bulkScoreSnapshot(from: bulkRubricEvaluationState)
+    }
+
+    /// Conversión de `scores` (diccionario Kotlin) a tipos Swift para un estado dado.
+    func bulkScoreSnapshot(from state: BulkRubricEvaluationUiState?) -> [Int64: Double] {
+        guard let rawScores = state?.scores as NSDictionary? else {
             return [:]
         }
 

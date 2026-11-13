@@ -24,6 +24,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Rúbricas (fluidez): la hoja de evaluación de grupo ya no observa todo el puente; solo se repinta si cambia su estado (`KmpBridgeWatch`). Tocar un nivel repinta solo la fila de ese alumno (`BulkRubricStudentRow`, `BulkRubricCompactRow`, `Equatable`). La conversión de niveles y notas se hace una vez por estado.
+- Rúbricas (fluidez): la hoja de grupo se abre con lecturas por lote (`getRubricDetail`, `listGradesForClass`, `listRubricAssessmentsForStudents`) en vez de unas tres lecturas por alumno. Misma prioridad de datos que antes. Con columnas no guardadas en el grupo (`eval_<id>`) o notas ambiguas se mantiene la lectura individual.
+- Listas de cotejo (fluidez): en la hoja de grupo, tocar una casilla o un nivel repinta solo esa celda (`StructuredBulkScaleCell`, `StructuredBulkCheckCell`).
+
 - Cuaderno (fluidez): el texto de «Exportar» ya no se calcula en cada toque de celda; se genera al exportar o compartir (`NotebookExportTextItem`). La cabecera de la hoja de compartir muestra «Cuaderno».
 - Cuaderno (fluidez): al saltar de celda con Enter, el foco pasa sin espera si la fila destino ya está pintada. Se mantienen los 0,12 s solo cuando hay que montar la fila.
 - Cuaderno y rúbricas (fluidez): con la hoja de evaluación de grupo abierta, el Cuaderno de detrás no se recarga en cada autoguardado; hace una sola recarga al cerrar (`NotebookViewModel.setReactiveReloadPaused`). Una recarga forzada nueva cancela la anterior, y guardar una rúbrica individual ya no pide la recarga dos veces.
@@ -37,6 +41,8 @@ El formato sigue una variante practica de Keep a Changelog:
 - Cuaderno: Mayús + clic en una lista de cotejo amplía la selección sin abrir el instrumento; menú «Seleccionar hasta aquí».
 
 ### Verification
+
+- Fluidez de rúbricas (paquete 2): `:shared:desktopTest` 180 tests, 0 fallos (test nuevo de carga por lote en `RubricBulkEvaluationViewModelTest`). Build `MiGestorKMPMac` y `MiGestorKMPiOS` (simulador genérico): BUILD SUCCEEDED. No ejecutado: `:shared:test` completo (falta el SDK de Android en el worktree), prueba manual en iPad y Mac, y conteo de repintados antes y después.
 
 - Fluidez del Cuaderno (paquete 1): `:shared:desktopTest` 179 tests, 0 fallos (4 nuevos en `NotebookViewModelTest`: recargas forzadas seguidas, pausa y reanudación, reanudar sin cambios, cambio de clase). Build `MiGestorKMPMac` y `MiGestorKMPiOS` (simulador genérico): BUILD SUCCEEDED. No ejecutado: `:shared:test` completo (falta el SDK de Android en el worktree), prueba manual en iPad y Mac, y medida de tiempos antes y después.
 

@@ -32,6 +32,8 @@ struct SdaTournamentDetailView: View {
     @State private var firstNames: [String: String] = [:]
     @State private var situationTitle: String?
     @State private var selectedTab: Tab = .calendar
+    /// Fase elegida a mano en la línea de fases; `nil` sigue la fase actual del torneo.
+    @State private var selectedPhase: TournamentPhaseKind?
     @State private var scoreTarget: SdaScoreTarget?
     @State private var isConfirmingDelete = false
     @State private var isConfirmingRefresh = false
@@ -40,20 +42,18 @@ struct SdaTournamentDetailView: View {
     @State private var contentWidth: CGFloat = 0
     @State private var showingRegistration = false
     @State private var showingMembers = false
-    @State private var placementRound = 1
 
     /// Ancho a partir del cual la clasificación de una liga se muestra al lado del calendario.
     private static let wideLayoutWidth: CGFloat = 820
 
     private enum Tab: String, Identifiable {
-        case calendar, standings, groups, bracket, teams
+        case calendar, standings, phases, teams
         var id: String { rawValue }
         var title: String {
             switch self {
             case .calendar: return "Calendario"
             case .standings: return "Clasificación"
-            case .groups: return "Grupos"
-            case .bracket: return "Cuadro"
+            case .phases: return "Fases"
             case .teams: return "Equipos"
             }
         }
@@ -90,6 +90,8 @@ struct SdaTournamentDetailView: View {
         self.className = className
         self.onDeleted = onDeleted
         self.onSaveFailedAtClose = onSaveFailedAtClose
+        // Los formatos con cuadro abren en la línea de fases; los demás, en el calendario.
+        _selectedTab = State(initialValue: plan.format.includesKnockoutPhase ? .phases : .calendar)
     }
 
     private var plan: TournamentPlan { store.plan }
@@ -107,9 +109,7 @@ struct SdaTournamentDetailView: View {
         switch plan.format {
         case .roundRobin, .rotation:
             return showsStandingsBeside ? [.calendar, .teams] : [.calendar, .standings, .teams]
-        case .knockout: return [.calendar, .bracket, .teams]
-        case .groupStageKnockout: return [.calendar, .groups, .bracket, .teams]
-        case .leaguePlacement: return [.calendar, .standings, .bracket, .teams]
+        case .knockout, .groupStageKnockout, .leaguePlacement: return [.phases, .calendar, .teams]
         }
     }
 
@@ -242,6 +242,10 @@ struct SdaTournamentDetailView: View {
                         }
                     }
                 } else {
+                    let timeline = plan.format.includesKnockoutPhase ? TournamentPhaseTimeline.make(plan: plan) : nil
+                    if let timeline {
+                        SdaPhaseTimelineView(timeline: timeline, selection: phaseSelection(timeline))
+                    }
                     if tabs.count > 1 {
                         Picker("Vista", selection: $selectedTab) {
                             ForEach(tabs) { tab in
@@ -252,7 +256,7 @@ struct SdaTournamentDetailView: View {
                         .labelsHidden()
                         .accessibilityLabel("Vista del torneo")
                     }
-                    content
+                    content(timeline: timeline)
                 }
             }
             .padding(16)
@@ -483,8 +487,24 @@ struct SdaTournamentDetailView: View {
 
     // MARK: Contenido
 
+    /// Fase que se enseña: la elegida a mano o, si no hay, la actual.
+    private func phaseSelection(_ timeline: TournamentPhaseTimeline) -> Binding<TournamentPhaseKind> {
+        Binding(
+            get: { effectivePhase(timeline) },
+            set: { kind in
+                selectedPhase = kind
+                selectedTab = .phases
+            }
+        )
+    }
+
+    private func effectivePhase(_ timeline: TournamentPhaseTimeline) -> TournamentPhaseKind {
+        if let selectedPhase, timeline.phase(selectedPhase) != nil { return selectedPhase }
+        return timeline.currentKind
+    }
+
     @ViewBuilder
-    private var content: some View {
+    private func content(timeline: TournamentPhaseTimeline?) -> some View {
         switch selectedTab {
         case .calendar:
             if showsStandingsBeside {
@@ -497,11 +517,9 @@ struct SdaTournamentDetailView: View {
             } else {
                 calendarContent
             }
-        case .standings:
-            if plan.format == .leaguePlacement { placementStandingsContent } else { standingsContent }
-        case .groups: groupsContent
-        case .bracket:
-            if plan.format == .leaguePlacement { placementBracketContent } else { bracketContent }
+        case .standings: standingsContent
+        case .phases:
+            if let timeline { phaseContent(timeline) }
         case .teams: teamsContent
         }
     }
@@ -589,73 +607,29 @@ struct SdaTournamentDetailView: View {
         }
     }
 
-    private var placementStandingsContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if let table = plan.placementFinalTable {
-                LearningSituationCard(title: "Tabla final") {
-                    SdaPlacementFinalTable(rows: table)
-                }
-            }
-            LearningSituationCard(title: "Liguilla") {
-                if plan.savedResults.isEmpty {
-                    Text("Aún no hay resultados. La tabla se llena al anotarlos en el calendario.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                SdaPlacementLeagueTable(rows: plan.placementStandings)
-            }
+    // MARK: Fases
+
+    /// Contenido de la fase elegida: clasificación o grupos, cuadro o podio.
+    @ViewBuilder
+    private func phaseContent(_ timeline: TournamentPhaseTimeline) -> some View {
+        switch effectivePhase(timeline) {
+        case .league:
+            if plan.format == .groupStageKnockout { groupsContent } else { placementLeagueContent }
+        case .bracket, .round:
+            bracketPhaseContent
+        case .podium:
+            podiumContent(timeline)
         }
     }
 
-    private var placementBracketContent: some View {
-        let stages = plan.placementStages
-        let slotsByID = Dictionary(plan.slots.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let selected = stages.first { $0.round == placementRound } ?? stages.first
-        return VStack(alignment: .leading, spacing: 16) {
-            if !plan.placementLeagueIsClosed {
-                LearningSituationInlineNotice(
-                    kind: .info,
-                    message: "Quedan \(sdaPlural(plan.pendingLeagueMatchCount, "partido", "partidos")) de liguilla. El cuadro se abre al terminar."
-                )
-                SdaCloseLeagueButton(store: store)
-            } else if plan.leagueClosedEarly == true, plan.savedKnockoutResults.isEmpty {
-                Button {
-                    store.mutate { $0.reopenLeague() }
-                } label: {
-                    Label("Volver a la liguilla", systemImage: "arrow.uturn.backward")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.bordered)
+    private var placementLeagueContent: some View {
+        LearningSituationCard(title: "Liguilla") {
+            if plan.savedResults.isEmpty {
+                Text("Aún no hay resultados. La tabla se llena al anotarlos en el calendario.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
-            if stages.count > 1 {
-                Picker("Ronda del cuadro", selection: $placementRound) {
-                    ForEach(stages) { stage in
-                        Text("Ronda \(stage.round)").tag(stage.round)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
-            if let selected {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
-                    ForEach(selected.groups) { group in
-                        LearningSituationCard(title: "Puestos \(group.positions.lowerBound) a \(group.positions.upperBound)") {
-                            ForEach(Array(group.matchIDs.enumerated()), id: \.element) { index, matchID in
-                                if index > 0 { Divider() }
-                                if let slot = slotsByID[matchID] {
-                                    matchRow(slot)
-                                }
-                            }
-                            if let byeName = group.byeName {
-                                Divider()
-                                Label("Pasa directo: \(byeName)", systemImage: "arrow.up.forward.circle")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            }
-                        }
-                    }
-                }
-            }
+            SdaPlacementLeagueTable(rows: plan.placementStandings)
         }
     }
 
@@ -669,34 +643,105 @@ struct SdaTournamentDetailView: View {
         }
     }
 
-    private var bracketContent: some View {
-        let slotsByID = Dictionary(plan.slots.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let stages = KnockoutBracketResolver.stages(in: plan.savedSchedule)
-        return VStack(alignment: .leading, spacing: 16) {
-            if let champion = plan.champion {
-                Label("Campeón: \(champion)", systemImage: "trophy.fill")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(IOSAppStyle.success)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .accessibilityElement(children: .combine)
-            }
-            if plan.format == .groupStageKnockout, !plan.groupStageIsComplete {
+    /// Cuadro dibujado como árbol. Tocar un partido abre el marcador, igual que en el calendario.
+    private var bracketPhaseContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if plan.format == .leaguePlacement {
+                if !plan.placementLeagueIsClosed {
+                    LearningSituationInlineNotice(
+                        kind: .info,
+                        message: "Quedan \(sdaPlural(plan.pendingLeagueMatchCount, "partido", "partidos")) de liguilla. El cuadro se abre al terminar."
+                    )
+                    SdaCloseLeagueButton(store: store)
+                } else if plan.leagueClosedEarly == true, plan.savedKnockoutResults.isEmpty {
+                    Button {
+                        store.mutate { $0.reopenLeague() }
+                    } label: {
+                        Label("Volver a la liguilla", systemImage: "arrow.uturn.backward")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                }
+            } else if plan.format == .groupStageKnockout, !plan.groupStageIsComplete {
                 LearningSituationInlineNotice(
                     kind: .info,
                     message: "Los cruces se abren cuando terminan todos los partidos de la fase de grupos."
                 )
             }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
-                ForEach(stages) { stage in
-                    LearningSituationCard(title: stage.title) {
-                        ForEach(Array(stage.matches.enumerated()), id: \.element.id) { index, match in
-                            if index > 0 { Divider() }
-                            if let slot = slotsByID[match.id] {
-                                matchRow(slot)
+            if let layout = BracketTreeLayout.make(plan: plan) {
+                let slotsByID = Dictionary(plan.slots.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+                SdaBracketTreeView(
+                    layout: layout,
+                    canScore: { id in slotsByID[id].map { plan.canScore($0) } ?? false },
+                    onSelectMatch: { id in scoreTarget = SdaScoreTarget(id: id) }
+                )
+            } else {
+                LearningSituationInlineNotice(
+                    kind: .warning,
+                    message: "No se pudo dibujar el cuadro. Los partidos están en el calendario."
+                )
+            }
+        }
+    }
+
+    /// Campeón y clasificación final. Sin cuadro terminado, un vacío con salto a la fase actual.
+    @ViewBuilder
+    private func podiumContent(_ timeline: TournamentPhaseTimeline) -> some View {
+        let layout = BracketTreeLayout.make(plan: plan)
+        let podium = layout?.leaves.filter { $0.isComplete && $0.slotCount == 1 } ?? []
+        if let champion = plan.champion {
+            VStack(alignment: .leading, spacing: 16) {
+                Label("Campeón: \(champion)", systemImage: "trophy.fill")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(IOSAppStyle.success)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+                if let table = plan.placementFinalTable {
+                    LearningSituationCard(title: "Clasificación final") {
+                        SdaPlacementFinalTable(rows: table)
+                    }
+                } else if !podium.isEmpty {
+                    LearningSituationCard(title: "Clasificación final") {
+                        ForEach(podium) { leaf in
+                            HStack(spacing: 12) {
+                                Text("\(leaf.positions.lowerBound)º")
+                                    .font(.body.weight(.bold).monospacedDigit())
+                                    .foregroundStyle(EvaluationDesign.accent)
+                                    .frame(minWidth: 36, alignment: .leading)
+                                Text(leaf.teamNames.joined(separator: ", "))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                             }
+                            .frame(minHeight: 44)
+                            .accessibilityElement(children: .combine)
                         }
                     }
                 }
+            }
+        } else {
+            LearningSituationCard(title: nil) {
+                VStack(spacing: 12) {
+                    Image(systemName: "star")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text("El podio aún no está")
+                        .font(.headline)
+                    Text("Aparece cuando se juegan todos los partidos del cuadro.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    if let current = timeline.current, current.kind != .podium {
+                        Button {
+                            selectedPhase = nil
+                        } label: {
+                            Label("Ir a \(current.title)", systemImage: "arrow.right.circle")
+                                .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
             }
         }
     }

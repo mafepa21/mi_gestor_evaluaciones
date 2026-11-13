@@ -2053,6 +2053,21 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-11-13 - «Tu valoración» del docente para el Comentario LOMLOE (issue #407, parte B)
+
+Resumen:
+- El docente escribe una valoración cualitativa por alumno, grupo y trimestre en Informes (iPad y Mac) y en «Generar lote». Se guarda sola y la IA local la usa como fuente principal del Comentario LOMLOE, reformulada.
+- Importa porque hay trimestres sin anotaciones previas: con solo la valoración ya se puede generar el comentario.
+- Vive en la tabla `student_term_teacher_notes` (migración 49, esquema 50), `StudentTermTeacherNoteRepository`, `SchoolRecordsSync`, `KmpBridge+Students.swift`, `AppleFoundationReportService.swift` y `AppleShared/TeacherTermNoteEditor.swift`. ADR: `kmp/docs/architecture/ADR-2026-11-13-valoracion-docente-trimestre.md`. PR #408.
+- Validación: `./gradlew :shared:desktopTest :data:desktopTest` en verde en Linux (183 y 235 tests). No se ejecutó `xcodebuild` ni prueba en dispositivo: el código Swift quedó sin compilar en esa sesión.
+
+Notas para futuras conversaciones:
+- Clave natural `(student_id, class_id, term_key)`; `term_key` es `T1`/`T2`/`T3`, derivado de la etiqueta con `TeacherTermNoteKeys.fromLabel`.
+- Las FK están apagadas en producción: `deleteClass` y `deleteStudent` borran las valoraciones a mano.
+- La redacción por reglas no incorpora la valoración; solo avisa.
+- Pendiente la parte A del issue #407: evidencia por criterio de rúbrica, competencias reales en vez de las deducidas (CE1 a CE5) y textos del Cuaderno e incidencias.
+- En entornos cloud de Linux, Gradle necesita `-Dorg.gradle.java.home=<JDK 21>`, JDK 17 instalado y acceso a `dl.google.com`, `download.jetbrains.com` y `download-cdn.jetbrains.com`.
+
 ### 2026-10-11 - Rúbrica en tabla y hoja de sesión ancha (menos scroll en el día a día)
 
 Resumen:

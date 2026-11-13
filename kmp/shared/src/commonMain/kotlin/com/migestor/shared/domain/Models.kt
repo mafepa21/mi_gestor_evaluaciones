@@ -671,6 +671,63 @@ data class StudentTutoringSession(
     val trace: AuditTrace = AuditTrace(),
 )
 
+/**
+ * Valoración cualitativa que el docente escribe sobre un alumno en un grupo y un
+ * trimestre. Es privada: sirve de fuente principal a la IA local para redactar el
+ * Comentario LOMLOE, y nunca se copia literal a un texto para familias.
+ * La clave es natural (alumno, grupo, trimestre), igual en todos los dispositivos.
+ */
+data class StudentTermTeacherNote(
+    val studentId: Long,
+    val classId: Long,
+    val termKey: String,
+    val note: String = "",
+    val trace: AuditTrace = AuditTrace(),
+) {
+    /** Id estable para Sync LAN: la clave natural, sin ids locales. */
+    val syncId: String get() = TeacherTermNoteKeys.syncId(studentId, classId, termKey)
+}
+
+/**
+ * Claves estables de trimestre y de sincronización para [StudentTermTeacherNote].
+ * La etiqueta visible ("1er Trimestre") puede cambiar de redacción; la clave no.
+ */
+object TeacherTermNoteKeys {
+    const val FIRST = "T1"
+    const val SECOND = "T2"
+    const val THIRD = "T3"
+
+    /** Tope del texto guardado: holgado para escribir, acotado para no crecer sin fin. */
+    const val MAX_NOTE_LENGTH = 2_000
+
+    /**
+     * "1er Trimestre" -> "T1", "2º Trimestre" -> "T2"... Si la etiqueta no trae un
+     * 1, 2 o 3 reconocible se normaliza el propio texto para no mezclar periodos.
+     */
+    fun fromLabel(label: String?): String {
+        val text = label?.trim().orEmpty()
+        val digit = text.firstOrNull { it in '1'..'3' }
+        if (digit != null) return "T$digit"
+        val normalized = text.lowercase().filter { it.isLetterOrDigit() }
+        return if (normalized.isEmpty()) FIRST else "X_" + normalized.take(40)
+    }
+
+    fun syncId(studentId: Long, classId: Long, termKey: String): String = "$studentId|$classId|$termKey"
+
+    /** Inverso de [syncId]; `null` si el id no tiene la forma esperada. */
+    fun parseSyncId(id: String): Triple<Long, Long, String>? {
+        val parts = id.split('|', limit = 3)
+        if (parts.size != 3) return null
+        val studentId = parts[0].toLongOrNull() ?: return null
+        val classId = parts[1].toLongOrNull() ?: return null
+        val termKey = parts[2].takeIf { it.isNotBlank() } ?: return null
+        return Triple(studentId, classId, termKey)
+    }
+
+    /** Texto tal como se guarda: sin espacios sobrantes y dentro del tope. */
+    fun sanitize(note: String): String = note.trim().take(MAX_NOTE_LENGTH)
+}
+
 enum class TutoringChannel {
     IN_PERSON,
     PHONE,

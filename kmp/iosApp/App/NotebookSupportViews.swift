@@ -142,6 +142,73 @@ struct NotebookSyncStatusLabel: View {
     }
 }
 
+// MARK: - Estado de guardado en la barra
+
+/// Estado de guardado de la barra de estado (`ToolbarItem(.status)`). Observa el
+/// store del Cuaderno por su cuenta: `NotebookModuleView` ya no se recalcula por
+/// los cambios de guardado (ver `NotebookStoreRenderWatch`).
+struct NotebookToolbarSaveStatus: View {
+    @ObservedObject var store: NotebookBridgeStore
+    let bridge: KmpBridge
+
+    var body: some View {
+        let split = store.notebookSplitSaveState
+        let badge = NotebookModuleView.saveBadge(split: split, inline: store.notebookSaveState)
+        HStack(spacing: 8) {
+            HStack(spacing: 4) {
+                NotebookSavePulse(
+                    isDirty: split.isDirty,
+                    isSaving: split.isSaving,
+                    isFailed: split.state == .failed,
+                    isSaved: split.isSaved
+                )
+                if #available(iOS 18.0, macOS 14.0, *) {
+                    Image(systemName: badge.icon)
+                        .symbolEffect(.rotate, isActive: split.isSaving)
+                } else {
+                    Image(systemName: badge.icon)
+                }
+                Text(badge.text)
+            }
+            .foregroundStyle(badge.color)
+
+            if bridge.status.hasPrefix("No se pudo guardar la asistencia") {
+                Text(bridge.status)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            }
+
+            if split.state == .failed {
+                Button {
+                    bridge.saveNotebook()
+                } label: {
+                    Label("Reintentar", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityHint("Vuelve a intentar guardar los cambios pendientes")
+            }
+        }
+    }
+}
+
+/// Observador invisible del estado de guardado: avisa cuando cambia para que
+/// `NotebookModuleView` resincronice la barra sin recalcularse entero.
+struct NotebookSaveStateChangeObserver: View {
+    @ObservedObject var store: NotebookBridgeStore
+    let onChange: () -> Void
+
+    var body: some View {
+        Color.clear
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .appOnChange(of: store.notebookSplitSaveState.state) { _ in
+                onChange()
+            }
+    }
+}
+
 // MARK: - Aviso de guardado
 
 /// Aviso de guardado del Cuaderno, visible en todos los modos de barra

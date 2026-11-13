@@ -20,17 +20,21 @@ extension NotebookModuleView {
         ["", "checkmark.circle.fill", "star.fill", "exclamationmark.triangle.fill", "house.fill", "puzzlepiece.extension.fill", "pin.fill", "bubble.left.fill"]
     }
 
-    var saveBadge: (text: String, icon: String, color: Color) {
+    /// Lo pinta `NotebookToolbarSaveStatus`, que observa el store por su cuenta.
+    static func saveBadge(
+        split: NotebookSaveState,
+        inline: NotebookViewModelSaveState
+    ) -> (text: String, icon: String, color: Color) {
         if NotebookSaveBadge.showsFailure(
-            splitFailed: bridge.notebookSplitSaveState.state == .failed,
-            inlineFailed: notebookStore.notebookSaveState == .failed
+            splitFailed: split.state == .failed,
+            inlineFailed: inline == .failed
         ) {
             return ("Error al guardar", "exclamationmark.triangle.fill", .red)
-        } else if bridge.notebookSplitSaveState.isSaved {
+        } else if split.isSaved {
             return ("Guardado", "checkmark.circle.fill", .secondary)
-        } else if bridge.notebookSplitSaveState.isSaving {
+        } else if split.isSaving {
             return ("Guardando…", "arrow.triangle.2.circlepath", .secondary)
-        } else if bridge.notebookSplitSaveState.isDirty {
+        } else if split.isDirty {
             return ("Sin guardar", "circle.dotted", Color.orange)
         }
         return ("Estado pendiente", "circle", .secondary)

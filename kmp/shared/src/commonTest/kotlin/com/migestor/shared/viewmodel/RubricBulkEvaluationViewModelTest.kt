@@ -134,4 +134,117 @@ class RubricBulkEvaluationViewModelTest {
             "Un evento de otra columna/evaluacion no debe mezclarse en el estado de esta hoja"
         )
     }
+
+    @Test
+    fun `load uses batch reads, keeps cell selections priority and does not grow with students`() = runTest {
+        val rubricId = 1L
+        val evaluationId = 10L
+        val classId = 100L
+        val columnId = "col_rubrica"
+        val rubricDetail = RubricDetail(
+            rubric = Rubric(id = rubricId, name = "Rubrica"),
+            criteria = listOf(
+                RubricCriterionWithLevels(
+                    criterion = RubricCriterion(id = 1, rubricId = rubricId, description = "C1", weight = 1.0, order = 0),
+                    levels = listOf(
+                        RubricLevel(id = 11, criterionId = 1, name = "L1.1", points = 1, order = 1),
+                        RubricLevel(id = 12, criterionId = 1, name = "L1.2", points = 4, order = 2)
+                    )
+                ),
+                RubricCriterionWithLevels(
+                    criterion = RubricCriterion(id = 2, rubricId = rubricId, description = "C2", weight = 1.0, order = 1),
+                    levels = listOf(
+                        RubricLevel(id = 21, criterionId = 2, name = "L2.1", points = 1, order = 1),
+                        RubricLevel(id = 22, criterionId = 2, name = "L2.2", points = 4, order = 2)
+                    )
+                )
+            )
+        )
+
+        // Alumno 1: la celda trae selecciones (mandan sobre las valoraciones).
+        // Alumno 2: sin selecciones en la celda; solo valoraciones de la evaluación.
+        // Alumno 3: nada (solo una valoración de otra evaluación, que no cuenta).
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = columnId, evaluationId = evaluationId, value = 10.0, rubricSelections = "1:12,2:22"),
+            Grade(id = 2, classId = classId, studentId = 2, columnId = columnId, evaluationId = evaluationId, value = null, rubricSelections = ""),
+            Grade(id = 3, classId = classId, studentId = 3, columnId = "otra", evaluationId = 99, value = 5.0, rubricSelections = "1:11"),
+        )
+        val assessments = listOf(
+            RubricAssessment(studentId = 1, evaluationId = evaluationId, criterionId = 1, levelId = 11),
+            RubricAssessment(studentId = 2, evaluationId = evaluationId, criterionId = 1, levelId = 11),
+            RubricAssessment(studentId = 2, evaluationId = evaluationId, criterionId = 2, levelId = 21),
+            // Criterio de otra rúbrica en la misma evaluación: getStudentEvaluation no lo devolvía.
+            RubricAssessment(studentId = 2, evaluationId = evaluationId, criterionId = 99, levelId = 991),
+            RubricAssessment(studentId = 3, evaluationId = 77, criterionId = 1, levelId = 12),
+        )
+        val column = NotebookColumnDefinition(
+            id = columnId,
+            title = "Rubrica",
+            type = NotebookColumnType.RUBRIC,
+            evaluationId = evaluationId,
+            rubricId = rubricId
+        )
+
+        suspend fun loadWith(studentCount: Int): Pair<BulkRubricEvaluationUiState, Map<String, Int>> {
+            val calls = mutableMapOf<String, Int>()
+            fun count(name: String) { calls[name] = (calls[name] ?: 0) + 1 }
+            val students = (1L..studentCount.toLong()).map { Student(id = it, firstName = "A$it", lastName = "B$it") }
+
+            val notebook = object : FakeRubricEvalNotebookRepository() {
+                override suspend fun listStudentsInClass(classId: Long): List<Student> { count("listStudentsInClass"); return students }
+                override suspend fun getNotebookConfig(classId: Long): NotebookConfig {
+                    count("getNotebookConfig"); return NotebookConfig(classId, emptyList(), listOf(column))
+                }
+                override suspend fun getGradeForColumn(studentId: Long, columnId: String): Grade? { count("getGradeForColumn"); return null }
+                override suspend fun listWorkGroups(classId: Long, tabId: String?): List<NotebookWorkGroup> { count("listWorkGroups"); return emptyList() }
+                override suspend fun listWorkGroupMembers(classId: Long, tabId: String?): List<NotebookWorkGroupMember> { count("listWorkGroupMembers"); return emptyList() }
+            }
+            val rubrics = object : FakeRubricEvalRubricsRepository() {
+                override suspend fun listRubrics(): List<RubricDetail> { count("listRubrics"); return listOf(rubricDetail) }
+                override suspend fun getRubricDetail(rubricId: Long): RubricDetail? { count("getRubricDetail"); return rubricDetail }
+                override suspend fun listRubricAssessments(studentId: Long, evaluationId: Long): List<RubricAssessment> {
+                    count("listRubricAssessments"); return assessments.filter { it.studentId == studentId && it.evaluationId == evaluationId }
+                }
+                override suspend fun listRubricAssessmentsForStudents(studentIds: List<Long>, evaluationId: Long): List<RubricAssessment> {
+                    count("listRubricAssessmentsForStudents"); return assessments.filter { it.studentId in studentIds && it.evaluationId == evaluationId }
+                }
+                override suspend fun getStudentEvaluation(studentId: Long, rubricId: Long, evaluationId: Long): Map<Long, Long> {
+                    count("getStudentEvaluation"); return emptyMap()
+                }
+            }
+            val gradesRepository = object : FakeRubricEvalGradesRepository() {
+                override suspend fun listGradesForClass(classId: Long): List<Grade> { count("listGradesForClass"); return grades }
+            }
+            val viewModel = RubricBulkEvaluationViewModel(
+                rubricsRepository = rubrics,
+                studentsRepository = FakeRubricEvalStudentsRepository(),
+                notebookRepository = notebook,
+                gradesRepository = gradesRepository,
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            )
+            viewModel.load(classId = classId, evaluationId = evaluationId, rubricId = rubricId, columnId = columnId)
+            advanceUntilIdle()
+            return viewModel.uiState.value to calls
+        }
+
+        val (state, callsFor3) = loadWith(3)
+        assertEquals(null, state.error)
+        assertEquals(
+            mapOf(1L to mapOf(1L to 12L, 2L to 22L), 2L to mapOf(1L to 11L, 2L to 21L)),
+            state.assessments
+        )
+        fun expectedScore(levels: Map<Long, Long>) = kotlin.math.round(rubricDetail.calculateScore(levels) * 100) / 100.0
+        assertEquals(
+            mapOf(1L to expectedScore(mapOf(1L to 12L, 2L to 22L)), 2L to expectedScore(mapOf(1L to 11L, 2L to 21L))),
+            state.scores
+        )
+
+        // Ninguna lectura por alumno y el mismo número de lecturas con 3 que con 30 alumnos.
+        assertEquals(null, callsFor3["getGradeForColumn"])
+        assertEquals(null, callsFor3["getStudentEvaluation"])
+        assertEquals(null, callsFor3["listRubricAssessments"])
+        assertEquals(null, callsFor3["listRubrics"])
+        val (_, callsFor30) = loadWith(30)
+        assertEquals(callsFor3, callsFor30)
+    }
 }

@@ -61,3 +61,9 @@
 - `selectClass(force)` cancela la carga anterior (`loadJob`). Todo `catch (e: Exception)` en cargas debe dejar pasar antes `CancellationException`, o acabará en `Error`.
 - Con la hoja masiva de rúbricas abierta, `NotebookViewModel` está en pausa (`setReactiveReloadPaused`): el observador y `NotebookRefreshBus` solo anotan. Toda vía nueva de abrir la hoja debe pausar y toda vía de cerrarla debe pasar por `closeBulkRubricEvaluation`, que reanuda. Un cambio de clase quita la pausa.
 - Rúbrica individual sin avance automático: la recarga la hace el observador de `isSaveSuccessful` en `KmpBridge.swift`, no `saveRubricEvaluation`.
+- `RubricBulkEvaluationSheet` no observa el bridge: lee vía `watchedBridge` (`KmpBridgeWatch` sobre `bulkRubricEvaluationState` y `classes`). Todo dato nuevo del bridge que pinte la hoja debe añadirse a esa lista o la hoja no se refrescará.
+- `BulkRubricStudentRow` y `BulkRubricCompactRow` son `Equatable`: todo dato nuevo que pinten debe entrar en su `==`, o la fila se queda con lo viejo. Las acciones nuevas reciben ids y leen el estado al ejecutarse; nunca capturan datos de la fila.
+- La caché de la hoja de grupo (`BulkRubricSnapshotMemo`) se invalida por identidad del estado Kotlin. Solo vale mientras `BulkRubricEvaluationUiState` sea inmutable (siempre `copy`).
+- `RubricBulkEvaluationViewModel.load` replica la regla de `getGradeForColumn` (primero la evaluación de la columna, luego `columnId`) sobre `listGradesForClass`. Si cambia `getGradeForColumn`, cambiar también `resolveCellGrades`.
+- La carga por lote vuelve a la lectura individual con columnas virtuales `eval_<id>` o notas ambiguas: es la vía segura, no un fallo.
+- Hoja de grupo de instrumentos: sus celdas 1-4 y Sí/No son `Equatable` (`StructuredBulkScaleCell`, `StructuredBulkCheckCell`). Lo nuevo que pinten debe entrar en su `==`. Su apertura sigue leyendo alumno por alumno.

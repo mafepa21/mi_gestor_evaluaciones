@@ -1396,6 +1396,63 @@ DELETE FROM student_tutoring_sessions WHERE id = ?;
 selectTutoringSessionCreatedAt:
 SELECT created_at_epoch_ms FROM student_tutoring_sessions WHERE id = ?;
 
+-- Valoración cualitativa del docente por alumno, grupo y trimestre (migración 49).
+-- La IA local la usa como fuente principal del Comentario LOMLOE. Cuelga del grupo:
+-- se borra con él y con el alumno. Clave natural, igual en todos los dispositivos.
+CREATE TABLE IF NOT EXISTS student_term_teacher_notes (
+    student_id INTEGER NOT NULL,
+    class_id INTEGER NOT NULL,
+    term_key TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (student_id, class_id, term_key),
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_term_teacher_notes_class_term ON student_term_teacher_notes(class_id, term_key);
+
+selectTermTeacherNote:
+SELECT student_id, class_id, term_key, note, updated_at_epoch_ms, device_id, sync_version
+FROM student_term_teacher_notes
+WHERE student_id = ? AND class_id = ? AND term_key = ?;
+
+selectTermTeacherNotesByClassAndTerm:
+SELECT student_id, class_id, term_key, note, updated_at_epoch_ms, device_id, sync_version
+FROM student_term_teacher_notes
+WHERE class_id = ? AND term_key = ?;
+
+selectAllTermTeacherNotes:
+SELECT student_id, class_id, term_key, note, updated_at_epoch_ms, device_id, sync_version
+FROM student_term_teacher_notes;
+
+-- Alta o edición en el sitio: conserva created_at_epoch_ms y sube sync_version,
+-- mismo criterio que updateTutoringSession.
+upsertTermTeacherNote:
+INSERT INTO student_term_teacher_notes(student_id, class_id, term_key, note, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+ON CONFLICT(student_id, class_id, term_key) DO UPDATE SET
+    note = excluded.note,
+    updated_at_epoch_ms = excluded.updated_at_epoch_ms,
+    device_id = excluded.device_id,
+    sync_version = student_term_teacher_notes.sync_version + 1;
+
+deleteTermTeacherNote:
+DELETE FROM student_term_teacher_notes WHERE student_id = ? AND class_id = ? AND term_key = ?;
+
+-- En producción las FK están apagadas y no hay cascada: el borrado de un alumno o
+-- de un grupo limpia sus valoraciones con estas dos consultas.
+deleteTermTeacherNotesByStudent:
+DELETE FROM student_term_teacher_notes WHERE student_id = ?;
+
+deleteTermTeacherNotesByClass:
+DELETE FROM student_term_teacher_notes WHERE class_id = ?;
+
+selectTermTeacherNoteCreatedAt:
+SELECT created_at_epoch_ms FROM student_term_teacher_notes WHERE student_id = ? AND class_id = ? AND term_key = ?;
+
 CREATE TABLE IF NOT EXISTS meetings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL DEFAULT '',

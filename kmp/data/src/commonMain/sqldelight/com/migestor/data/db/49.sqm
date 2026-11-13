@@ -1,0 +1,24 @@
+-- Migración 49: valoración cualitativa del docente por alumno, grupo y trimestre. Solo aditiva.
+--
+-- Texto libre que el docente escribe antes de la evaluación para que la IA local lo
+-- use como fuente principal del Comentario LOMLOE (issue #407, parte B).
+-- Cuelga del grupo (y por tanto del curso escolar): se borra con el grupo y con el
+-- alumno. Clave natural (alumno, grupo, trimestre): una sola valoración por casilla,
+-- y la misma clave en todos los dispositivos, sin ids que reconciliar al sincronizar.
+-- term_key es estable ('T1', 'T2', 'T3'), no la etiqueta visible del trimestre.
+CREATE TABLE IF NOT EXISTS student_term_teacher_notes (
+    student_id INTEGER NOT NULL,
+    class_id INTEGER NOT NULL,
+    term_key TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (student_id, class_id, term_key),
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
+-- Consulta del lote: todas las valoraciones de un grupo en un trimestre.
+CREATE INDEX IF NOT EXISTS idx_term_teacher_notes_class_term ON student_term_teacher_notes(class_id, term_key);

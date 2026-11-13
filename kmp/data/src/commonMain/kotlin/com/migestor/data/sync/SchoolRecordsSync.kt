@@ -5,6 +5,7 @@ import com.migestor.shared.domain.Meeting
 import com.migestor.shared.domain.MeetingAgreement
 import com.migestor.shared.domain.StudentSupportMeasure
 import com.migestor.shared.domain.StudentTutoringSession
+import com.migestor.shared.domain.TeacherTermNoteKeys
 import com.migestor.shared.sync.SyncAck
 import com.migestor.shared.sync.SyncChange
 import kotlinx.datetime.Clock
@@ -21,7 +22,8 @@ import kotlinx.serialization.json.longOrNull
 
 /**
  * Sync LAN de las actas y del seguimiento de Inclusión: reuniones, sus acuerdos,
- * medidas de apoyo, tutorías con familias y asignaturas.
+ * medidas de apoyo, tutorías con familias, asignaturas y valoraciones del docente
+ * por trimestre.
  *
  * La app Apple ya encolaba estos cambios, pero ningún lado sabía aplicarlos:
  * `SqlDelightSyncAdapter` los contaba como `ignored`, el iPad soltaba su cola
@@ -96,6 +98,26 @@ class SchoolRecordsSync(
                 changes.addIfNewer(TUTORING_SESSIONS, session.id, session.trace.updatedAt.toEpochMilliseconds(), session.trace.deviceId, sinceEpochMs) {
                     tutoringPayload(session)
                 }
+            }
+        }
+
+        // Valoraciones del docente: su id de sync es la clave natural, no un Long.
+        container.studentTermTeacherNoteRepository.listAll().forEach { note ->
+            live.getValue(TERM_TEACHER_NOTES) += note.syncId
+            val updatedAt = note.trace.updatedAt.toEpochMilliseconds()
+            if (sinceEpochMs == 0L || updatedAt > sinceEpochMs) {
+                changes += SyncChange(
+                    entity = TERM_TEACHER_NOTES,
+                    id = note.syncId,
+                    updatedAtEpochMs = updatedAt,
+                    deviceId = note.trace.deviceId ?: localDeviceId,
+                    payload = buildJsonObject {
+                        put("studentId", JsonPrimitive(note.studentId))
+                        put("classId", JsonPrimitive(note.classId))
+                        put("termKey", JsonPrimitive(note.termKey))
+                        put("note", JsonPrimitive(note.note))
+                    }.toString(),
+                )
             }
         }
 
@@ -230,6 +252,7 @@ class SchoolRecordsSync(
     }
 
     private suspend fun apply(change: SyncChange): Outcome {
+        if (change.entity == TERM_TEACHER_NOTES) return applyTermTeacherNote(change)
         val id = change.id.toLongOrNull() ?: return Outcome.SKIPPED
         val payload = runCatching { json.parseToJsonElement(change.payload).jsonObject }.getOrNull()
             ?: error("payload ilegible: ${change.entity} ${change.id}")
@@ -345,7 +368,34 @@ class SchoolRecordsSync(
         }
     }
 
+    /**
+     * La clave viaja en el id (`alumno|grupo|trimestre`); el payload solo aporta el
+     * texto. No se exige que el alumno y el grupo existan ya: en un mismo lote pueden
+     * llegar después (en Apple estas entidades se aplican antes que los grupos), y
+     * saltarla sería perder un texto escrito por el docente. Con las FK apagadas la
+     * fila espera sin estorbar, y se borra con su alumno o su grupo.
+     */
+    private suspend fun applyTermTeacherNote(change: SyncChange): Outcome {
+        val (studentId, classId, termKey) = TeacherTermNoteKeys.parseSyncId(change.id) ?: return Outcome.SKIPPED
+        val payload = runCatching { json.parseToJsonElement(change.payload).jsonObject }.getOrNull()
+            ?: error("payload ilegible: ${change.entity} ${change.id}")
+        val repository = container.studentTermTeacherNoteRepository
+        val existing = repository.get(studentId, classId, termKey)
+        if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() >= change.updatedAtEpochMs) return Outcome.STALE
+        val note = payload.text("note", existing?.note) ?: return Outcome.SKIPPED
+        repository.save(studentId, classId, termKey, note, change.updatedAtEpochMs, change.deviceId)
+        return Outcome.APPLIED
+    }
+
     private suspend fun delete(change: SyncChange): Boolean {
+        if (change.entity == TERM_TEACHER_NOTES) {
+            val (studentId, classId, termKey) = TeacherTermNoteKeys.parseSyncId(change.id) ?: return false
+            val repository = container.studentTermTeacherNoteRepository
+            val existing = repository.get(studentId, classId, termKey)
+            if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() > change.updatedAtEpochMs) return false
+            repository.delete(studentId, classId, termKey)
+            return true
+        }
         val id = change.id.toLongOrNull() ?: return false
         val updatedAt = change.updatedAtEpochMs
         when (change.entity) {
@@ -403,9 +453,10 @@ class SchoolRecordsSync(
         const val MEETING_AGREEMENTS = "meeting_agreements"
         const val SUPPORT_MEASURES = "student_support_measures"
         const val TUTORING_SESSIONS = "student_tutoring_sessions"
+        const val TERM_TEACHER_NOTES = "student_term_teacher_notes"
 
         /** En orden de aplicación: padres antes que hijos. */
-        val ENTITIES: List<String> = listOf(SUBJECT, MEETINGS, MEETING_AGREEMENTS, SUPPORT_MEASURES, TUTORING_SESSIONS)
+        val ENTITIES: List<String> = listOf(SUBJECT, MEETINGS, MEETING_AGREEMENTS, SUPPORT_MEASURES, TUTORING_SESSIONS, TERM_TEACHER_NOTES)
 
         fun handles(entity: String): Boolean = entity in ENTITIES
 

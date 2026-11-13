@@ -1721,11 +1721,11 @@ struct NotebookModuleView: View {
                 // El guardado ya no recalcula esta vista (`NotebookStoreRenderWatch`):
                 // este observador mínimo mantiene la resincronización de la barra que
                 // antes disparaba el estado de guardado dentro de `toolbarStateKey`.
-                .background(
+                .background {
                     NotebookSaveStateChangeObserver(store: notebookStore) {
                         scheduleToolbarStateSyncIfLoaded()
                     }
-                )
+                }
                 .appOnChange(of: notebookStore.rubricEvaluationState.isSaveSuccessful) { saved in
                     guard saved, notebookStore.isNotebookRubricAutoAdvanceActive else { return }
                     openNextRubricStudentIfPossible()

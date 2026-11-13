@@ -5,7 +5,13 @@ import UIKit
 #endif
 
 struct RubricBulkEvaluationSheet: View {
-    @ObservedObject var bridge: KmpBridge
+    /// Referencia sin suscripción: la hoja solo se redibuja cuando cambia lo que
+    /// lee del bridge (`bulkRubricEvaluationState` y `classes`), vía `bridgeWatch`.
+    /// Con `@ObservedObject` cualquier cambio de la app (sync, Cuaderno) la repintaba entera.
+    let bridge: KmpBridge
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    /// Conversión de niveles y notas hecha una vez por estado, no en cada pintado.
+    @StateObject private var snapshotMemo = BulkRubricSnapshotMemo()
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -33,8 +39,19 @@ struct RubricBulkEvaluationSheet: View {
     @State private var previousLevelsBeforeAutofill: [BulkRubricCellKey: Int64?]? = nil
     @State private var aiOrchestrator = AppleAIOrchestrator()
 
+    private var watchedBridge: KmpBridge {
+        bridgeWatch.bridge(bridge) { [.init($0.bulkRubricEvaluationState), .init($0.classes)] }
+    }
+
     private var state: BulkRubricEvaluationUiState? {
-        bridge.bulkRubricEvaluationState
+        watchedBridge.bulkRubricEvaluationState
+    }
+
+    /// Caché del estado actual del bridge (para acciones fuera del pintado).
+    private func currentCache() -> BulkRubricEvaluationCache? {
+        guard let state = bridge.bulkRubricEvaluationState,
+              let rubric = state.rubricDetail else { return nil }
+        return snapshotMemo.cache(for: state, rubric: rubric, bridge: bridge)
     }
 
     var body: some View {
@@ -50,12 +67,7 @@ struct RubricBulkEvaluationSheet: View {
                     GeometryReader { proxy in
                         let isWide = proxy.size.width >= 720
                         let className = className(for: state)
-                        let cache = BulkRubricEvaluationCache(
-                            state: state,
-                            rubric: rubric,
-                            assessments: bridge.bulkAssessmentSnapshot(),
-                            scores: bridge.bulkScoreSnapshot()
-                        )
+                        let cache = snapshotMemo.cache(for: state, rubric: rubric, bridge: bridge)
 
                         ScrollView {
                             VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
@@ -191,8 +203,9 @@ struct RubricBulkEvaluationSheet: View {
                    let state,
                    let rubric = state.rubricDetail,
                    let student = state.students.first(where: { $0.id == studentId }) {
-                    let studentLevels = bridge.bulkAssessmentSnapshot()[student.id] ?? [:]
-                    let studentScore = bridge.bulkScoreSnapshot()[student.id] ?? 0.0
+                    let cache = snapshotMemo.cache(for: state, rubric: rubric, bridge: bridge)
+                    let studentLevels = cache.levels(for: student.id)
+                    let studentScore = cache.score(for: student.id) ?? 0.0
                     RubricExportFamilyPDFSheet(
                         rubricDetail: rubric,
                         selectedLevelIds: studentLevels,
@@ -416,7 +429,8 @@ struct RubricBulkEvaluationSheet: View {
         rubric: RubricDetail,
         cache: BulkRubricEvaluationCache
     ) -> some View {
-        NotebookSurface(cornerRadius: RubricsStyle.cardRadius, fill: NotebookStyle.surface, padding: 16) {
+        let cellActions = bulkCellActions
+        return NotebookSurface(cornerRadius: RubricsStyle.cardRadius, fill: NotebookStyle.surface, padding: 16) {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(spacing: 16) {
                     InstrumentEvaluationMetadataItem(label: "\(state.students.count) alumnos", systemImage: "person.3.fill")
@@ -430,44 +444,21 @@ struct RubricBulkEvaluationSheet: View {
                             .foregroundStyle(.primary)
 
                         ForEach(state.students, id: \.id) { student in
-                            let isInjured = isStudentInjured(student, cache: cache)
-                            let pendingCount = cache.pendingCriteriaCount(for: student.id)
-
-                            HStack(alignment: .center, spacing: 12) {
-                                HStack(spacing: 8) {
-                                    Circle()
-                                        .fill(statusDotColor(isInjured: isInjured, pendingCount: pendingCount))
-                                        .frame(width: 8, height: 8)
-
-                                    Text(student.firstName + " " + student.lastName)
-                                        .font(.subheadline.weight(.bold))
-                                        .lineLimit(1)
-
-                                    Spacer(minLength: 4)
-
-                                    scorePill(for: student.id, width: 44, cache: cache)
-                                        .contextMenu {
-                                            Button {
-                                                familyReportStudentId = student.id
-                                            } label: {
-                                                Label("Informe familiar PDF…", systemImage: "doc.text.badge.plus")
-                                            }
-                                        }
-                                }
-                                .frame(width: 160, alignment: .leading)
-
-                                inlineCriterionCell(
-                                    studentId: student.id,
-                                    criterion: criterion,
-                                    width: 220,
-                                    cache: cache
-                                )
-                            }
-                            .padding(12)
-                            .background(
-                                RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
-                                    .fill(appCardBackground(for: colorScheme))
+                            BulkRubricCompactRow(
+                                studentId: student.id,
+                                studentName: student.firstName + " " + student.lastName,
+                                isInjured: isStudentInjured(student, cache: cache),
+                                pendingCount: cache.pendingCriteriaCount(for: student.id),
+                                score: cache.score(for: student.id),
+                                rubric: rubric,
+                                criterion: criterion,
+                                selectedLevelId: cache.selectedLevelId(studentId: student.id, criterionId: criterion.criterion.id),
+                                aiSuggestion: aiSuggestionsByCell[BulkRubricCellKey(studentId: student.id, criterionId: criterion.criterion.id)],
+                                isFocused: focusedBulkStudentId == student.id && focusedBulkCriterionId == criterion.criterion.id,
+                                cellActions: cellActions,
+                                openFamilyReport: { familyReportStudentId = $0 }
                             )
+                            .equatable()
                         }
                     }
                     .padding(.top, 8)
@@ -485,6 +476,13 @@ struct RubricBulkEvaluationSheet: View {
         let scoreWidth: CGFloat = 88
         let actionsWidth: CGFloat = 96
         let studentWidth: CGFloat = 224
+        let rowActions = bulkRowActions
+        // Sugerencias de IA agrupadas por alumno una vez por pintado, no por fila.
+        var suggestionsByStudent: [Int64: [Int64: RubricSelfAssessmentCriterionSuggestion]] = [:]
+        for (key, suggestion) in aiSuggestionsByCell {
+            suggestionsByStudent[key.studentId, default: [:]][key.criterionId] = suggestion
+        }
+        let canPaste = state.copiedAssessment != nil
 
         return NotebookSurface(cornerRadius: RubricsStyle.cardRadius, fill: NotebookStyle.surface, padding: 16) {
             VStack(alignment: .leading, spacing: 24) {
@@ -520,17 +518,27 @@ struct RubricBulkEvaluationSheet: View {
                         LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) {
                             Section {
                                 ForEach(state.students, id: \.id) { student in
-                                    studentRow(
-                                        student: student,
-                                        state: state,
+                                    BulkRubricStudentRow(
+                                        studentId: student.id,
+                                        studentName: student.firstName + " " + student.lastName,
+                                        initials: initials(for: student),
                                         rubric: rubric,
-                                        cache: cache,
+                                        selectedLevels: cache.levels(for: student.id),
+                                        score: cache.score(for: student.id),
+                                        isInjured: isStudentInjured(student, cache: cache),
+                                        pendingCount: cache.pendingCriteriaCount(for: student.id),
+                                        aiSuggestions: suggestionsByStudent[student.id] ?? [:],
+                                        focusedCriterionId: focusedBulkStudentId == student.id ? focusedBulkCriterionId : nil,
+                                        canPaste: canPaste,
+                                        isSavingInjury: savingInjuryStudentIds.contains(student.id),
                                         studentWidth: studentWidth,
                                         criterionWidth: criterionWidth,
                                         scoreWidth: scoreWidth,
                                         actionsWidth: actionsWidth,
-                                        horizontalOffset: horizontalScrollOffset
+                                        horizontalOffset: horizontalScrollOffset,
+                                        actions: rowActions
                                     )
+                                    .equatable()
                                 }
                             } header: {
                                 headerRow(
@@ -611,243 +619,53 @@ struct RubricBulkEvaluationSheet: View {
         .background(appCardBackground(for: colorScheme).opacity(0.95))
     }
 
-    private func studentRow(
-        student: Student,
-        state: BulkRubricEvaluationUiState,
-        rubric: RubricDetail,
-        cache: BulkRubricEvaluationCache,
-        studentWidth: CGFloat,
-        criterionWidth: CGFloat,
-        scoreWidth: CGFloat,
-        actionsWidth: CGFloat,
-        horizontalOffset: CGFloat
-    ) -> some View {
-        let isInjured = isStudentInjured(student, cache: cache)
-        let pendingCount = cache.pendingCriteriaCount(for: student.id)
-
-        return HStack(spacing: 0) {
-            HStack(spacing: 12) {
-                ZStack(alignment: .bottomTrailing) {
-                    EvaluationAvatar(initials: initials(for: student))
-
-                    Circle()
-                        .fill(statusDotColor(isInjured: isInjured, pendingCount: pendingCount))
-                        .frame(width: 10, height: 10)
-                        .overlay(Circle().stroke(appCardBackground(for: colorScheme), lineWidth: 1.5))
+    /// Acciones de las celdas. Reciben ids y leen el estado al ejecutarse, así que
+    /// una fila que no se redibuja (por `Equatable`) nunca actúa con datos viejos.
+    private var bulkCellActions: BulkRubricCellActions {
+        BulkRubricCellActions(
+            selectLevel: { studentId, criterionId, levelId in
+                focusedBulkStudentId = studentId
+                focusedBulkCriterionId = criterionId
+                bridge.bulkSelectLevel(studentId: studentId, criterionId: criterionId, levelId: levelId)
+            },
+            focusCell: { studentId, criterionId in
+                focusedBulkStudentId = studentId
+                focusedBulkCriterionId = criterionId
+            },
+            hoverLevel: { level, studentId, criterionId, isHovering in
+                if isHovering {
+                    scheduleLevelPopover(for: level, studentId: studentId, criterionId: criterionId)
+                } else {
+                    cancelLevelPopover(for: level)
                 }
-
-                Text(student.firstName + " " + student.lastName)
-                    .scaledSystemFont(size: 14, weight: .bold, design: .rounded)
-                    .foregroundStyle(.primary)
-                    // La columna de nombre tiene ancho fijo: con letra grande
-                    // el apellido pasa a la segunda línea en vez de cortarse.
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+            },
+            longPressLevel: { level, studentId, criterionId in
+                activePopoverStudentId = studentId
+                activePopoverCriterionId = criterionId
+                activePopoverLevel = level
+                #if canImport(UIKit)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                #endif
             }
-            .padding(.leading, 16)
-            .padding(.trailing, 16)
-            .padding(.vertical, 16)
-            .frame(width: studentWidth, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
-                    .fill(appCardBackground(for: colorScheme))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
-                    .stroke(isInjured ? EvaluationDesign.danger.opacity(0.08) : EvaluationDesign.border, lineWidth: 1)
-            )
-            .overlay(alignment: .trailing) {
-                Rectangle()
-                    .fill(EvaluationDesign.border.opacity(horizontalOffset > 0 ? 0.6 : 0))
-                    .frame(width: 1)
-            }
-            .offset(x: horizontalOffset > 0 ? horizontalOffset : 0)
-            .zIndex(10)
-
-            HStack(spacing: 16) {
-                ForEach(rubric.criteria, id: \.criterion.id) { criterion in
-                    inlineCriterionCell(
-                        studentId: student.id,
-                        criterion: criterion,
-                        width: criterionWidth,
-                        cache: cache
-                    )
-                }
-
-                scorePill(for: student.id, width: scoreWidth, cache: cache)
-
-                Menu {
-                    Button {
-                        familyReportStudentId = student.id
-                    } label: {
-                        Label("Informe familiar PDF…", systemImage: "doc.text.badge.plus")
-                    }
-
-                    Divider()
-
-                    Button {
-                        Task { await toggleInjuryStatus(for: student, classId: state.classId, cache: cache) }
-                    } label: {
-                        Label(
-                            isInjured ? "Quitar lesión" : "Marcar lesión",
-                            systemImage: isInjured ? "heart.slash" : "bandage"
-                        )
-                    }
-                    .disabled(savingInjuryStudentIds.contains(student.id))
-
-                    Button {
-                        bridge.bulkCopyAssessment(studentId: student.id)
-                    } label: {
-                        Label("Copiar evaluación", systemImage: "doc.on.doc")
-                    }
-
-                    Button {
-                        bridge.bulkPasteAssessment(studentId: student.id)
-                    } label: {
-                        Label("Pegar evaluación", systemImage: "doc.on.clipboard")
-                    }
-                    .disabled(state.copiedAssessment == nil)
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .scaledSystemFont(size: 18, weight: .medium)
-                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
-                        .foregroundStyle(.secondary)
-                        .frame(width: 34, height: 34)
-                }
-                .buttonStyle(.plain)
-                .frame(width: actionsWidth, alignment: .center)
-            }
-            .padding(.trailing, 16)
-            .padding(.vertical, 16)
-        }
-        .background(
-            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
-                .fill(appCardBackground(for: colorScheme))
-                .overlay(
-                    RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
-                        .stroke(isInjured ? EvaluationDesign.danger.opacity(0.08) : EvaluationDesign.border, lineWidth: 1)
-                )
-                .shadow(color: EvaluationDesign.shadow.opacity(0.06), radius: 8, x: 0, y: 4)
         )
     }
 
-    private func inlineCriterionCell(
-        studentId: Int64,
-        criterion: RubricCriterionWithLevels,
-        width: CGFloat,
-        cache: BulkRubricEvaluationCache
-    ) -> some View {
-        let cellKey = BulkRubricCellKey(studentId: studentId, criterionId: criterion.criterion.id)
-        let selectedLevelId = cache.selectedLevelId(studentId: studentId, criterionId: criterion.criterion.id)
-        let selectedLevel = criterion.levels.first { $0.id == selectedLevelId }
-        let aiSuggestion = aiSuggestionsByCell[cellKey]
-        let isAISuggestedSelection = aiSuggestion != nil && aiSuggestion?.suggestedLevelId == selectedLevelId
-        let isFocused = focusedBulkStudentId == studentId && focusedBulkCriterionId == criterion.criterion.id
-
-        return VStack(spacing: 8) {
-            HStack(spacing: 6) {
-                ForEach(Array(criterion.levels.enumerated()), id: \.element.id) { index, level in
-                    let isSelected = selectedLevelId == level.id
-                    let tint = levelColor(for: level, in: criterion)
-
-                    Button {
-                        focusedBulkStudentId = studentId
-                        focusedBulkCriterionId = criterion.criterion.id
-                        bridge.bulkSelectLevel(
-                            studentId: studentId,
-                            criterionId: criterion.criterion.id,
-                            levelId: level.id
-                        )
-                    } label: {
-                        HStack(spacing: 3) {
-                            if isSelected {
-                                Image(systemName: "checkmark")
-                                    .scaledSystemFont(size: 11, weight: .black)
-                            }
-                            Text("\(index + 1)")
-                                .font(.body.weight(.semibold))
-                                .monospacedDigit()
-                        }
-                        .foregroundStyle(isSelected ? contrastingTextColor(for: tint) : .primary)
-                        .frame(maxWidth: .infinity, minHeight: 36)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(isSelected ? tint : Color.clear)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(isSelected ? tint : EvaluationDesign.border, lineWidth: 1)
-                        )
-                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(criterion.criterion.description_), \(level.name), nivel \(index + 1)")
-                    .accessibilityValue(isAISuggestedSelection && isSelected ? "Sugerido desde autoevaluación" : "")
-                    .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-                    .help(levelHelpText(level, suggestion: isSelected ? aiSuggestion : nil))
-                    .onHover { isHovering in
-                        if isHovering {
-                            scheduleLevelPopover(
-                                for: level,
-                                studentId: studentId,
-                                criterionId: criterion.criterion.id
-                            )
-                        } else {
-                            cancelLevelPopover(for: level)
-                        }
-                    }
-                    .simultaneousGesture(
-                        LongPressGesture(minimumDuration: 0.5)
-                            .onEnded { _ in
-                                activePopoverStudentId = studentId
-                                activePopoverCriterionId = criterion.criterion.id
-                                activePopoverLevel = level
-                                #if canImport(UIKit)
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                #endif
-                            }
-                    )
-                }
-            }
-
-            if let selectedLevel {
-                HStack(spacing: 4) {
-                    if isAISuggestedSelection {
-                        Image(systemName: "sparkles")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(EvaluationDesign.accent)
-                            .accessibilityHidden(true)
-                    }
-                    Text(selectedLevel.name)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(levelColor(for: selectedLevel, in: criterion))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
-            }
-        }
-        .padding(8)
-        .frame(width: width)
-        .contentShape(RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous))
-        .onTapGesture {
-            focusedBulkStudentId = studentId
-            focusedBulkCriterionId = criterion.criterion.id
-        }
-        .background(
-            RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
-                .fill(selectedLevel == nil ? Color.clear : levelColor(for: selectedLevel, in: criterion).opacity(0.08))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
-                .stroke(isFocused ? EvaluationDesign.accent.opacity(0.65) : Color.clear, lineWidth: 2)
+    private var bulkRowActions: BulkRubricRowActions {
+        BulkRubricRowActions(
+            cell: bulkCellActions,
+            openFamilyReport: { familyReportStudentId = $0 },
+            toggleInjury: { toggleInjury(studentId: $0) },
+            copyAssessment: { bridge.bulkCopyAssessment(studentId: $0) },
+            pasteAssessment: { bridge.bulkPasteAssessment(studentId: $0) }
         )
     }
 
-    private func levelHelpText(_ level: RubricLevel, suggestion: RubricSelfAssessmentCriterionSuggestion? = nil) -> String {
-        let description = level.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let base = description.isEmpty ? level.name : "\(level.name): \(description)"
-        guard let suggestion else { return base }
-        return "\(base)\n✨ Autoevaluación: \(suggestion.rationale)"
+    /// Lesión desde el menú de la fila: alumno, grupo y caché del estado actual.
+    private func toggleInjury(studentId: Int64) {
+        guard let state = bridge.bulkRubricEvaluationState,
+              let student = state.students.first(where: { $0.id == studentId }),
+              let cache = currentCache() else { return }
+        Task { await toggleInjuryStatus(for: student, classId: state.classId, cache: cache) }
     }
 
     private func scheduleLevelPopover(
@@ -891,51 +709,6 @@ struct RubricBulkEvaluationSheet: View {
             return nil
         }
         return suggestion
-    }
-
-    /// Envoltorio sobre `RubricsStyle.levelColor(points:maxPoints:)` que
-    /// resuelve `maxPoints` a partir del criterio — la lógica de bandas (y por
-    /// qué no es `gradeColor`) vive ahora en `RubricsStyle`, compartida con la
-    /// evaluación individual.
-    private func levelColor(for level: RubricLevel?, in criterion: RubricCriterionWithLevels) -> Color {
-        guard let level else { return EvaluationDesign.accent }
-        let maxPoints = criterion.levels.map(\.points).max() ?? 0
-        return RubricsStyle.levelColor(points: Double(level.points), maxPoints: Double(maxPoints))
-    }
-
-    private func statusDotColor(isInjured: Bool, pendingCount: Int) -> Color {
-        if isInjured {
-            return EvaluationDesign.danger
-        } else if pendingCount > 0 {
-            return Color.gray.opacity(0.5)
-        } else {
-            return EvaluationDesign.success
-        }
-    }
-
-    /// Nota compacta con separador decimal localizado (coma en es-ES), coherente
-    /// con el resto de la app; `String(format: "%.1f")` forzaba siempre el punto.
-    private static let scorePillFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 1
-        formatter.maximumFractionDigits = 1
-        return formatter
-    }()
-
-    private func scorePill(for studentId: Int64, width: CGFloat, cache: BulkRubricEvaluationCache) -> some View {
-        let score = cache.score(for: studentId)
-        let scoreText = score.map {
-            Self.scorePillFormatter.string(from: NSNumber(value: $0)) ?? String(format: "%.1f", $0)
-        } ?? "—"
-        let tint = score.map { RubricsStyle.gradeColor(forScoreOutOfTen: $0) }
-
-        return Text(scoreText)
-            .scaledSystemFont(size: 20, weight: .black, design: .rounded)
-            .foregroundStyle(tint ?? .secondary)
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .frame(width: width, alignment: .center)
     }
 
     private func rowActionButton(
@@ -1095,13 +868,7 @@ struct RubricBulkEvaluationSheet: View {
                                 Spacer()
                                 Button {
                                     Task {
-                                        guard let rubric = state.rubricDetail else { return }
-                                        let cache = BulkRubricEvaluationCache(
-                                            state: state,
-                                            rubric: rubric,
-                                            assessments: bridge.bulkAssessmentSnapshot(),
-                                            scores: bridge.bulkScoreSnapshot()
-                                        )
+                                        guard let cache = currentCache() else { return }
                                         await toggleInjuryStatus(for: student, classId: state.classId, cache: cache)
                                     }
                                 } label: {
@@ -1161,7 +928,7 @@ struct RubricBulkEvaluationSheet: View {
     }
 
     private func className(for state: BulkRubricEvaluationUiState) -> String {
-        bridge.classes.first(where: { $0.id == state.classId })?.name ?? "Clase"
+        watchedBridge.classes.first(where: { $0.id == state.classId })?.name ?? "Clase"
     }
 
     private func initials(for student: Student) -> String {
@@ -1199,7 +966,7 @@ struct RubricBulkEvaluationSheet: View {
         guard !isRunningSelfAssessmentAutofill else { return }
 
         aiOrchestrator.prewarmIfUseful(for: .studentInsight)
-        let currentAssessments = bridge.bulkAssessmentSnapshot()
+        let currentAssessments = currentCache()?.assessmentsByStudentId ?? [:]
 
         let criteriaInputs: [RubricSelfAssessmentCriterionInput] = rubric.criteria.enumerated().map { idx, item in
             let levelInputs: [RubricSelfAssessmentCriterionLevelInput] = item.levels.enumerated().map { lIdx, lvl in
@@ -1285,7 +1052,7 @@ struct RubricBulkEvaluationSheet: View {
                 }
                 if case let .rubricSelfAssessmentMapping(draft) = generation.result {
                     var studentChanged = false
-                    let existingStudentLevels = bridge.bulkAssessmentSnapshot()[student.id] ?? [:]
+                    let existingStudentLevels = currentCache()?.levels(for: student.id) ?? [:]
                     for suggestion in draft.suggestions {
                         let cellKey = BulkRubricCellKey(studentId: student.id, criterionId: suggestion.criterionId)
                         if autofillOnlyPending, existingStudentLevels[suggestion.criterionId] != nil {
@@ -1351,6 +1118,408 @@ struct RubricBulkEvaluationSheet: View {
     }
 }
 
+/// Acciones de una celda de criterio. Fuera de la comparación de las filas.
+private struct BulkRubricCellActions {
+    let selectLevel: (_ studentId: Int64, _ criterionId: Int64, _ levelId: Int64) -> Void
+    let focusCell: (_ studentId: Int64, _ criterionId: Int64) -> Void
+    let hoverLevel: (_ level: RubricLevel, _ studentId: Int64, _ criterionId: Int64, _ isHovering: Bool) -> Void
+    let longPressLevel: (_ level: RubricLevel, _ studentId: Int64, _ criterionId: Int64) -> Void
+}
+
+/// Acciones del menú de la fila. Reciben el id del alumno.
+private struct BulkRubricRowActions {
+    let cell: BulkRubricCellActions
+    let openFamilyReport: (_ studentId: Int64) -> Void
+    let toggleInjury: (_ studentId: Int64) -> Void
+    let copyAssessment: (_ studentId: Int64) -> Void
+    let pasteAssessment: (_ studentId: Int64) -> Void
+}
+
+/// Misma rúbrica: primero por identidad (barato) y si no, igualdad Kotlin.
+private func bulkSameRubric(_ lhs: RubricDetail, _ rhs: RubricDetail) -> Bool {
+    lhs === rhs || lhs == rhs
+}
+
+/// Envoltorio sobre `RubricsStyle.levelColor(points:maxPoints:)` que
+/// resuelve `maxPoints` a partir del criterio — la lógica de bandas (y por
+/// qué no es `gradeColor`) vive en `RubricsStyle`, compartida con la
+/// evaluación individual.
+private func bulkRubricLevelColor(for level: RubricLevel?, in criterion: RubricCriterionWithLevels) -> Color {
+    guard let level else { return EvaluationDesign.accent }
+    let maxPoints = criterion.levels.map(\.points).max() ?? 0
+    return RubricsStyle.levelColor(points: Double(level.points), maxPoints: Double(maxPoints))
+}
+
+private func bulkRubricStatusDotColor(isInjured: Bool, pendingCount: Int) -> Color {
+    if isInjured {
+        return EvaluationDesign.danger
+    } else if pendingCount > 0 {
+        return Color.gray.opacity(0.5)
+    } else {
+        return EvaluationDesign.success
+    }
+}
+
+/// Fila de un alumno en la tabla ancha. Solo se redibuja si cambia algo de lo que
+/// pinta (todo está en `==`); las acciones quedan fuera de la comparación.
+private struct BulkRubricStudentRow: View, Equatable {
+    let studentId: Int64
+    let studentName: String
+    let initials: String
+    let rubric: RubricDetail
+    let selectedLevels: [Int64: Int64]
+    let score: Double?
+    let isInjured: Bool
+    let pendingCount: Int
+    let aiSuggestions: [Int64: RubricSelfAssessmentCriterionSuggestion]
+    let focusedCriterionId: Int64?
+    let canPaste: Bool
+    let isSavingInjury: Bool
+    let studentWidth: CGFloat
+    let criterionWidth: CGFloat
+    let scoreWidth: CGFloat
+    let actionsWidth: CGFloat
+    let horizontalOffset: CGFloat
+    let actions: BulkRubricRowActions
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.studentId == rhs.studentId
+            && lhs.studentName == rhs.studentName
+            && lhs.initials == rhs.initials
+            && bulkSameRubric(lhs.rubric, rhs.rubric)
+            && lhs.selectedLevels == rhs.selectedLevels
+            && lhs.score == rhs.score
+            && lhs.isInjured == rhs.isInjured
+            && lhs.pendingCount == rhs.pendingCount
+            && lhs.aiSuggestions == rhs.aiSuggestions
+            && lhs.focusedCriterionId == rhs.focusedCriterionId
+            && lhs.canPaste == rhs.canPaste
+            && lhs.isSavingInjury == rhs.isSavingInjury
+            && lhs.studentWidth == rhs.studentWidth
+            && lhs.criterionWidth == rhs.criterionWidth
+            && lhs.scoreWidth == rhs.scoreWidth
+            && lhs.actionsWidth == rhs.actionsWidth
+            && lhs.horizontalOffset == rhs.horizontalOffset
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 12) {
+                ZStack(alignment: .bottomTrailing) {
+                    EvaluationAvatar(initials: initials)
+
+                    Circle()
+                        .fill(bulkRubricStatusDotColor(isInjured: isInjured, pendingCount: pendingCount))
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(appCardBackground(for: colorScheme), lineWidth: 1.5))
+                }
+
+                Text(studentName)
+                    .scaledSystemFont(size: 14, weight: .bold, design: .rounded)
+                    .foregroundStyle(.primary)
+                    // La columna de nombre tiene ancho fijo: con letra grande
+                    // el apellido pasa a la segunda línea en vez de cortarse.
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.leading, 16)
+            .padding(.trailing, 16)
+            .padding(.vertical, 16)
+            .frame(width: studentWidth, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                    .fill(appCardBackground(for: colorScheme))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                    .stroke(isInjured ? EvaluationDesign.danger.opacity(0.08) : EvaluationDesign.border, lineWidth: 1)
+            )
+            .overlay(alignment: .trailing) {
+                Rectangle()
+                    .fill(EvaluationDesign.border.opacity(horizontalOffset > 0 ? 0.6 : 0))
+                    .frame(width: 1)
+            }
+            .offset(x: horizontalOffset > 0 ? horizontalOffset : 0)
+            .zIndex(10)
+
+            HStack(spacing: 16) {
+                ForEach(rubric.criteria, id: \.criterion.id) { criterion in
+                    BulkRubricCriterionCell(
+                        studentId: studentId,
+                        criterion: criterion,
+                        width: criterionWidth,
+                        selectedLevelId: selectedLevels[criterion.criterion.id],
+                        aiSuggestion: aiSuggestions[criterion.criterion.id],
+                        isFocused: focusedCriterionId == criterion.criterion.id,
+                        actions: actions.cell
+                    )
+                }
+
+                BulkRubricScorePill(score: score, width: scoreWidth)
+
+                Menu {
+                    Button {
+                        actions.openFamilyReport(studentId)
+                    } label: {
+                        Label("Informe familiar PDF…", systemImage: "doc.text.badge.plus")
+                    }
+
+                    Divider()
+
+                    Button {
+                        actions.toggleInjury(studentId)
+                    } label: {
+                        Label(
+                            isInjured ? "Quitar lesión" : "Marcar lesión",
+                            systemImage: isInjured ? "heart.slash" : "bandage"
+                        )
+                    }
+                    .disabled(isSavingInjury)
+
+                    Button {
+                        actions.copyAssessment(studentId)
+                    } label: {
+                        Label("Copiar evaluación", systemImage: "doc.on.doc")
+                    }
+
+                    Button {
+                        actions.pasteAssessment(studentId)
+                    } label: {
+                        Label("Pegar evaluación", systemImage: "doc.on.clipboard")
+                    }
+                    .disabled(!canPaste)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .scaledSystemFont(size: 18, weight: .medium)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
+                        .foregroundStyle(.secondary)
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.plain)
+                .frame(width: actionsWidth, alignment: .center)
+            }
+            .padding(.trailing, 16)
+            .padding(.vertical, 16)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                .fill(appCardBackground(for: colorScheme))
+                .overlay(
+                    RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                        .stroke(isInjured ? EvaluationDesign.danger.opacity(0.08) : EvaluationDesign.border, lineWidth: 1)
+                )
+                .shadow(color: EvaluationDesign.shadow.opacity(0.06), radius: 8, x: 0, y: 4)
+        )
+    }
+}
+
+/// Fila de un alumno para un criterio en el diseño estrecho (por criterio).
+private struct BulkRubricCompactRow: View, Equatable {
+    let studentId: Int64
+    let studentName: String
+    let isInjured: Bool
+    let pendingCount: Int
+    let score: Double?
+    let rubric: RubricDetail
+    let criterion: RubricCriterionWithLevels
+    let selectedLevelId: Int64?
+    let aiSuggestion: RubricSelfAssessmentCriterionSuggestion?
+    let isFocused: Bool
+    let cellActions: BulkRubricCellActions
+    let openFamilyReport: (_ studentId: Int64) -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.studentId == rhs.studentId
+            && lhs.studentName == rhs.studentName
+            && lhs.isInjured == rhs.isInjured
+            && lhs.pendingCount == rhs.pendingCount
+            && lhs.score == rhs.score
+            // El criterio sale de la rúbrica: misma rúbrica y mismo id, mismo criterio.
+            && bulkSameRubric(lhs.rubric, rhs.rubric)
+            && lhs.criterion.criterion.id == rhs.criterion.criterion.id
+            && lhs.selectedLevelId == rhs.selectedLevelId
+            && lhs.aiSuggestion == rhs.aiSuggestion
+            && lhs.isFocused == rhs.isFocused
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(bulkRubricStatusDotColor(isInjured: isInjured, pendingCount: pendingCount))
+                    .frame(width: 8, height: 8)
+
+                Text(studentName)
+                    .font(.subheadline.weight(.bold))
+                    .lineLimit(1)
+
+                Spacer(minLength: 4)
+
+                BulkRubricScorePill(score: score, width: 44)
+                    .contextMenu {
+                        Button {
+                            openFamilyReport(studentId)
+                        } label: {
+                            Label("Informe familiar PDF…", systemImage: "doc.text.badge.plus")
+                        }
+                    }
+            }
+            .frame(width: 160, alignment: .leading)
+
+            BulkRubricCriterionCell(
+                studentId: studentId,
+                criterion: criterion,
+                width: 220,
+                selectedLevelId: selectedLevelId,
+                aiSuggestion: aiSuggestion,
+                isFocused: isFocused,
+                actions: cellActions
+            )
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                .fill(appCardBackground(for: colorScheme))
+        )
+    }
+}
+
+/// Celda de un criterio (botones de nivel + nombre del nivel elegido). Vive dentro
+/// de las filas `Equatable`: todo lo que pinta llega como parámetro.
+private struct BulkRubricCriterionCell: View {
+    let studentId: Int64
+    let criterion: RubricCriterionWithLevels
+    let width: CGFloat
+    let selectedLevelId: Int64?
+    let aiSuggestion: RubricSelfAssessmentCriterionSuggestion?
+    let isFocused: Bool
+    let actions: BulkRubricCellActions
+
+    var body: some View {
+        let criterionId = criterion.criterion.id
+        let selectedLevel = criterion.levels.first { $0.id == selectedLevelId }
+        let isAISuggestedSelection = aiSuggestion != nil && aiSuggestion?.suggestedLevelId == selectedLevelId
+
+        VStack(spacing: 8) {
+            HStack(spacing: 6) {
+                ForEach(Array(criterion.levels.enumerated()), id: \.element.id) { index, level in
+                    let isSelected = selectedLevelId == level.id
+                    let tint = bulkRubricLevelColor(for: level, in: criterion)
+
+                    Button {
+                        actions.selectLevel(studentId, criterionId, level.id)
+                    } label: {
+                        HStack(spacing: 3) {
+                            if isSelected {
+                                Image(systemName: "checkmark")
+                                    .scaledSystemFont(size: 11, weight: .black)
+                            }
+                            Text("\(index + 1)")
+                                .font(.body.weight(.semibold))
+                                .monospacedDigit()
+                        }
+                        .foregroundStyle(isSelected ? contrastingTextColor(for: tint) : .primary)
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(isSelected ? tint : Color.clear)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(isSelected ? tint : EvaluationDesign.border, lineWidth: 1)
+                        )
+                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(criterion.criterion.description_), \(level.name), nivel \(index + 1)")
+                    .accessibilityValue(isAISuggestedSelection && isSelected ? "Sugerido desde autoevaluación" : "")
+                    .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+                    .help(Self.levelHelpText(level, suggestion: isSelected ? aiSuggestion : nil))
+                    .onHover { isHovering in
+                        actions.hoverLevel(level, studentId, criterionId, isHovering)
+                    }
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 0.5)
+                            .onEnded { _ in
+                                actions.longPressLevel(level, studentId, criterionId)
+                            }
+                    )
+                }
+            }
+
+            if let selectedLevel {
+                HStack(spacing: 4) {
+                    if isAISuggestedSelection {
+                        Image(systemName: "sparkles")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(EvaluationDesign.accent)
+                            .accessibilityHidden(true)
+                    }
+                    Text(selectedLevel.name)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(bulkRubricLevelColor(for: selectedLevel, in: criterion))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+        }
+        .padding(8)
+        .frame(width: width)
+        .contentShape(RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous))
+        .onTapGesture {
+            actions.focusCell(studentId, criterionId)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
+                .fill(selectedLevel == nil ? Color.clear : bulkRubricLevelColor(for: selectedLevel, in: criterion).opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
+                .stroke(isFocused ? EvaluationDesign.accent.opacity(0.65) : Color.clear, lineWidth: 2)
+        )
+    }
+
+    private static func levelHelpText(_ level: RubricLevel, suggestion: RubricSelfAssessmentCriterionSuggestion? = nil) -> String {
+        let description = level.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let base = description.isEmpty ? level.name : "\(level.name): \(description)"
+        guard let suggestion else { return base }
+        return "\(base)\n✨ Autoevaluación: \(suggestion.rationale)"
+    }
+}
+
+/// Nota compacta con separador decimal localizado (coma en es-ES), coherente
+/// con el resto de la app; `String(format: "%.1f")` forzaba siempre el punto.
+private struct BulkRubricScorePill: View {
+    let score: Double?
+    let width: CGFloat
+
+    private static let formatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 1
+        formatter.maximumFractionDigits = 1
+        return formatter
+    }()
+
+    var body: some View {
+        let scoreText = score.map {
+            Self.formatter.string(from: NSNumber(value: $0)) ?? String(format: "%.1f", $0)
+        } ?? "—"
+        let tint = score.map { RubricsStyle.gradeColor(forScoreOutOfTen: $0) }
+
+        Text(scoreText)
+            .scaledSystemFont(size: 20, weight: .black, design: .rounded)
+            .foregroundStyle(tint ?? .secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .frame(width: width, alignment: .center)
+    }
+}
+
 private struct BulkHoveredLevelKey: Hashable {
     let studentId: Int64
     let criterionId: Int64
@@ -1362,8 +1531,35 @@ private struct BulkRubricCellKey: Hashable {
     let criterionId: Int64
 }
 
+/// Guarda la última caché y el estado del que salió. Los estados Kotlin son
+/// inmutables: mismo objeto, mismo contenido; un estado nuevo la invalida.
+@MainActor
+private final class BulkRubricSnapshotMemo: ObservableObject {
+    private var lastState: BulkRubricEvaluationUiState?
+    private var lastCache: BulkRubricEvaluationCache?
+
+    func cache(
+        for state: BulkRubricEvaluationUiState,
+        rubric: RubricDetail,
+        bridge: KmpBridge
+    ) -> BulkRubricEvaluationCache {
+        if let lastCache, lastState === state {
+            return lastCache
+        }
+        let cache = BulkRubricEvaluationCache(
+            state: state,
+            rubric: rubric,
+            assessments: bridge.bulkAssessmentSnapshot(from: state),
+            scores: bridge.bulkScoreSnapshot(from: state)
+        )
+        lastState = state
+        lastCache = cache
+        return cache
+    }
+}
+
 private struct BulkRubricEvaluationCache {
-    private let selectedLevels: [BulkRubricCellKey: Int64]
+    let assessmentsByStudentId: [Int64: [Int64: Int64]]
     private let scores: [Int64: Double]
     private let criteriaCount: Int
     private let completedCriteriaCountByStudentId: [Int64: Int]
@@ -1382,7 +1578,6 @@ private struct BulkRubricEvaluationCache {
         scores: [Int64: Double]
     ) {
         criteriaCount = rubric.criteria.count
-        var selectedLevels: [BulkRubricCellKey: Int64] = [:]
         var completedCriteriaCountByStudentId: [Int64: Int] = [:]
 
         for student in state.students {
@@ -1391,21 +1586,22 @@ private struct BulkRubricEvaluationCache {
 
         for (studentId, studentMap) in assessments {
             var completedCount = completedCriteriaCountByStudentId[studentId] ?? 0
-            for (criterionId, levelId) in studentMap {
-                selectedLevels[BulkRubricCellKey(studentId: studentId, criterionId: criterionId)] = levelId
-                completedCount += 1
-            }
+            completedCount += studentMap.count
             completedCriteriaCountByStudentId[studentId] = min(completedCount, criteriaCount)
         }
 
-        self.selectedLevels = selectedLevels
+        self.assessmentsByStudentId = assessments
         self.scores = scores
         self.completedCriteriaCountByStudentId = completedCriteriaCountByStudentId
         self.injuredStudentIds = Set(state.injuredStudents.map(\.id))
     }
 
     func selectedLevelId(studentId: Int64, criterionId: Int64) -> Int64? {
-        selectedLevels[BulkRubricCellKey(studentId: studentId, criterionId: criterionId)]
+        assessmentsByStudentId[studentId]?[criterionId]
+    }
+
+    func levels(for studentId: Int64) -> [Int64: Int64] {
+        assessmentsByStudentId[studentId] ?? [:]
     }
 
     func score(for studentId: Int64) -> Double? {

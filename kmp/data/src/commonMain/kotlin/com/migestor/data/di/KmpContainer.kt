@@ -166,6 +166,17 @@ class KmpContainer(val driver: SqlDriver) {
     val getNotebookConfig = GetNotebookConfigUseCase(notebookConfigRepository)
     val getOperationalDashboardSnapshot = GetOperationalDashboardSnapshotUseCase(dashboardOperationalRepository)
     val getAITrendsAndMetrics = GetAITrendsAndMetricsUseCase(aiTrendsRepository)
+    val buildLomloeCommentEvidence = com.migestor.shared.usecase.BuildLomloeCommentEvidenceUseCase(
+        evaluations = evaluationsRepository,
+        rubrics = rubricsRepository,
+        grades = gradesRepository,
+        competencies = competenciesRepository,
+        notebookConfig = notebookConfigRepository,
+        notebookCells = notebookCellsRepository,
+        incidents = incidentsRepository,
+        tutoring = studentTutoringSessionRepository,
+        schedules = teacherScheduleRepository,
+    )
 
     val notebookRepository = NotebookRepositorySqlDelight(
         db = database,

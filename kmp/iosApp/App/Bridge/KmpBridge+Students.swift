@@ -1504,6 +1504,61 @@ extension KmpBridge {
         )
     }
 
+    // MARK: - Valoración del docente por trimestre (issue #407, parte B)
+
+    /// Texto que el docente ha escrito para un alumno, grupo y trimestre. Vacío si no hay.
+    func teacherTermNote(studentId: Int64, classId: Int64, termLabel: String?) async throws -> String {
+        let termKey = TeacherTermNoteKeys.shared.fromLabel(label: termLabel)
+        let note = try await container.studentTermTeacherNoteRepository.get(
+            studentId: studentId,
+            classId: classId,
+            termKey: termKey
+        )
+        return note?.note ?? ""
+    }
+
+    /// Valoraciones de todo un grupo en un trimestre, por id de alumno. Solo las no vacías.
+    func teacherTermNotes(classId: Int64, termLabel: String?) async throws -> [Int64: String] {
+        let termKey = TeacherTermNoteKeys.shared.fromLabel(label: termLabel)
+        let notes = try await container.studentTermTeacherNoteRepository.listByClassAndTerm(
+            classId: classId,
+            termKey: termKey
+        )
+        var result: [Int64: String] = [:]
+        for note in notes where !note.note.isEmpty {
+            result[note.studentId] = note.note
+        }
+        return result
+    }
+
+    /// Guarda la valoración (vacía incluida) y la encola para Sync LAN.
+    /// Devuelve el texto tal como quedó guardado (sin espacios sobrantes y dentro del tope).
+    @discardableResult
+    func saveTeacherTermNote(studentId: Int64, classId: Int64, termLabel: String?, text: String) async throws -> String {
+        let termKey = TeacherTermNoteKeys.shared.fromLabel(label: termLabel)
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let saved = try await container.studentTermTeacherNoteRepository.save(
+            studentId: studentId,
+            classId: classId,
+            termKey: termKey,
+            note: text,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId
+        )
+        enqueueLocalChange(
+            entity: SchoolRecordsSync.companion.TERM_TEACHER_NOTES,
+            id: saved.syncId,
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "studentId": studentId,
+                "classId": classId,
+                "termKey": termKey,
+                "note": saved.note
+            ]
+        )
+        return saved.note
+    }
+
     /// `nil` si la fila trae un canal que esta version no conoce. Se descarta en
     /// vez de forzar un valor: mismo criterio que las medidas de apoyo.
     private func tutoringSessionSnapshot(from session: StudentTutoringSession) -> TutoringSessionSnapshot? {
@@ -2513,6 +2568,8 @@ extension KmpBridge {
             }
             let profile = try await loadStudentProfile(studentId: studentId, classId: classId)
             let numericScore = profile.averageScore > 0 ? profile.averageScore : nil
+            let teacherNote = try await teacherTermNote(studentId: studentId, classId: classId, termLabel: termLabel).nilIfBlank
+            let hasRecordedEvidence = numericScore != nil || !profile.evaluationTitles.isEmpty || !profile.timeline.isEmpty
             let performanceBand: String = {
                 guard let numericScore else { return "Sin calificación consolidada" }
                 switch numericScore {
@@ -2573,12 +2630,13 @@ extension KmpBridge {
                 termLabel: termLabel,
                 numericScore: numericScore,
                 curriculumReferences: curriculumReferences,
-                promptDirectives: [
+                promptDirectives: compactSuggestions(
                     "Aplicar estructura de 4 bloques breve para comentario trimestral LOMLOE.",
                     "No mencionar la nota numérica en el texto final.",
                     "Mencionar al menos una competencia específica CE1-CE5.",
-                    "Tono positivo, específico y listo para copiar en el informe."
-                ],
+                    "Tono positivo, específico y listo para copiar en el informe.",
+                    teacherNote == nil ? nil : "Apoyarse ante todo en la valoración del docente, reformulada y sin contradecirla."
+                ),
                 audienceHint: "familia",
                 summary: "Comentario cualitativo trimestral de Educación Física, breve, competencial y listo para informe.",
                 metrics: [
@@ -2593,9 +2651,18 @@ extension KmpBridge {
                 recommendedActions: recommendedActions,
                 supportNotes: supportNotes,
                 classicReportText: classicCommentShell,
-                hasEnoughData: numericScore != nil || !profile.evaluationTitles.isEmpty || !profile.timeline.isEmpty,
-                dataQualityNote: numericScore == nil ? "Si hay poca nota numérica, el comentario debe apoyarse en evidencias, actitud y progreso observado." : nil,
-                trends: trends
+                hasEnoughData: hasRecordedEvidence || teacherNote != nil,
+                dataQualityNote: { () -> String? in
+                    if !hasRecordedEvidence && teacherNote == nil {
+                        return "No hay evidencia registrada ni valoración tuya para este trimestre. Escribe tu valoración para poder generar el comentario."
+                    }
+                    if !hasRecordedEvidence {
+                        return "Sin evidencia registrada este trimestre: el comentario se apoya solo en tu valoración."
+                    }
+                    return numericScore == nil ? "Si hay poca nota numérica, el comentario debe apoyarse en evidencias, actitud y progreso observado." : nil
+                }(),
+                trends: trends,
+                teacherNote: teacherNote
             )
         }
     }

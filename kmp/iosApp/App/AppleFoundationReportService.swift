@@ -242,6 +242,8 @@ final class AppleFoundationReportService {
     )
     private var availabilityRetryTask: Task<Void, Never>?
     private var reportPromptCache: [String: String] = [:]
+    /// Parte de la valoración del docente que entra en el prompt (el modelo local admite poco texto).
+    static let teacherNotePromptLimit = 900
 
     #if canImport(FoundationModels)
     private var cachedReportSessionStorage: Any?
@@ -538,6 +540,19 @@ final class AppleFoundationReportService {
             """
         }()
 
+        // Va al principio del prompt: si hay que recortar por tamaño, se pierde la cola, no esto.
+        let teacherNoteBlock: String = {
+            guard let note = context.teacherNote?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty else {
+                return "Sin valoración escrita por el docente para este periodo."
+            }
+            return """
+            \(promptFragment(note, limit: Self.teacherNotePromptLimit))
+            - Es la fuente con más peso: el comentario debe ser coherente con ella y no contradecirla.
+            - Es una nota privada: reformúlala con el tono pedido, no la copies literal.
+            - No añadas hechos que no estén aquí o en los datos verificables.
+            """
+        }()
+
         let audienceDirectives: String = {
             switch audience {
             case .docente:
@@ -572,6 +587,9 @@ final class AppleFoundationReportService {
         Resumen base: \(promptFragment(context.summary, limit: 320))
         Nota de calidad de datos: \(promptFragment(context.dataQualityNote ?? "Sin incidencias de calidad reseñables.", limit: 180))
         Nota interna orientativa: \(context.numericScore.map { IosFormatting.decimal(from: $0) } ?? "Sin nota consolidada")
+
+        Valoración del docente (fuente prioritaria, privada)
+        \(teacherNoteBlock)
 
         Análisis consolidado de tendencias de IA
         \(trendsInfo)
@@ -645,7 +663,9 @@ final class AppleFoundationReportService {
             AIContextBudget.lines(context.needsAttention, maxItems: AIContextBudget.maxWarnings, itemLimit: 100).joined(separator: "|"),
             AIContextBudget.lines(context.recommendedActions, maxItems: AIContextBudget.maxActions, itemLimit: 100).joined(separator: "|"),
             AIContextBudget.lines(context.supportNotes, maxItems: 3, itemLimit: 100).joined(separator: "|"),
-            context.dataQualityNote ?? ""
+            context.dataQualityNote ?? "",
+            context.termLabel ?? "",
+            context.teacherNote ?? ""
         ].joined(separator: "¬").hashValue.description
 
         if let cached = reportPromptCache[key] {
@@ -702,6 +722,12 @@ final class AppleFoundationReportService {
         let familyVersion = """
         \(studentOrGroup) mantiene un seguimiento basado en las evidencias registradas. Conviene reforzar \(recommendedActions.first?.lowercased() ?? "la continuidad del trabajo") y revisar la evolución en el próximo periodo.
         """
+        // Las reglas no saben reformular: la valoración privada del docente no se copia.
+        // Se avisa para que la integre a mano al revisar el borrador.
+        let hasTeacherNote = !(context.teacherNote ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let needsAttentionWithNote = hasTeacherNote
+            ? Array((["Tienes una valoración escrita para este alumno. La redacción por reglas no la incorpora: intégrala a mano al revisar."] + needsAttention).prefix(4))
+            : needsAttention
         let teacherVersion: String
         if context.kind == .lomloeEvaluationComment {
             let factSentence = strengths.first ?? "hay evidencias todavía limitadas"
@@ -718,7 +744,7 @@ final class AppleFoundationReportService {
             title: "Borrador por reglas · \(context.kind.title)",
             summary: summary,
             strengths: strengths.isEmpty ? ["Sin fortalezas concluyentes con los datos actuales."] : strengths,
-            needsAttention: needsAttention.isEmpty ? ["Sin alertas específicas con los datos actuales."] : needsAttention,
+            needsAttention: needsAttentionWithNote.isEmpty ? ["Sin alertas específicas con los datos actuales."] : needsAttentionWithNote,
             progressAreas: progressAreas.isEmpty ? ["Mantener continuidad en la recogida de evidencias observables."] : progressAreas,
             recommendedActions: recommendedActions,
             familyFacingVersion: familyVersion,

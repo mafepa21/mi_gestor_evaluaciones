@@ -774,6 +774,8 @@ struct ReportsWorkspaceView: View {
     @State var refinePrompt = ""
     @State var isRefiningAIDraft = false
     @State var isBulkLomloeSheetPresented = false
+    /// "Tu valoración" del alumno y trimestre seleccionados (Comentario LOMLOE).
+    @StateObject var teacherNoteStore = TeacherTermNoteStore()
     @State var isWeeklyEmailSheetPresented = false
 
     @State var analyticsMode: AnalyticsMode = .dashboards
@@ -858,7 +860,14 @@ struct ReportsWorkspaceView: View {
         .reloadOnLanSync(.evaluation) { await refreshWorkspaceContext() }
         .task {
             refreshAvailability()
+            // Al guardarse la valoración cambia lo que la IA puede usar: se refresca solo el contexto.
+            teacherNoteStore.onSaved = {
+                Task { await refreshReportContextOnly() }
+            }
             await refreshWorkspaceContext()
+        }
+        .onDisappear {
+            Task { await teacherNoteStore.flush() }
         }
         .appOnChange(of: selectedClassId) { _ in
             Task { await refreshWorkspaceContext() }
@@ -1189,6 +1198,12 @@ struct ReportsWorkspaceView: View {
                             .disabled(selectedClassId == nil)
                         }
                     }
+
+                        if selectedReportKind == .lomloeEvaluationComment, selectedStudent != nil {
+                            TeacherTermNoteEditor(store: teacherNoteStore)
+                                .padding(16)
+                                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
 
                         AppleAIAuditSummaryView(metadata: aiMetadata)
                         WorkspaceDetailBlock(title: "Disponibilidad", content: aiMetadata?.availabilityMessage ?? aiAvailability.message)
@@ -1530,9 +1545,43 @@ struct ReportsWorkspaceView: View {
         await reloadAnalyticsDashboards()
     }
 
+    /// Carga en la casilla la valoración del alumno y trimestre seleccionados, o la vacía.
+    @MainActor
+    func syncTeacherNoteStore() async {
+        guard selectedReportKind == .lomloeEvaluationComment,
+              let selectedClassId,
+              let selectedStudentId else {
+            await teacherNoteStore.clear()
+            return
+        }
+        await teacherNoteStore.load(
+            bridge: bridge,
+            studentId: selectedStudentId,
+            classId: selectedClassId,
+            termLabel: selectedReportTerm.rawValue
+        )
+    }
+
+    /// Recalcula solo el contexto del informe, sin tocar el borrador ni la vista previa.
+    @MainActor
+    @discardableResult
+    func refreshReportContextOnly() async -> KmpBridge.ReportGenerationContext? {
+        guard let selectedClassId else { return reportContext }
+        guard let context = try? await bridge.buildReportGenerationContext(
+            classId: selectedClassId,
+            studentId: selectedStudentId,
+            kind: selectedReportKind,
+            termLabel: selectedReportKind == .lomloeEvaluationComment ? selectedReportTerm.rawValue : nil
+        ) else { return reportContext }
+        reportContext = context
+        return context
+    }
+
     @MainActor
     func reloadPreview() async {
         guard let selectedClassId else { return }
+        // Primero la casilla: guarda lo pendiente del alumno anterior antes de leer el nuevo contexto.
+        await syncTeacherNoteStore()
         aiDraft = nil
         aiMetadata = nil
         editableDraftText = ""
@@ -1600,11 +1649,23 @@ struct ReportsWorkspaceView: View {
 
     @MainActor
     func generateAIDraft() async {
-        guard let reportContext else { return }
+        guard self.reportContext != nil else { return }
         isGeneratingAIDraft = true
         aiFeedbackMessage = nil
         let startedAt = Date()
         defer { isGeneratingAIDraft = false }
+
+        // La IA debe leer lo último escrito en "Tu valoración", aunque aún no se haya autoguardado.
+        var freshContext = self.reportContext
+        if selectedReportKind == .lomloeEvaluationComment {
+            await teacherNoteStore.flush()
+            freshContext = await refreshReportContextOnly()
+        }
+        guard let reportContext = freshContext else { return }
+        guard reportContext.hasEnoughData else {
+            aiFeedbackMessage = reportContext.dataQualityNote ?? "Faltan datos para redactar el comentario."
+            return
+        }
 
         do {
             let generation = try await aiOrchestrator.generateWithTrace(
@@ -2039,6 +2100,9 @@ struct BulkLOMLOEGenerationSheet: View {
         var status: GenerationStatus = .pending
         var text: String = ""
         var isApproved: Bool = true
+        /// "Tu valoración" de este alumno en el trimestre; `savedTeacherNote` es lo ya guardado.
+        var teacherNote: String = ""
+        var savedTeacherNote: String = ""
 
         var id: Int64 { student.id }
     }
@@ -2114,6 +2178,9 @@ struct BulkLOMLOEGenerationSheet: View {
                     await loadStudents()
                 }
             }
+            .onDisappear {
+                Task { await saveChangedTeacherNotes() }
+            }
         }
     }
 
@@ -2158,6 +2225,17 @@ struct BulkLOMLOEGenerationSheet: View {
                 Toggle("", isOn: row.isApproved)
                     .labelsHidden()
             }
+            if case .omitted(let reason) = row.wrappedValue.status {
+                Text(reason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            TextField("Tu valoración (privada, opcional)", text: row.teacherNote, axis: .vertical)
+                .lineLimit(1...4)
+                .textFieldStyle(.roundedBorder)
+                .disabled(isGenerating)
+                .accessibilityLabel("Tu valoración de \(row.wrappedValue.student.fullName)")
             TextEditor(text: row.text)
                 .frame(minHeight: 96)
                 .padding(8)
@@ -2183,9 +2261,35 @@ struct BulkLOMLOEGenerationSheet: View {
 
     @MainActor
     func loadStudents() async {
+        let notes = (try? await bridge.teacherTermNotes(classId: classId, termLabel: termLabel)) ?? [:]
         rows = ((try? await bridge.students(forClassId: classId)) ?? bridge.studentsInClass)
-            .map { DraftRow(student: $0) }
+            .map { student in
+                let note = notes[student.id] ?? ""
+                return DraftRow(student: student, teacherNote: note, savedTeacherNote: note)
+            }
         feedbackMessage = rows.isEmpty ? "No hay alumnado en la clase." : nil
+    }
+
+    /// Guarda las valoraciones editadas en la lista. Devuelve cuántas no se pudieron guardar.
+    @MainActor
+    @discardableResult
+    func saveChangedTeacherNotes() async -> Int {
+        var failed = 0
+        for index in rows.indices where rows[index].teacherNote != rows[index].savedTeacherNote {
+            let pending = rows[index].teacherNote
+            do {
+                try await bridge.saveTeacherTermNote(
+                    studentId: rows[index].student.id,
+                    classId: classId,
+                    termLabel: termLabel,
+                    text: pending
+                )
+                rows[index].savedTeacherNote = pending
+            } catch {
+                failed += 1
+            }
+        }
+        return failed
     }
 
     @MainActor
@@ -2194,6 +2298,9 @@ struct BulkLOMLOEGenerationSheet: View {
         feedbackMessage = nil
         aiAvailability = aiOrchestrator.availability()
         defer { isGenerating = false }
+
+        // Las valoraciones escritas en la lista se guardan antes: la IA las lee de lo guardado.
+        let failedNotes = await saveChangedTeacherNotes()
 
         for index in rows.indices {
             rows[index].status = .generating
@@ -2251,7 +2358,9 @@ struct BulkLOMLOEGenerationSheet: View {
                 )
             }
         }
-        feedbackMessage = "Generación completada. Revisa y guarda los comentarios aprobados."
+        feedbackMessage = failedNotes > 0
+            ? "Generación completada, pero \(failedNotes) valoraciones no se pudieron guardar y no se han usado."
+            : "Generación completada. Revisa y guarda los comentarios aprobados."
     }
 
     @MainActor

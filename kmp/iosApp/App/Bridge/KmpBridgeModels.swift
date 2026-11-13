@@ -355,6 +355,9 @@ extension KmpBridge {
         let hasEnoughData: Bool
         let dataQualityNote: String?
         let trends: AITrendsSnapshot?
+        /// Valoración cualitativa que el docente ha escrito para este alumno y trimestre.
+        /// Privada: la IA la reformula, nunca se copia literal a un texto para familias.
+        var teacherNote: String? = nil
     }
 
     enum AnalyticsTimeRange: String, CaseIterable, Identifiable {

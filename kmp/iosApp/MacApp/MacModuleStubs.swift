@@ -40,6 +40,8 @@ struct MacReportsView: View {
     @State private var feedbackMessage: String?
     @State private var isLoadingContext = false
     @State private var isGeneratingDraft = false
+    /// "Tu valoración" del alumno y periodo seleccionados (Comentario LOMLOE).
+    @StateObject private var teacherNoteStore = TeacherTermNoteStore()
     @State private var isExporting = false
     @State private var isWeeklyEmailSheetPresented = false
     @SceneStorage("mac.reports.exportPanelVisible") private var isExportPanelVisible = true
@@ -133,6 +135,10 @@ struct MacReportsView: View {
         }
         .task {
             refreshAIAvailability()
+            // Al guardarse la valoración cambia lo que la IA puede usar: se refresca solo el contexto.
+            teacherNoteStore.onSaved = {
+                Task { await refreshReportContextOnly() }
+            }
             if selectedClassId == nil {
                 selectedClassId = bridge.selectedStudentsClassId ?? bridge.classes.first?.id
             }
@@ -157,6 +163,9 @@ struct MacReportsView: View {
         }
         .appOnChange(of: selectedStudentId) { _, _ in
             Task { await reloadReport() }
+        }
+        .onDisappear {
+            Task { await teacherNoteStore.flush() }
         }
     }
 
@@ -308,6 +317,11 @@ struct MacReportsView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: MacAppStyle.cardSpacing) {
                         metricsGrid
+                        if selectedReportKind == .lomloeEvaluationComment, selectedStudentId != nil {
+                            MacReportPanelCard(title: "Tu valoración") {
+                                TeacherTermNoteEditor(store: teacherNoteStore, showsTitle: false)
+                            }
+                        }
                         aiSummaryBlock
                         previewBlock
                     }
@@ -616,8 +630,47 @@ struct MacReportsView: View {
         await reloadReport()
     }
 
+    /// Carga en la casilla la valoración del alumno y periodo seleccionados, o la vacía.
+    @MainActor
+    private func syncTeacherNoteStore() async {
+        guard selectedReportKind == .lomloeEvaluationComment,
+              let selectedClassId,
+              let selectedStudentId else {
+            await teacherNoteStore.clear()
+            return
+        }
+        await teacherNoteStore.load(
+            bridge: bridge,
+            studentId: selectedStudentId,
+            classId: selectedClassId,
+            termLabel: selectedTerm.rawValue
+        )
+    }
+
+    /// Recalcula solo el contexto del informe, sin tocar el borrador ni la vista previa.
+    @MainActor
+    @discardableResult
+    private func refreshReportContextOnly() async -> KmpBridge.ReportGenerationContext? {
+        guard let selectedClassId, !(requiresStudent && selectedStudentId == nil) else { return reportContext }
+        guard let context = try? await bridge.buildReportGenerationContext(
+            classId: selectedClassId,
+            studentId: selectedStudentId,
+            kind: selectedReportKind,
+            termLabel: selectedTerm.rawValue
+        ) else { return reportContext }
+        // Si el aviso visible era el de "faltan datos" y ya no aplica, se retira.
+        let previousNote = reportContext?.dataQualityNote
+        reportContext = context
+        if context.hasEnoughData, let previousNote, feedbackMessage == previousNote {
+            feedbackMessage = nil
+        }
+        return context
+    }
+
     @MainActor
     private func reloadReport() async {
+        // Primero la casilla: guarda lo pendiente del alumno anterior antes de leer el nuevo contexto.
+        await syncTeacherNoteStore()
         guard let selectedClassId else {
             reportContext = nil
             preview = nil
@@ -665,11 +718,19 @@ struct MacReportsView: View {
 
     @MainActor
     private func generateAIDraft() async {
-        guard let reportContext else { return }
+        guard self.reportContext != nil else { return }
 
         isGeneratingDraft = true
         feedbackMessage = nil
         defer { isGeneratingDraft = false }
+
+        // La IA debe leer lo último escrito en "Tu valoración", aunque aún no se haya autoguardado.
+        var freshContext = self.reportContext
+        if selectedReportKind == .lomloeEvaluationComment {
+            await teacherNoteStore.flush()
+            freshContext = await refreshReportContextOnly()
+        }
+        guard let reportContext = freshContext else { return }
 
         do {
             let draft = try await reportService.generateDraft(

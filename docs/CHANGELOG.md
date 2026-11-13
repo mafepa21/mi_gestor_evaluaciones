@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Informes · Comentario LOMLOE: casilla «Tu valoración» por alumno y trimestre (issue #407, parte B). El docente escribe lo observado antes de la evaluación, se guarda sola y la IA local la usa como fuente principal, reformulada y sin copiarla literal. Está en Informes de iPad y Mac y, por alumno, en «Generar lote». Con solo la valoración y sin más datos ya se puede generar. La redacción por reglas (sin Apple Intelligence) no la incorpora y avisa de que hay que integrarla a mano.
 - Torneos: «Ampliar plazo» en la inscripción por enlace. El plazo va firmado en el enlace, así que se publica un formulario nuevo solo para quien no ha respondido y se abre el correo con esos enlaces. Las respuestas recibidas se conservan y las del formulario anterior se siguen importando (ficheros y buzón). Las inscripciones guardadas antes se leen igual (`previousRounds` opcional).
 - Cuaderno: «Evaluar grupo…» en listas de cotejo y rejillas de observación. Hoja masiva con alumnos en filas, ítems de cada sesión en columnas y «Para todos…» por ítem (solo vacíos o sobrescribir). Guarda por alumno con el mismo cálculo de nota en Kotlin.
 - Cuaderno: copiar y pegar celdas de lista de cotejo sin abrir el instrumento (menú contextual, barra o ⌘C/⌘V con el grid enfocado). Se copian las respuestas de todas las sesiones y la nota se recalcula. Una celda copiada rellena un rango seleccionado (Mayús + clic en la misma columna); un rango se pega con la misma forma. Deshacer (⌘Z) restaura las respuestas previas.
@@ -30,6 +31,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - Listas de cotejo de casillas de requisito o todo/nada (`check_<n>`): ahora dan nota 0-10 (marcadas / total × 10) en vez de solo «Completo». Las celdas antiguas reciben la nota al abrir el grupo (relleno de notas que faltan).
 
+### Data
+
+- Migración 49 (esquema 50), solo aditiva: tabla `student_term_teacher_notes` con clave natural `(student_id, class_id, term_key)` e índice por grupo y trimestre. Cuelga del grupo; `deleteClass` y `deleteStudent` la limpian a mano (FK apagadas en producción) y está en `DatabaseWipe`. Viaja por SyncLAN con la entidad `student_term_teacher_notes` en `SchoolRecordsSync` (id `alumno|grupo|trimestre`, gana lo más nuevo). Mac e iPad deben actualizarse a la vez. Se tocó `kmp/shared/domain/Models.kt` con permiso. ADR: `kmp/docs/architecture/ADR-2026-11-13-valoracion-docente-trimestre.md`.
+
 ### Fixed
 
 - Cuaderno: un fallo al guardar ya se ve en iPad ancho, iPad estrecho y Mac. Aviso fijo junto al grid con «Reintentar» (no se va solo), «Guardando…» discreto si el guardado tarda más de 0,6 s, y anuncio a VoiceOver. El aviso de error de asistencia también se ve y se quita al reintentar con éxito. Antes el indicador vivía en una barra que ningún modo usaba (`NotebookSaveStatusOverlay`).
@@ -38,6 +43,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Valoración del docente (issue #407, parte B), en Linux: `./gradlew :shared:desktopTest :data:desktopTest` en verde (183 y 235 tests, 0 fallos). Incluye 7 tests nuevos de repositorio y migración 49, 4 de SyncLAN y 4 de claves de trimestre. Se actualizó a 50 la versión de esquema esperada en `EvaluationSessionRepositorySqlDelightTest`. **No ejecutado:** `xcodebuild` de iOS y macOS (el entorno no tiene Xcode), los tests de Android e iOS de `:shared:test`, ni la prueba manual en un dispositivo con Apple Intelligence. El código Swift de este cambio no se ha compilado.
 - Fluidez del Cuaderno (paquete 1): `:shared:desktopTest` 179 tests, 0 fallos (4 nuevos en `NotebookViewModelTest`: recargas forzadas seguidas, pausa y reanudación, reanudar sin cambios, cambio de clase). Build `MiGestorKMPMac` y `MiGestorKMPiOS` (simulador genérico): BUILD SUCCEEDED. No ejecutado: `:shared:test` completo (falta el SDK de Android en el worktree), prueba manual en iPad y Mac, y medida de tiempos antes y después.
 
 - Build Debug `MiGestorKMPMac` y `MiGestorKMPiOS` (simulador genérico): BUILD SUCCEEDED. Sin prueba manual en iPad ni Mac todavía. `:shared:desktopTest` (175, 0 fallos, test nuevo `NotebookRescaleGradeTest`) y `:data:desktopTest` (223, 0 fallos).

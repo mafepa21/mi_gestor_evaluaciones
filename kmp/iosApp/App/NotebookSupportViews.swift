@@ -116,6 +116,32 @@ struct NotebookStateCard<Accessory: View>: View {
 }
 
 
+// MARK: - Estado de sincronización
+
+/// Estado de SyncLAN en la barra de estado del Cuaderno. Es la única vista del
+/// Cuaderno que observa `DashboardBridgeStore`: cuando cambia la sync se repinta
+/// esta etiqueta y no `NotebookModuleView`.
+struct NotebookSyncStatusLabel: View {
+    @ObservedObject var store: DashboardBridgeStore
+
+    var body: some View {
+        // Sincronización LAN: no confundir ausencia de host con estado al día.
+        let state = resolvedSyncStatusBadgeState(
+            syncStatusMessage: store.syncStatusMessage,
+            syncPendingChanges: store.syncPendingChanges,
+            pairedSyncHost: store.pairedSyncHost,
+            hasSyncDivergence: store.syncDivergence != nil
+        )
+        HStack(spacing: 4) {
+            Image(systemName: state.systemImage)
+            Text(NotebookModuleView.syncStatusText(for: state))
+        }
+        .foregroundStyle(state.tint)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(state.accessibilityLabel)
+    }
+}
+
 // MARK: - Aviso de guardado
 
 /// Aviso de guardado del Cuaderno, visible en todos los modos de barra

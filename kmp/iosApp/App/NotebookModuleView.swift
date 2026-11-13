@@ -43,7 +43,9 @@ struct NotebookModuleView: View {
     #endif
     let bridge: KmpBridge
     @ObservedObject var notebookStore: NotebookBridgeStore
-    @ObservedObject var dashboardStore: DashboardBridgeStore
+    /// Sin `@ObservedObject`: solo `NotebookSyncStatusLabel` lo observa. Así el
+    /// estado de SyncLAN (cada pocos segundos) no recalcula el Cuaderno entero.
+    let dashboardStore: DashboardBridgeStore
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -1927,13 +1929,7 @@ struct NotebookModuleView: View {
                                     .foregroundStyle(.secondary)
 
                                 // Sincronización LAN: no confundir ausencia de host con estado al día.
-                                HStack(spacing: 4) {
-                                    Image(systemName: notebookSyncStatusState.systemImage)
-                                    Text(notebookSyncStatusText)
-                                }
-                                .foregroundStyle(notebookSyncStatusState.tint)
-                                .accessibilityElement(children: .ignore)
-                                .accessibilityLabel(notebookSyncStatusState.accessibilityLabel)
+                                NotebookSyncStatusLabel(store: dashboardStore)
 
                                 Text("•")
                                     .foregroundStyle(.secondary)

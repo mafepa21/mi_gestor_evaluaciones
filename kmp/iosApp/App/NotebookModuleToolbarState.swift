@@ -36,17 +36,11 @@ extension NotebookModuleView {
         return ("Estado pendiente", "circle", .secondary)
     }
 
-    var notebookSyncStatusState: SyncStatusBadgeState {
-        resolvedSyncStatusBadgeState(
-            syncStatusMessage: dashboardStore.syncStatusMessage,
-            syncPendingChanges: dashboardStore.syncPendingChanges,
-            pairedSyncHost: dashboardStore.pairedSyncHost,
-            hasSyncDivergence: dashboardStore.syncDivergence != nil
-        )
-    }
-
-    var notebookSyncStatusText: String {
-        switch notebookSyncStatusState {
+    /// Texto corto del estado de sync para la barra de estado del Cuaderno.
+    /// Lo pinta `NotebookSyncStatusLabel`, que es la única vista que observa
+    /// `DashboardBridgeStore`: un cambio de SyncLAN no recalcula el Cuaderno.
+    static func syncStatusText(for state: SyncStatusBadgeState) -> String {
+        switch state {
         case .inactivo:
             return "Sync inactiva"
         case .poniendoseAlDia:

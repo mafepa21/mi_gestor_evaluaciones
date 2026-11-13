@@ -32,6 +32,9 @@ El formato sigue una variante practica de Keep a Changelog:
 - Cuaderno (fluidez): al saltar de celda con Enter, el foco pasa sin espera si la fila destino ya está pintada. Se mantienen los 0,12 s solo cuando hay que montar la fila.
 - Cuaderno y rúbricas (fluidez): con la hoja de evaluación de grupo abierta, el Cuaderno de detrás no se recarga en cada autoguardado; hace una sola recarga al cerrar (`NotebookViewModel.setReactiveReloadPaused`). Una recarga forzada nueva cancela la anterior, y guardar una rúbrica individual ya no pide la recarga dos veces.
 
+- Cuaderno (fluidez): el aviso de guardado y el estado de sincronización se repintan solos. Ya no recalculan la pantalla entera del Cuaderno en cada nota guardada ni en cada mensaje de sync (`NotebookToolbarSaveStatus`, `NotebookSyncStatusLabel`, `NotebookStoreRenderWatch`).
+- Cuaderno (fluidez): cada fila guarda su resumen de celdas entre pasadas (`NotebookRowCellDigestCache`), y la navegación rehace sus tablas solo si cambian columnas o categorías.
+
 - Listas de cotejo de casillas de requisito o todo/nada (`check_<n>`): ahora dan nota 0-10 (marcadas / total × 10) en vez de solo «Completo». Las celdas antiguas reciben la nota al abrir el grupo (relleno de notas que faltan).
 
 ### Fixed

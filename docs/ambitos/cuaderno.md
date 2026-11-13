@@ -67,3 +67,7 @@
 - `RubricBulkEvaluationViewModel.load` replica la regla de `getGradeForColumn` (primero la evaluación de la columna, luego `columnId`) sobre `listGradesForClass`. Si cambia `getGradeForColumn`, cambiar también `resolveCellGrades`.
 - La carga por lote vuelve a la lectura individual con columnas virtuales `eval_<id>` o notas ambiguas: es la vía segura, no un fallo.
 - Hoja de grupo de instrumentos: sus celdas 1-4 y Sí/No son `Equatable` (`StructuredBulkScaleCell`, `StructuredBulkCheckCell`). Lo nuevo que pinten debe entrar en su `==`. Su apertura sigue leyendo alumno por alumno.
+- `NotebookModuleView` no observa `NotebookBridgeStore` entero: lo recalcula `NotebookStoreRenderWatch`, con lista cerrada que deja fuera los estados de guardado (los pintan `NotebookToolbarSaveStatus` y el observador `NotebookSaveStateChangeObserver`). Todo `@Published` nuevo que deba repintar el Cuaderno hay que añadirlo a esa lista.
+- Solo `NotebookSyncStatusLabel` observa `DashboardBridgeStore` en el Cuaderno. No volver a leer `dashboardStore` desde `NotebookModuleView`.
+- El resumen de celdas por fila (`NotebookRowCellDigestCache`) se reutiliza si `row ===` y las columnas visibles del panel son las mismas. Vale solo mientras `NotebookRow` sea inmutable.
+- Las tablas de `NotebookGridNavigationContext` (categoría y pareja física) se rehacen solo si cambia la instancia de `data.sheet`.

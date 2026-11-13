@@ -2066,7 +2066,7 @@ Notas para futuras conversaciones:
 - Las FK están apagadas en producción: `deleteClass` y `deleteStudent` borran las valoraciones a mano.
 - La redacción por reglas no incorpora la valoración; solo avisa.
 - Parte A hecha en el mismo PR #408: `BuildLomloeCommentEvidenceUseCase` (`kmp/shared/usecase/LomloeCommentEvidence.kt`) reúne niveles por criterio, competencias realmente evaluadas y textos del docente, filtrados por los periodos de evaluación del horario. Ya no se deducen CE1 a CE5 ni se asume Educación Física.
-- Pendiente: la media, la asistencia y la tendencia del contexto siguen siendo de todo el curso, no del trimestre.
+- Hecho después: la media y la asistencia del contexto son del trimestre cuando hay periodo (`LomloeCommentEvidence.termMetrics`; media con el motor del Cuaderno sobre las columnas fechadas en el trimestre). Pendiente: la trayectoria (`trends`: dirección y variación de notas) sigue siendo de todo el curso; el prompt la etiqueta así. Regla en el ADR.
 - El listado `listClassEvaluations` no trae `competencyLinks`: hay que cargarlos con `listEvaluationCompetencyLinks`.
 - En entornos cloud de Linux, Gradle necesita `-Dorg.gradle.java.home=<JDK 21>`, JDK 17 instalado y acceso a `dl.google.com`, `download.jetbrains.com` y `download-cdn.jetbrains.com`.
 

@@ -129,4 +129,85 @@ class SchoolRecordsSyncTest {
         val deletes = adapter.collectLocalChanges(0L).filter { it.entity == "meetings" && it.op == "delete" }
         assertEquals(listOf(meetingId.toString()), deletes.map { it.id })
     }
+
+    // --- Valoraciones del docente por trimestre (issue #407, parte B) ---
+
+    private fun noteChange(id: String, updatedAt: Long, payload: String, op: String = "upsert") =
+        SyncChange(entity = "student_term_teacher_notes", id = id, updatedAtEpochMs = updatedAt, deviceId = "ipad", payload = payload, op = op)
+
+    @Test
+    fun laValoracionDelDocenteViajaDelMacAlIpadConSuClaveNatural() = runTest {
+        val mac = newContainer()
+        val studentId = mac.studentsRepository.saveStudent(firstName = "Ana", lastName = "López")
+        val classId = mac.classesRepository.saveClass(name = "1ºA", course = 1)
+        mac.studentTermTeacherNoteRepository.save(studentId, classId, "T1", "Muy constante", updatedAtEpochMs = 5_000, deviceId = "mac")
+
+        val collected = SchoolRecordsSync(mac, localDeviceId = "mac").collect(0L)
+        val change = collected.changes.single { it.entity == "student_term_teacher_notes" }
+        assertEquals("$studentId|$classId|T1", change.id)
+        assertEquals(setOf(change.id), collected.liveIdsByEntity.getValue("student_term_teacher_notes"))
+        // Lo ya enviado no se vuelve a recoger.
+        assertTrue(SchoolRecordsSync(mac, localDeviceId = "mac").collect(5_000L).changes.none { it.entity == "student_term_teacher_notes" })
+
+        val ipad = newContainer()
+        ipad.studentsRepository.saveStudent(firstName = "Ana", lastName = "López")
+        ipad.classesRepository.saveClass(name = "1ºA", course = 1)
+        val ack = SchoolRecordsSync(ipad, localDeviceId = "ipad").applyAll(listOf(change))
+        assertEquals(1, ack.applied)
+        assertEquals("Muy constante", ipad.studentTermTeacherNoteRepository.get(studentId, classId, "T1")?.note)
+    }
+
+    @Test
+    fun laValoracionMasViejaNoPisaLaNuevaYElVaciadoSiLlega() = runTest {
+        val mac = newContainer()
+        val studentId = mac.studentsRepository.saveStudent(firstName = "Ana", lastName = "López")
+        val classId = mac.classesRepository.saveClass(name = "1ºA", course = 1)
+        val id = "$studentId|$classId|T2"
+        val sync = SchoolRecordsSync(mac, localDeviceId = "mac")
+
+        // Payload tal cual lo manda la app Apple.
+        sync.applyAll(listOf(noteChange(id, 2_000, """{"studentId":$studentId,"classId":$classId,"termKey":"T2","note":"Nueva"}""")))
+        val stale = sync.applyAll(listOf(noteChange(id, 1_000, """{"note":"Vieja"}""")))
+        assertEquals(1, stale.conflictsResolvedByLww)
+        assertEquals("Nueva", mac.studentTermTeacherNoteRepository.get(studentId, classId, "T2")?.note)
+
+        val cleared = sync.applyAll(listOf(noteChange(id, 3_000, """{"note":""}""")))
+        assertEquals(1, cleared.applied)
+        assertEquals("", mac.studentTermTeacherNoteRepository.get(studentId, classId, "T2")?.note)
+    }
+
+    @Test
+    fun laValoracionQueLlegaAntesQueSuGrupoNoSePierdeYUnIdRotoSeIgnora() = runTest {
+        val mac = newContainer()
+        val studentId = mac.studentsRepository.saveStudent(firstName = "Ana", lastName = "López")
+        val sync = SchoolRecordsSync(mac, localDeviceId = "mac")
+
+        val ack = sync.applyAll(
+            listOf(
+                // El grupo 999 aún no ha llegado en este lote: el texto se guarda igual.
+                noteChange("$studentId|999|T1", 1_000, """{"note":"Llega antes que su grupo"}"""),
+                noteChange("no-es-una-clave", 1_000, """{"note":"Id roto"}"""),
+            ),
+        )
+        assertEquals(1, ack.applied)
+        assertEquals(1, ack.ignored)
+        assertEquals(0, ack.failed)
+        assertEquals("Llega antes que su grupo", mac.studentTermTeacherNoteRepository.get(studentId, 999, "T1")?.note)
+    }
+
+    @Test
+    fun borrarUnaValoracionPorSyncNoSeLlevaUnaMasNueva() = runTest {
+        val mac = newContainer()
+        val studentId = mac.studentsRepository.saveStudent(firstName = "Ana", lastName = "López")
+        val classId = mac.classesRepository.saveClass(name = "1ºA", course = 1)
+        val id = "$studentId|$classId|T1"
+        mac.studentTermTeacherNoteRepository.save(studentId, classId, "T1", "Reciente", updatedAtEpochMs = 5_000)
+        val sync = SchoolRecordsSync(mac, localDeviceId = "mac")
+
+        sync.applyAll(listOf(noteChange(id, 4_000, "{}", op = "delete")))
+        assertEquals("Reciente", mac.studentTermTeacherNoteRepository.get(studentId, classId, "T1")?.note)
+
+        sync.applyAll(listOf(noteChange(id, 6_000, "{}", op = "delete")))
+        assertNull(mac.studentTermTeacherNoteRepository.get(studentId, classId, "T1"))
+    }
 }

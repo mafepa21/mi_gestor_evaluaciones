@@ -251,6 +251,6 @@ class EvaluationSessionRepositorySqlDelightTest {
                 "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_evaluation_session%' ORDER BY name",
             ),
         )
-        assertEquals(49L, AppDatabase.Schema.version)
+        assertEquals(50L, AppDatabase.Schema.version)
     }
 }

@@ -71,6 +71,8 @@ enum class WipeCategory(
             "inclusion_group_settings",
             // Juntas de evaluación: cuelgan del grupo (migración 47).
             "evaluation_sessions", "evaluation_session_students",
+            // Valoraciones del docente por trimestre: cuelgan del grupo (migración 49).
+            "student_term_teacher_notes",
             // Los torneos cuelgan de un curso (con o sin SdA): sin esto quedarían huérfanos al borrar cursos.
             "learning_situation_tournaments"
         )
@@ -81,6 +83,8 @@ enum class WipeCategory(
         tableNames = listOf(
             "students", "student_support_measures", "student_tutoring_sessions",
             "inclusion_tasks",
+            // Valoraciones del docente: sin esto quedarían huérfanas al borrar alumnado.
+            "student_term_teacher_notes",
             // Filas de alumnado en las juntas: sin esto quedarían huérfanas al borrar alumnado.
             "evaluation_session_students"
         )

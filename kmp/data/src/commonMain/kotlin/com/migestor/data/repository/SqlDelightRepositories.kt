@@ -37,7 +37,9 @@ import com.migestor.shared.domain.Student
 import com.migestor.shared.domain.StudentSex
 import com.migestor.shared.domain.StudentSexSource
 import com.migestor.shared.domain.StudentSupportMeasure
+import com.migestor.shared.domain.StudentTermTeacherNote
 import com.migestor.shared.domain.StudentTutoringSession
+import com.migestor.shared.domain.TeacherTermNoteKeys
 import com.migestor.shared.domain.Meeting
 import com.migestor.shared.domain.MeetingAgreement
 import com.migestor.shared.domain.MeetingType
@@ -68,6 +70,7 @@ import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.repository.RubricsRepository
 import com.migestor.shared.repository.StudentsRepository
 import com.migestor.shared.repository.StudentSupportMeasureRepository
+import com.migestor.shared.repository.StudentTermTeacherNoteRepository
 import com.migestor.shared.repository.StudentTutoringSessionRepository
 import com.migestor.shared.repository.MeetingRepository
 import com.migestor.shared.repository.PlannerWeekPlanRepository
@@ -509,6 +512,8 @@ class StudentsRepositorySqlDelight(
         db.transaction {
             // Con FK apagadas no hay cascada: se limpia a mano su fila en las juntas.
             db.evaluationSessionQueries.deleteSessionStudentsByStudent(studentId)
+            // Igual con sus valoraciones del docente por trimestre.
+            db.appDatabaseQueries.deleteTermTeacherNotesByStudent(studentId)
             db.appDatabaseQueries.deleteStudent(studentId)
         }
     }
@@ -725,6 +730,8 @@ class ClassesRepositorySqlDelight(
             // Con FK apagadas no hay cascada: se borran a mano las juntas del grupo y sus filas.
             db.evaluationSessionQueries.deleteSessionStudentsByClass(classId)
             db.evaluationSessionQueries.deleteSessionsByClass(classId)
+            // Igual con las valoraciones del docente escritas para este grupo.
+            db.appDatabaseQueries.deleteTermTeacherNotesByClass(classId)
             db.appDatabaseQueries.deleteClass(classId)
         }
     }
@@ -2231,6 +2238,65 @@ class StudentTutoringSessionRepositorySqlDelight(
 
     override suspend fun delete(id: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteTutoringSession(id)
+    }
+}
+
+class StudentTermTeacherNoteRepositorySqlDelight(
+    private val db: AppDatabase,
+) : StudentTermTeacherNoteRepository {
+
+    private fun rowToModel(
+        studentId: Long,
+        classId: Long,
+        termKey: String,
+        note: String,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ) = StudentTermTeacherNote(
+        studentId = studentId,
+        classId = classId,
+        termKey = termKey,
+        note = note,
+        trace = AuditTrace(
+            updatedAt = Instant.fromEpochMilliseconds(updatedAtEpochMs),
+            deviceId = deviceId,
+            syncVersion = syncVersion,
+        ),
+    )
+
+    override suspend fun get(studentId: Long, classId: Long, termKey: String): StudentTermTeacherNote? = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectTermTeacherNote(studentId, classId, termKey, ::rowToModel).executeAsOneOrNull()
+    }
+
+    override suspend fun listByClassAndTerm(classId: Long, termKey: String): List<StudentTermTeacherNote> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectTermTeacherNotesByClassAndTerm(classId, termKey, ::rowToModel).executeAsList()
+    }
+
+    override suspend fun listAll(): List<StudentTermTeacherNote> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAllTermTeacherNotes(::rowToModel).executeAsList()
+    }
+
+    override suspend fun save(
+        studentId: Long,
+        classId: Long,
+        termKey: String,
+        note: String,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+    ): StudentTermTeacherNote = withContext(Dispatchers.Default) {
+        val sanitized = TeacherTermNoteKeys.sanitize(note)
+        // Escritura y relectura en la misma transacción: se devuelve lo que quedó guardado.
+        db.transactionWithResult {
+            db.appDatabaseQueries.upsertTermTeacherNote(
+                studentId, classId, termKey, sanitized, updatedAtEpochMs, updatedAtEpochMs, deviceId,
+            )
+            db.appDatabaseQueries.selectTermTeacherNote(studentId, classId, termKey, ::rowToModel).executeAsOne()
+        }
+    }
+
+    override suspend fun delete(studentId: Long, classId: Long, termKey: String) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteTermTeacherNote(studentId, classId, termKey)
     }
 }
 

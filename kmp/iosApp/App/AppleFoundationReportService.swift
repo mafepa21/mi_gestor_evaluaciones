@@ -242,6 +242,26 @@ final class AppleFoundationReportService {
     )
     private var availabilityRetryTask: Task<Void, Never>?
     private var reportPromptCache: [String: String] = [:]
+    /// Parte de la valoración del docente que entra en el prompt (el modelo local admite poco texto).
+    static let teacherNotePromptLimit = 900
+    static let criterionResultsPromptItems = 8
+    static let observationsPromptItems = 6
+
+    /// Une cuerpo y requisitos dentro del tope del prompt. Si no cabe, se recorta el final
+    /// del cuerpo (lo menos prioritario) y los requisitos de salida se conservan enteros.
+    nonisolated static func assemblePrompt(
+        body: String,
+        requirements: String,
+        maxCharacters: Int = AIContextBudget.maxPromptCharacters
+    ) -> String {
+        let cleanBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanRequirements = requirements.trimmingCharacters(in: .whitespacesAndNewlines)
+        let separator = "\n\n"
+        let room = maxCharacters - cleanRequirements.count - separator.count
+        guard room > 0 else { return AIContextBudget.prompt(cleanRequirements) }
+        let fittedBody = cleanBody.count > room ? "\(cleanBody.prefix(max(0, room - 3)))..." : cleanBody
+        return fittedBody + separator + cleanRequirements
+    }
 
     #if canImport(FoundationModels)
     private var cachedReportSessionStorage: Any?
@@ -483,7 +503,9 @@ final class AppleFoundationReportService {
         let needsAttention = promptLines(context.needsAttention, maxItems: AIContextBudget.maxWarnings, itemLimit: 100, fallback: "Sin alertas concluyentes.")
         let actions = promptLines(context.recommendedActions, maxItems: AIContextBudget.maxActions, itemLimit: 100, fallback: "Mantener recogida de evidencias.")
         let notes = promptLines(context.supportNotes, maxItems: 3, itemLimit: 100, fallback: "Sin notas de apoyo adicionales.")
-        let curriculumReferences = promptLines(context.curriculumReferences, maxItems: 3, itemLimit: 100, fallback: "Sin referencias curriculares preseleccionadas.")
+        let criterionResults = promptLines(context.criterionResults, maxItems: Self.criterionResultsPromptItems, itemLimit: 170, fallback: "Sin rúbricas evaluadas en el periodo.")
+        let observations = promptLines(context.qualitativeObservations, maxItems: Self.observationsPromptItems, itemLimit: 180, fallback: "Sin observaciones escritas en el periodo.")
+        let curriculumReferences = promptLines(context.curriculumReferences, maxItems: 6, itemLimit: 100, fallback: "Sin competencias vinculadas a lo evaluado: no cites ninguna.")
         let promptDirectives = promptLines(context.promptDirectives, maxItems: 3, itemLimit: 100, fallback: "Redacción general prudente.")
         
         let trendsInfo: String = {
@@ -501,9 +523,17 @@ final class AppleFoundationReportService {
                 ? "Ninguna (cobertura completa)"
                 : trends.missingCompetencyLabels.joined(separator: ", ")
                 
+            // Con trimestre aplicado, la trayectoria y la asistencia de `trends` son de todo el curso.
+            // La asistencia de curso no se pasa (contradiría la del trimestre, que ya va en los hechos).
+            let trajectoryLine = context.termFiguresApplied
+                ? "- Dirección de la trayectoria académica de todo el curso (no solo del trimestre): \(directionText)"
+                : "- Dirección de la trayectoria académica: \(directionText)"
+            let attendanceLine = context.termFiguresApplied
+                ? "- Asistencia: usa solo la del trimestre indicada en los hechos verificables."
+                : "- Tasa de asistencia media registrada: \(IosFormatting.decimal(from: trends.attendanceRate))% (\(trends.attendanceCorrelationNote))"
             return """
-            - Dirección de la trayectoria académica: \(directionText)
-            - Tasa de asistencia media registrada: \(IosFormatting.decimal(from: trends.attendanceRate))% (\(trends.attendanceCorrelationNote))
+            \(trajectoryLine)
+            \(attendanceLine)
             - Incidencias y clima de aula acumulados: \(trends.behaviorIncidentSummary)
             - Cobertura de rúbricas curriculares LOMLOE: \(IosFormatting.decimal(from: trends.curriculumCoveragePct))%
             - Competencias pendientes de evaluar en cuaderno: \(missingComp)
@@ -512,11 +542,14 @@ final class AppleFoundationReportService {
 
         let mlSignalInfo: String = {
             guard let studentId = context.studentId, let trends = context.trends else { return "Sin patrones de Core ML adicionales." }
+            // Con trimestre aplicado, la asistencia del vector es la del trimestre (100 si no hay registros,
+            // como hace KMP sin datos), no la de todo el curso.
+            let attendanceRate = context.termFiguresApplied ? (context.termAttendanceRate ?? 100.0) : trends.attendanceRate
             let vector = StudentFeatureVector(
                 averageGrade: context.numericScore ?? 6.0,
                 gradeDelta: trends.averageGradeDelta,
-                attendanceRate: trends.attendanceRate,
-                evaluableDayAbsenceRatio: max(0.0, (100.0 - trends.attendanceRate) / 100.0),
+                attendanceRate: attendanceRate,
+                evaluableDayAbsenceRatio: max(0.0, (100.0 - attendanceRate) / 100.0),
                 pendingTaskRatio: max(0.0, (100.0 - trends.curriculumCoveragePct) / 100.0),
                 rubricVariance: 0.5,
                 incidentCount: 0.0
@@ -535,6 +568,19 @@ final class AppleFoundationReportService {
             - Patrón detectado por Core ML: \(signal.patternType.badgeTitle) (Confianza: \(Int(signal.confidence * 100))%)
             - Factores clave: \(signal.keyFactors.joined(separator: ", "))
             - Acción preventiva sugerida: \(signal.suggestedPreventiveAction)
+            """
+        }()
+
+        // Va al principio del prompt: si hay que recortar por tamaño, se pierde la cola, no esto.
+        let teacherNoteBlock: String = {
+            guard let note = context.teacherNote?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty else {
+                return "Sin valoración escrita por el docente para este periodo."
+            }
+            return """
+            \(promptFragment(note, limit: Self.teacherNotePromptLimit))
+            - Es la fuente con más peso: el comentario debe ser coherente con ella y no contradecirla.
+            - Es una nota privada: reformúlala con el tono pedido, no la copies literal.
+            - No añadas hechos que no estén aquí o en los datos verificables.
             """
         }()
 
@@ -559,7 +605,7 @@ final class AppleFoundationReportService {
             }
         }()
 
-        return AIContextBudget.prompt("""
+        let body = """
         Genera un borrador estructurado para un informe escolar.
 
         Tipo de informe: \(promptFragment(context.kind.title, limit: 80))
@@ -572,6 +618,15 @@ final class AppleFoundationReportService {
         Resumen base: \(promptFragment(context.summary, limit: 320))
         Nota de calidad de datos: \(promptFragment(context.dataQualityNote ?? "Sin incidencias de calidad reseñables.", limit: 180))
         Nota interna orientativa: \(context.numericScore.map { IosFormatting.decimal(from: $0) } ?? "Sin nota consolidada")
+
+        Valoración del docente (fuente prioritaria, privada)
+        \(teacherNoteBlock)
+
+        Nivel logrado por criterio de rúbrica en el periodo
+        \(criterionResults)
+
+        Observaciones escritas por el docente (privadas: reformular, no copiar literal ni citar incidencias concretas)
+        \(observations)
 
         Análisis consolidado de tendencias de IA
         \(trendsInfo)
@@ -605,7 +660,10 @@ final class AppleFoundationReportService {
 
         Directrices específicas por audiencia
         \(audienceDirectives)
+        """
 
+        // Los requisitos van aparte: si el cuerpo no cabe, se recorta el cuerpo y no ellos.
+        let requirements = """
         Requisitos de salida
         - summary: un párrafo breve y prudente.
         - strengths: entre 1 y 4 puntos.
@@ -618,11 +676,13 @@ final class AppleFoundationReportService {
         Si el tipo es "Comentario LOMLOE":
         - teacherNotesVersion debe ser el comentario final completo, listo para copiar.
         - Debe sonar personalizado y coherente con la nota interna, pero sin mencionar la nota numérica.
-        - Debe incluir referencia explícita a al menos una CE entre CE1 y CE5.
+        - Si hay competencias en "Referencias curriculares sugeridas", cita al menos una por su código. Si no hay, no cites ninguna.
+        - Apóyate en los niveles por criterio y en las observaciones del docente, sin cifras ni puntuaciones.
         - Debe usar 4 bloques integrados: resultados de aprendizaje, evolución personal, progresos/talentos y orientaciones.
         - Si hay adaptaciones o apoyos, añádelos en una frase breve antes de las orientaciones.
         - Usa una redacción estable y consistente entre regeneraciones.
-        """)
+        """
+        return Self.assemblePrompt(body: body, requirements: requirements)
     }
 
     @available(iOS 26.0, macOS 26.0, *)
@@ -645,7 +705,12 @@ final class AppleFoundationReportService {
             AIContextBudget.lines(context.needsAttention, maxItems: AIContextBudget.maxWarnings, itemLimit: 100).joined(separator: "|"),
             AIContextBudget.lines(context.recommendedActions, maxItems: AIContextBudget.maxActions, itemLimit: 100).joined(separator: "|"),
             AIContextBudget.lines(context.supportNotes, maxItems: 3, itemLimit: 100).joined(separator: "|"),
-            context.dataQualityNote ?? ""
+            context.dataQualityNote ?? "",
+            context.termLabel ?? "",
+            context.teacherNote ?? "",
+            context.criterionResults.joined(separator: "|"),
+            context.qualitativeObservations.joined(separator: "|"),
+            context.curriculumReferences.joined(separator: "|")
         ].joined(separator: "¬").hashValue.description
 
         if let cached = reportPromptCache[key] {
@@ -702,11 +767,26 @@ final class AppleFoundationReportService {
         let familyVersion = """
         \(studentOrGroup) mantiene un seguimiento basado en las evidencias registradas. Conviene reforzar \(recommendedActions.first?.lowercased() ?? "la continuidad del trabajo") y revisar la evolución en el próximo periodo.
         """
+        // Las reglas no saben reformular: la valoración privada del docente no se copia.
+        // Se avisa para que la integre a mano al revisar el borrador.
+        let hasTeacherNote = !(context.teacherNote ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasPrivateText = hasTeacherNote || !context.qualitativeObservations.isEmpty
+        let needsAttentionWithNote = hasPrivateText
+            ? Array((["Hay valoración u observaciones tuyas para este alumno. La redacción por reglas no las incorpora: intégralas a mano al revisar."] + needsAttention).prefix(4))
+            : needsAttention
         let teacherVersion: String
         if context.kind == .lomloeEvaluationComment {
             let factSentence = strengths.first ?? "hay evidencias todavía limitadas"
             let actionSentence = recommendedActions.first ?? "recoger nuevas evidencias observables"
-            teacherVersion = "\(studentOrGroup) muestra \(factSentence.lowercased()). En relación con las competencias trabajadas, conviene mantener una valoración prudente y basada en evidencias. Próximo paso: \(actionSentence.lowercased())."
+            // Los niveles por criterio son datos objetivos y se pueden citar tal cual.
+            // Las observaciones del docente son privadas y las reglas no las reformulan: no se copian.
+            let criterionSentence = context.criterionResults.isEmpty
+                ? ""
+                : " En las rúbricas del periodo: \(context.criterionResults.prefix(3).joined(separator: " "))"
+            let competencySentence = context.curriculumReferences.isEmpty
+                ? " En relación con las competencias trabajadas, conviene mantener una valoración prudente y basada en evidencias."
+                : " Competencias trabajadas: \(context.curriculumReferences.prefix(4).joined(separator: "; "))."
+            teacherVersion = "\(studentOrGroup) muestra \(factSentence.lowercased()).\(criterionSentence)\(competencySentence) Próximo paso: \(actionSentence.lowercased())."
         } else {
             teacherVersion = """
             Resumen docente: \(summary)
@@ -718,7 +798,7 @@ final class AppleFoundationReportService {
             title: "Borrador por reglas · \(context.kind.title)",
             summary: summary,
             strengths: strengths.isEmpty ? ["Sin fortalezas concluyentes con los datos actuales."] : strengths,
-            needsAttention: needsAttention.isEmpty ? ["Sin alertas específicas con los datos actuales."] : needsAttention,
+            needsAttention: needsAttentionWithNote.isEmpty ? ["Sin alertas específicas con los datos actuales."] : needsAttentionWithNote,
             progressAreas: progressAreas.isEmpty ? ["Mantener continuidad en la recogida de evidencias observables."] : progressAreas,
             recommendedActions: recommendedActions,
             familyFacingVersion: familyVersion,

@@ -1170,6 +1170,31 @@ interface BackupMetadataRepository {
     suspend fun deleteBackup(id: Long)
 }
 
+/** Valoración cualitativa del docente por alumno, grupo y trimestre (migración 49). */
+interface StudentTermTeacherNoteRepository {
+    @Throws(Throwable::class)
+    suspend fun get(studentId: Long, classId: Long, termKey: String): StudentTermTeacherNote?
+    @Throws(Throwable::class)
+    suspend fun listByClassAndTerm(classId: Long, termKey: String): List<StudentTermTeacherNote>
+    @Throws(Throwable::class)
+    suspend fun listAll(): List<StudentTermTeacherNote>
+    /**
+     * Guarda la valoración ya saneada. Un texto vacío se guarda como vacío (no se
+     * borra la fila): así "la he vaciado" también viaja por Sync LAN.
+     */
+    @Throws(Throwable::class)
+    suspend fun save(
+        studentId: Long,
+        classId: Long,
+        termKey: String,
+        note: String,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+    ): StudentTermTeacherNote
+    @Throws(Throwable::class)
+    suspend fun delete(studentId: Long, classId: Long, termKey: String)
+}
+
 interface AIAuditRepository {
     @Throws(Throwable::class)
     suspend fun recordEvent(event: AIAuditEvent)

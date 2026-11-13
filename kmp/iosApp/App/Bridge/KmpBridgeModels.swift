@@ -304,7 +304,7 @@ extension KmpBridge {
             case .studentSummary: return "Seguimiento sintético para tutoría"
             case .evaluationDigest: return "Instrumentos, rúbricas y carga activa"
             case .operationsSnapshot: return "Asistencia, incidencias y estado docente"
-            case .lomloeEvaluationComment: return "Comentario trimestral de EF listo para informe"
+            case .lomloeEvaluationComment: return "Comentario trimestral listo para informe"
             }
         }
 
@@ -355,6 +355,21 @@ extension KmpBridge {
         let hasEnoughData: Bool
         let dataQualityNote: String?
         let trends: AITrendsSnapshot?
+        /// Valoración cualitativa que el docente ha escrito para este alumno y trimestre.
+        /// Privada: la IA la reformula, nunca se copia literal a un texto para familias.
+        var teacherNote: String? = nil
+        /// Nivel logrado por criterio de rúbrica en el periodo, una línea por criterio.
+        var criterionResults: [String] = []
+        /// Textos del docente (Cuaderno, incidencias, acuerdos de tutoría). Privados: la IA los reformula.
+        var qualitativeObservations: [String] = []
+        /// Qué evidencia entra, cuánta queda fuera por espacio y si se filtró por trimestre.
+        var evidenceSummary: String? = nil
+        /// `true` si la media y la asistencia de este contexto son del trimestre (hay periodo de
+        /// evaluación configurado). Entonces `trends` sigue siendo de todo el curso y el prompt
+        /// debe decirlo para no contradecir las cifras del trimestre.
+        var termFiguresApplied: Bool = false
+        /// Asistencia del trimestre en % (0-100). `nil` si no hay registros en el periodo.
+        var termAttendanceRate: Double? = nil
     }
 
     enum AnalyticsTimeRange: String, CaseIterable, Identifiable {

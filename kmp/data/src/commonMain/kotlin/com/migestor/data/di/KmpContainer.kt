@@ -82,6 +82,8 @@ class KmpContainer(val driver: SqlDriver) {
     val attendanceRepository: AttendanceRepository = AttendanceRepositorySqlDelight(database)
     val studentSupportMeasureRepository: StudentSupportMeasureRepository = StudentSupportMeasureRepositorySqlDelight(database)
     val studentTutoringSessionRepository: StudentTutoringSessionRepository = StudentTutoringSessionRepositorySqlDelight(database)
+    val studentTermTeacherNoteRepository: com.migestor.shared.repository.StudentTermTeacherNoteRepository =
+        com.migestor.data.repository.StudentTermTeacherNoteRepositorySqlDelight(database)
     val inclusionTaskRepository: com.migestor.shared.repository.InclusionTaskRepository =
         com.migestor.data.repository.InclusionTaskRepositorySqlDelight(database)
     val evaluationSessionRepository: com.migestor.shared.evaluationsession.EvaluationSessionRepository =
@@ -164,6 +166,20 @@ class KmpContainer(val driver: SqlDriver) {
     val getNotebookConfig = GetNotebookConfigUseCase(notebookConfigRepository)
     val getOperationalDashboardSnapshot = GetOperationalDashboardSnapshotUseCase(dashboardOperationalRepository)
     val getAITrendsAndMetrics = GetAITrendsAndMetricsUseCase(aiTrendsRepository)
+    val buildLomloeCommentEvidence = com.migestor.shared.usecase.BuildLomloeCommentEvidenceUseCase(
+        evaluations = evaluationsRepository,
+        rubrics = rubricsRepository,
+        grades = gradesRepository,
+        competencies = competenciesRepository,
+        notebookConfig = notebookConfigRepository,
+        notebookCells = notebookCellsRepository,
+        incidents = incidentsRepository,
+        tutoring = studentTutoringSessionRepository,
+        schedules = teacherScheduleRepository,
+        classes = classesRepository,
+        attendance = attendanceRepository,
+        notebookSheet = buildNotebookSheet,
+    )
 
     val notebookRepository = NotebookRepositorySqlDelight(
         db = database,

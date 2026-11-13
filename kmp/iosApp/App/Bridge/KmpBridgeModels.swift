@@ -364,6 +364,12 @@ extension KmpBridge {
         var qualitativeObservations: [String] = []
         /// Qué evidencia entra, cuánta queda fuera por espacio y si se filtró por trimestre.
         var evidenceSummary: String? = nil
+        /// `true` si la media y la asistencia de este contexto son del trimestre (hay periodo de
+        /// evaluación configurado). Entonces `trends` sigue siendo de todo el curso y el prompt
+        /// debe decirlo para no contradecir las cifras del trimestre.
+        var termFiguresApplied: Bool = false
+        /// Asistencia del trimestre en % (0-100). `nil` si no hay registros en el periodo.
+        var termAttendanceRate: Double? = nil
     }
 
     enum AnalyticsTimeRange: String, CaseIterable, Identifiable {

@@ -2567,7 +2567,6 @@ extension KmpBridge {
                 )
             }
             let profile = try await loadStudentProfile(studentId: studentId, classId: classId)
-            let numericScore = profile.averageScore > 0 ? profile.averageScore : nil
             let teacherNote = try await teacherTermNote(studentId: studentId, classId: classId, termLabel: termLabel).nilIfBlank
             // Evidencia por criterio, competencias realmente evaluadas y textos del docente.
             // La reúne KMP ya filtrada por trimestre y recortada; aquí solo se le da forma de texto.
@@ -2578,13 +2577,29 @@ extension KmpBridge {
                 maxCriterionResults: LomloeCommentEvidenceBuilder.shared.DEFAULT_MAX_CRITERION_RESULTS,
                 maxObservations: LomloeCommentEvidenceBuilder.shared.DEFAULT_MAX_OBSERVATIONS
             )
+            // Media y asistencia: con periodo configurado son del trimestre (las calcula KMP con el
+            // motor de medias del Cuaderno); sin periodo se mantienen las de todo el curso del perfil.
+            // Con periodo, un `nil` significa "sin datos en el trimestre": nunca se rellena con el curso.
+            let termMetrics = evidence?.periodApplied == true ? evidence?.termMetrics : nil
+            let usesTermFigures = termMetrics != nil
+            let numericScore: Double? = usesTermFigures
+                ? termMetrics?.averageScore?.doubleValue
+                : (profile.averageScore > 0 ? profile.averageScore : nil)
+            let attendanceRate: Int? = usesTermFigures
+                ? termMetrics?.attendanceRate.map { Int($0.doubleValue) }
+                : profile.attendanceRate
+            let attendanceLabel = usesTermFigures ? "Asistencia del trimestre" : "Asistencia estimada"
             let criterionResults = (evidence?.criterionResults ?? []).map { lomloeCriterionLine($0) }
             let qualitativeObservations = (evidence?.observations ?? []).map { lomloeObservationLine($0) }
             let subjectName = schoolClass.subjectId.flatMap { subjectId in
                 subjects.first(where: { $0.id == subjectId.int64Value })?.name
             }?.nilIfBlank
-            let hasRecordedEvidence = numericScore != nil || !profile.evaluationTitles.isEmpty || !profile.timeline.isEmpty
-                || !criterionResults.isEmpty || !qualitativeObservations.isEmpty
+            // Con trimestre, los instrumentos y la línea de tiempo del perfil son de todo el curso y
+            // no valen como evidencia del periodo: se mira la nota y la asistencia del trimestre.
+            let hasPeriodData = usesTermFigures
+                ? (numericScore != nil || (termMetrics?.attendanceRecords ?? 0) > 0)
+                : (numericScore != nil || !profile.evaluationTitles.isEmpty || !profile.timeline.isEmpty)
+            let hasRecordedEvidence = hasPeriodData || !criterionResults.isEmpty || !qualitativeObservations.isEmpty
             let performanceBand: String = {
                 guard let numericScore else { return "Sin calificación consolidada" }
                 switch numericScore {
@@ -2599,15 +2614,15 @@ extension KmpBridge {
             let curriculumReferences = (evidence?.competencies ?? []).map { "\($0.code) \($0.name)" }
             let competencyCodes = (evidence?.competencies ?? []).map(\.code)
             let strengths = compactSuggestions(
-                profile.averageScore >= 7.0 ? "Ha alcanzado satisfactoriamente buena parte de los criterios trabajados." : nil,
-                profile.attendanceRate >= 90 ? "Mantiene una asistencia que favorece la continuidad del aprendizaje." : nil,
+                (numericScore ?? 0) >= 7.0 ? "Ha alcanzado satisfactoriamente buena parte de los criterios trabajados." : nil,
+                (attendanceRate ?? 0) >= 90 ? "Mantiene una asistencia que favorece la continuidad del aprendizaje." : nil,
                 profile.incidentCount == 0 ? "Participa sin incidencias relevantes en el periodo observado." : nil,
                 profile.evidenceCount > 0 ? "Existen evidencias registradas que respaldan su progreso." : nil
             )
             let needsAttention = compactSuggestions(
                 numericScore == nil ? "La valoración debe ser prudente porque la evidencia numérica todavía es limitada." : nil,
                 numericScore != nil && numericScore! < 5.0 ? "Varios criterios siguen en desarrollo y requieren refuerzo guiado." : nil,
-                (1..<85).contains(profile.attendanceRate) ? "La continuidad en la asistencia condiciona parte del progreso." : nil,
+                attendanceRate.map { (1..<85).contains($0) } == true ? "La continuidad en la asistencia condiciona parte del progreso." : nil,
                 profile.evaluationTitles.isEmpty ? "Conviene ampliar instrumentos y evidencias antes del siguiente informe." : nil
             )
             let recommendedActions = compactSuggestions(
@@ -2620,8 +2635,8 @@ extension KmpBridge {
                 "Curso: \(resolvedCourseLabel).",
                 subjectName.map { "Materia: \($0)." },
                 termLabel.map { "Trimestre: \($0)." },
-                numericScore.map { "Calificación orientativa interna: \(IosFormatting.decimal(from: $0)) (\(performanceBand))." },
-                "Asistencia estimada: \(profile.attendanceRate)%.",
+                numericScore.map { "Calificación orientativa interna\(usesTermFigures ? " del trimestre" : ""): \(IosFormatting.decimal(from: $0)) (\(performanceBand))." },
+                attendanceRate.map { "\(attendanceLabel): \($0)%." } ?? (usesTermFigures ? "Sin registros de asistencia en el trimestre." : nil),
                 profile.evaluationTitles.isEmpty ? "No hay instrumentos específicos nombrados." : "Instrumentos trabajados: \(profile.evaluationTitles.joined(separator: ", ")).",
                 competencyCodes.isEmpty ? "No hay competencias vinculadas a lo evaluado en este periodo." : "Competencias evaluadas en el periodo: \(competencyCodes.joined(separator: ", "))."
             )
@@ -2662,7 +2677,7 @@ extension KmpBridge {
                 metrics: [
                     ReportMetric(title: "Curso", value: resolvedCourseLabel, systemImage: "graduationcap.fill"),
                     ReportMetric(title: "Trimestre", value: termLabel ?? "Sin definir", systemImage: "calendar"),
-                    ReportMetric(title: "Nota guía", value: numericScore.map { IosFormatting.decimal(from: $0) } ?? "Sin nota", systemImage: "number"),
+                    ReportMetric(title: usesTermFigures ? "Nota guía del trimestre" : "Nota guía", value: numericScore.map { IosFormatting.decimal(from: $0) } ?? "Sin nota", systemImage: "number"),
                     ReportMetric(title: "Competencias", value: competencyCodes.isEmpty ? "Sin vincular" : competencyCodes.joined(separator: ", "), systemImage: "list.bullet.clipboard")
                 ],
                 factLines: facts,
@@ -2692,7 +2707,9 @@ extension KmpBridge {
                     evidence: evidence,
                     hasTeacherNote: teacherNote != nil,
                     termLabel: termLabel
-                )
+                ),
+                termFiguresApplied: usesTermFigures,
+                termAttendanceRate: termMetrics?.attendanceRate?.doubleValue
             )
         }
     }
@@ -2903,8 +2920,8 @@ extension KmpBridge {
         }
         parts.append(
             evidence.periodApplied
-                ? "Filtrado por las fechas de \(termLabel ?? "el trimestre")."
-                : "Sin fechas de evaluación para \(termLabel ?? "este trimestre") en el horario: se usa todo el curso."
+                ? "Filtrado por las fechas de \(termLabel ?? "el trimestre"), también la media y la asistencia."
+                : "Sin fechas de evaluación para \(termLabel ?? "este trimestre") en el horario: se usa todo el curso, también en la media y la asistencia."
         )
         return parts.joined(separator: " ")
     }

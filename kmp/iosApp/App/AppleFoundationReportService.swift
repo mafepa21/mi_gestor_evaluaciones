@@ -523,9 +523,17 @@ final class AppleFoundationReportService {
                 ? "Ninguna (cobertura completa)"
                 : trends.missingCompetencyLabels.joined(separator: ", ")
                 
+            // Con trimestre aplicado, la trayectoria y la asistencia de `trends` son de todo el curso.
+            // La asistencia de curso no se pasa (contradiría la del trimestre, que ya va en los hechos).
+            let trajectoryLine = context.termFiguresApplied
+                ? "- Dirección de la trayectoria académica de todo el curso (no solo del trimestre): \(directionText)"
+                : "- Dirección de la trayectoria académica: \(directionText)"
+            let attendanceLine = context.termFiguresApplied
+                ? "- Asistencia: usa solo la del trimestre indicada en los hechos verificables."
+                : "- Tasa de asistencia media registrada: \(IosFormatting.decimal(from: trends.attendanceRate))% (\(trends.attendanceCorrelationNote))"
             return """
-            - Dirección de la trayectoria académica: \(directionText)
-            - Tasa de asistencia media registrada: \(IosFormatting.decimal(from: trends.attendanceRate))% (\(trends.attendanceCorrelationNote))
+            \(trajectoryLine)
+            \(attendanceLine)
             - Incidencias y clima de aula acumulados: \(trends.behaviorIncidentSummary)
             - Cobertura de rúbricas curriculares LOMLOE: \(IosFormatting.decimal(from: trends.curriculumCoveragePct))%
             - Competencias pendientes de evaluar en cuaderno: \(missingComp)
@@ -534,11 +542,14 @@ final class AppleFoundationReportService {
 
         let mlSignalInfo: String = {
             guard let studentId = context.studentId, let trends = context.trends else { return "Sin patrones de Core ML adicionales." }
+            // Con trimestre aplicado, la asistencia del vector es la del trimestre (100 si no hay registros,
+            // como hace KMP sin datos), no la de todo el curso.
+            let attendanceRate = context.termFiguresApplied ? (context.termAttendanceRate ?? 100.0) : trends.attendanceRate
             let vector = StudentFeatureVector(
                 averageGrade: context.numericScore ?? 6.0,
                 gradeDelta: trends.averageGradeDelta,
-                attendanceRate: trends.attendanceRate,
-                evaluableDayAbsenceRatio: max(0.0, (100.0 - trends.attendanceRate) / 100.0),
+                attendanceRate: attendanceRate,
+                evaluableDayAbsenceRatio: max(0.0, (100.0 - attendanceRate) / 100.0),
                 pendingTaskRatio: max(0.0, (100.0 - trends.curriculumCoveragePct) / 100.0),
                 rubricVariance: 0.5,
                 incidentCount: 0.0

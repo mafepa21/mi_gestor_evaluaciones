@@ -2550,7 +2550,7 @@ extension KmpBridge {
                     courseLabel: resolvedCourseLabel,
                     termLabel: termLabel,
                     numericScore: nil,
-                    curriculumReferences: ["CE1", "CE2", "CE3", "CE4", "CE5"],
+                    curriculumReferences: [],
                     promptDirectives: ["Comentario breve, personalizado, competencial y listo para informe trimestral."],
                     audienceHint: "familia",
                     summary: "Hace falta seleccionar un alumno para generar el comentario LOMLOE.",
@@ -2569,7 +2569,22 @@ extension KmpBridge {
             let profile = try await loadStudentProfile(studentId: studentId, classId: classId)
             let numericScore = profile.averageScore > 0 ? profile.averageScore : nil
             let teacherNote = try await teacherTermNote(studentId: studentId, classId: classId, termLabel: termLabel).nilIfBlank
+            // Evidencia por criterio, competencias realmente evaluadas y textos del docente.
+            // La reúne KMP ya filtrada por trimestre y recortada; aquí solo se le da forma de texto.
+            let evidence = try? await container.buildLomloeCommentEvidence.invoke(
+                classId: classId,
+                studentId: studentId,
+                termKey: TeacherTermNoteKeys.shared.fromLabel(label: termLabel),
+                maxCriterionResults: LomloeCommentEvidenceBuilder.shared.DEFAULT_MAX_CRITERION_RESULTS,
+                maxObservations: LomloeCommentEvidenceBuilder.shared.DEFAULT_MAX_OBSERVATIONS
+            )
+            let criterionResults = (evidence?.criterionResults ?? []).map { lomloeCriterionLine($0) }
+            let qualitativeObservations = (evidence?.observations ?? []).map { lomloeObservationLine($0) }
+            let subjectName = schoolClass.subjectId.flatMap { subjectId in
+                subjects.first(where: { $0.id == subjectId.int64Value })?.name
+            }?.nilIfBlank
             let hasRecordedEvidence = numericScore != nil || !profile.evaluationTitles.isEmpty || !profile.timeline.isEmpty
+                || !criterionResults.isEmpty || !qualitativeObservations.isEmpty
             let performanceBand: String = {
                 guard let numericScore else { return "Sin calificación consolidada" }
                 switch numericScore {
@@ -2580,7 +2595,9 @@ extension KmpBridge {
                 default: return "Sobresaliente"
                 }
             }()
-            let curriculumReferences = inferredCurriculumReferences(for: profile)
+            // Solo competencias realmente evaluadas en el periodo. Si no hay ninguna, no se inventa.
+            let curriculumReferences = (evidence?.competencies ?? []).map { "\($0.code) \($0.name)" }
+            let competencyCodes = (evidence?.competencies ?? []).map(\.code)
             let strengths = compactSuggestions(
                 profile.averageScore >= 7.0 ? "Ha alcanzado satisfactoriamente buena parte de los criterios trabajados." : nil,
                 profile.attendanceRate >= 90 ? "Mantiene una asistencia que favorece la continuidad del aprendizaje." : nil,
@@ -2596,16 +2613,17 @@ extension KmpBridge {
             let recommendedActions = compactSuggestions(
                 numericScore != nil && numericScore! < 5.0 ? "Reforzar de forma progresiva los criterios prioritarios del siguiente periodo." : nil,
                 profile.adaptationsSummary == nil && profile.followUpCount > 0 ? "Mantener seguimiento cercano y propuestas de mejora concretas." : nil,
-                "Se recomienda seguir consolidando hábitos de participación, autonomía y transferencia a nuevas situaciones motrices."
+                "Se recomienda seguir consolidando hábitos de participación, autonomía y transferencia a nuevas situaciones de aprendizaje."
             )
             let facts = compactSuggestions(
                 "Alumno: \(profile.student.fullName).",
                 "Curso: \(resolvedCourseLabel).",
+                subjectName.map { "Materia: \($0)." },
                 termLabel.map { "Trimestre: \($0)." },
                 numericScore.map { "Calificación orientativa interna: \(IosFormatting.decimal(from: $0)) (\(performanceBand))." },
                 "Asistencia estimada: \(profile.attendanceRate)%.",
                 profile.evaluationTitles.isEmpty ? "No hay instrumentos específicos nombrados." : "Instrumentos trabajados: \(profile.evaluationTitles.joined(separator: ", ")).",
-                "Referencias curriculares sugeridas: \(curriculumReferences.joined(separator: ", "))."
+                competencyCodes.isEmpty ? "No hay competencias vinculadas a lo evaluado en este periodo." : "Competencias evaluadas en el periodo: \(competencyCodes.joined(separator: ", "))."
             )
             let supportNotes = compactSuggestions(
                 profile.adaptationsSummary.map { "Adaptaciones o apoyos: \($0)" },
@@ -2633,17 +2651,19 @@ extension KmpBridge {
                 promptDirectives: compactSuggestions(
                     "Aplicar estructura de 4 bloques breve para comentario trimestral LOMLOE.",
                     "No mencionar la nota numérica en el texto final.",
-                    "Mencionar al menos una competencia específica CE1-CE5.",
+                    competencyCodes.isEmpty
+                        ? "No citar códigos de competencias: no hay ninguna vinculada a lo evaluado."
+                        : "Citar al menos una de las competencias evaluadas por su código.",
                     "Tono positivo, específico y listo para copiar en el informe.",
                     teacherNote == nil ? nil : "Apoyarse ante todo en la valoración del docente, reformulada y sin contradecirla."
                 ),
                 audienceHint: "familia",
-                summary: "Comentario cualitativo trimestral de Educación Física, breve, competencial y listo para informe.",
+                summary: "Comentario cualitativo trimestral\(subjectName.map { " de \($0)" } ?? ""), breve, competencial y listo para informe.",
                 metrics: [
                     ReportMetric(title: "Curso", value: resolvedCourseLabel, systemImage: "graduationcap.fill"),
                     ReportMetric(title: "Trimestre", value: termLabel ?? "Sin definir", systemImage: "calendar"),
                     ReportMetric(title: "Nota guía", value: numericScore.map { IosFormatting.decimal(from: $0) } ?? "Sin nota", systemImage: "number"),
-                    ReportMetric(title: "CE", value: curriculumReferences.joined(separator: ", "), systemImage: "list.bullet.clipboard")
+                    ReportMetric(title: "Competencias", value: competencyCodes.isEmpty ? "Sin vincular" : competencyCodes.joined(separator: ", "), systemImage: "list.bullet.clipboard")
                 ],
                 factLines: facts,
                 strengths: strengths,
@@ -2659,10 +2679,20 @@ extension KmpBridge {
                     if !hasRecordedEvidence {
                         return "Sin evidencia registrada este trimestre: el comentario se apoya solo en tu valoración."
                     }
+                    if competencyCodes.isEmpty {
+                        return "Lo evaluado este periodo no tiene competencias vinculadas: el comentario no citará ninguna. Vincúlalas en las evaluaciones o en los criterios de rúbrica."
+                    }
                     return numericScore == nil ? "Si hay poca nota numérica, el comentario debe apoyarse en evidencias, actitud y progreso observado." : nil
                 }(),
                 trends: trends,
-                teacherNote: teacherNote
+                teacherNote: teacherNote,
+                criterionResults: criterionResults,
+                qualitativeObservations: qualitativeObservations,
+                evidenceSummary: lomloeEvidenceSummary(
+                    evidence: evidence,
+                    hasTeacherNote: teacherNote != nil,
+                    termLabel: termLabel
+                )
             )
         }
     }
@@ -2806,26 +2836,77 @@ extension KmpBridge {
         return "\(schoolClass.course)º"
     }
 
-    private func inferredCurriculumReferences(for profile: StudentProfileSnapshot) -> [String] {
-        var references: [String] = []
-        if profile.attendanceRate > 0 {
-            references.append("CE1")
+    // MARK: - Evidencia del Comentario LOMLOE (issue #407, parte A)
+
+    /// "Proyecto · Plantea el problema: nivel «Avanzado» (el más alto). Lo hace con autonomía. [CE2]"
+    /// El nivel se sitúa con palabras, no con puntos: el comentario no debe llevar cifras.
+    private func lomloeCriterionLine(_ result: LomloeCriterionResult) -> String {
+        var line = "\(result.evaluationName) · \(result.criterion): nivel «\(result.levelName)»"
+        if result.maxPoints > 0, result.points >= result.maxPoints {
+            line += " (el más alto)"
         }
-        if !profile.evaluationTitles.isEmpty || profile.averageScore > 0 {
-            references.append("CE2")
+        line += "."
+        if let description = result.levelDescription?.nilIfBlank {
+            line += " \(description)."
         }
-        if profile.evidenceCount > 0 {
-            references.append("CE3")
+        if !result.competencyCodes.isEmpty {
+            line += " [\(result.competencyCodes.joined(separator: ", "))]"
         }
-        if profile.timeline.contains(where: { $0.title.localizedCaseInsensitiveContains("salida") || $0.title.localizedCaseInsensitiveContains("entorno") }) {
-            references.append("CE4")
+        return line
+    }
+
+    private func lomloeObservationLine(_ observation: LomloeObservation) -> String {
+        if observation.source == LomloeObservationSource.incident {
+            return observation.title == observation.text
+                ? "Incidencia: \(observation.text)"
+                : "Incidencia · \(observation.title): \(observation.text)"
         }
-        if profile.incidentCount == 0 || profile.followUpCount > 0 {
-            references.append("CE5")
+        if observation.source == LomloeObservationSource.tutoring {
+            return "Acuerdo de tutoría: \(observation.text)"
         }
-        let source = references.isEmpty ? ["CE1", "CE2", "CE5"] : references
-        var seen = Set<String>()
-        return source.filter { seen.insert($0).inserted }
+        return "Cuaderno · \(observation.title): \(observation.text)"
+    }
+
+    /// Frase para la pantalla: qué entra, qué queda fuera por espacio y si se filtró por fechas.
+    private func lomloeEvidenceSummary(
+        evidence: LomloeCommentEvidence?,
+        hasTeacherNote: Bool,
+        termLabel: String?
+    ) -> String {
+        guard let evidence else {
+            return "No se pudo leer la evidencia por criterio ni las observaciones. El comentario usa solo los datos generales\(hasTeacherNote ? " y tu valoración" : "")."
+        }
+        func counted(_ count: Int, _ singular: String, _ plural: String) -> String {
+            "\(count) \(count == 1 ? singular : plural)"
+        }
+        var used: [String] = []
+        if hasTeacherNote { used.append("tu valoración") }
+        if !evidence.criterionResults.isEmpty {
+            used.append(counted(evidence.criterionResults.count, "criterio de rúbrica", "criterios de rúbrica"))
+        }
+        if !evidence.observations.isEmpty {
+            used.append(counted(evidence.observations.count, "observación", "observaciones"))
+        }
+        if !evidence.competencies.isEmpty {
+            used.append(counted(evidence.competencies.count, "competencia", "competencias"))
+        }
+        var parts = [used.isEmpty ? "Sin evidencia cualitativa ni por criterio." : "Se usa: \(used.joined(separator: ", "))."]
+        var omitted: [String] = []
+        if evidence.omittedCriterionResults > 0 {
+            omitted.append(counted(Int(evidence.omittedCriterionResults), "criterio", "criterios"))
+        }
+        if evidence.omittedObservations > 0 {
+            omitted.append(counted(Int(evidence.omittedObservations), "observación", "observaciones"))
+        }
+        if !omitted.isEmpty {
+            parts.append("Fuera por espacio (lo más antiguo): \(omitted.joined(separator: ", ")).")
+        }
+        parts.append(
+            evidence.periodApplied
+                ? "Filtrado por las fechas de \(termLabel ?? "el trimestre")."
+                : "Sin fechas de evaluación para \(termLabel ?? "este trimestre") en el horario: se usa todo el curso."
+        )
+        return parts.joined(separator: " ")
     }
 
     private func data(from byteArray: KotlinByteArray) -> Data {

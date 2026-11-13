@@ -33,4 +33,15 @@ El Comentario LOMLOE se redacta con IA local a partir de cifras y recuentos. Hay
 - El Mac y el iPad deben actualizarse a la vez: con esquemas distintos SyncLAN responde `schema_mismatch`.
 - Una copia de seguridad v50 no se restaura en una app anterior (el control existente lo bloquea).
 - Una valoración que llegue por sync antes que su grupo queda guardada sin grupo visible hasta que este llegue. Si el grupo no llega nunca, la fila no se muestra en ninguna pantalla.
-- La parte A del issue #407 (evidencia por criterio, competencias reales, textos del Cuaderno) queda para otro PR y reutiliza el campo `teacherNote` del contexto.
+
+## Ampliación: evidencia del alumno (issue #407, parte A)
+
+- La evidencia la reúne KMP en `BuildLomloeCommentEvidenceUseCase` (`kmp/shared/usecase/LomloeCommentEvidence.kt`). Swift solo le da forma de texto: no recalcula nada. La selección es una función pura (`LomloeCommentEvidenceBuilder`) para poder probarla sin base de datos.
+- Sin cambios de esquema: lee `rubric_assessments`, `rubric_criteria`, `rubric_levels`, `evaluation_competency_links`, `competency_criteria`, `grades`, `notebook_cell_entries`, `incidents` y `student_tutoring_sessions`.
+- Competencias: solo las vinculadas a un criterio de rúbrica valorado, a una evaluación con nota o valoración, o a una columna del Cuaderno con contenido. Se elimina la deducción por reglas (CE1 a CE5).
+- Trimestre: `T1`, `T2` y `T3` se resuelven contra los periodos de evaluación del horario docente, por orden. Si no hay periodo, no se filtra y la pantalla lo dice. Un dato sin fecha conocida no se descarta.
+- Prioridad con poco espacio: primero un resultado por criterio distinto (el más reciente) y las observaciones más nuevas; los textos repetidos cuentan una vez. Topes: 8 criterios y 6 observaciones. Lo omitido se cuenta y se muestra.
+- Privacidad: no entran las columnas de texto generadas por IA, los temas tratados en tutoría (solo los acuerdos) ni las notas de seguimiento de las medidas de apoyo. El prompt pide reformular las observaciones y no citar incidencias concretas. La redacción por reglas solo cita niveles por criterio y competencias, nunca textos privados.
+- Prompt: el cuerpo y los requisitos de salida se montan por separado; si no cabe, se recorta el final del cuerpo.
+- Descartado por ahora: un primer paso de IA que resuma las observaciones antes de redactar. La selección por reglas basta con los topes actuales y evita una segunda llamada al modelo por alumno.
+- Pendiente: la media, la asistencia y la tendencia que ya iban en el contexto siguen siendo de todo el curso.

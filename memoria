@@ -2065,7 +2065,9 @@ Notas para futuras conversaciones:
 - Clave natural `(student_id, class_id, term_key)`; `term_key` es `T1`/`T2`/`T3`, derivado de la etiqueta con `TeacherTermNoteKeys.fromLabel`.
 - Las FK están apagadas en producción: `deleteClass` y `deleteStudent` borran las valoraciones a mano.
 - La redacción por reglas no incorpora la valoración; solo avisa.
-- Pendiente la parte A del issue #407: evidencia por criterio de rúbrica, competencias reales en vez de las deducidas (CE1 a CE5) y textos del Cuaderno e incidencias.
+- Parte A hecha en el mismo PR #408: `BuildLomloeCommentEvidenceUseCase` (`kmp/shared/usecase/LomloeCommentEvidence.kt`) reúne niveles por criterio, competencias realmente evaluadas y textos del docente, filtrados por los periodos de evaluación del horario. Ya no se deducen CE1 a CE5 ni se asume Educación Física.
+- Pendiente: la media, la asistencia y la tendencia del contexto siguen siendo de todo el curso, no del trimestre.
+- El listado `listClassEvaluations` no trae `competencyLinks`: hay que cargarlos con `listEvaluationCompetencyLinks`.
 - En entornos cloud de Linux, Gradle necesita `-Dorg.gradle.java.home=<JDK 21>`, JDK 17 instalado y acceso a `dl.google.com`, `download.jetbrains.com` y `download-cdn.jetbrains.com`.
 
 ### 2026-10-11 - Rúbrica en tabla y hoja de sesión ancha (menos scroll en el día a día)

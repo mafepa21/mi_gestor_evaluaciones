@@ -1159,6 +1159,9 @@ struct ReportsWorkspaceView: View {
                         if let dataQualityNote = reportContext?.dataQualityNote {
                             WorkspaceDetailBlock(title: "Calidad de datos", content: dataQualityNote)
                         }
+                        if let evidenceSummary = reportContext?.evidenceSummary {
+                            WorkspaceDetailBlock(title: "Evidencia para la IA", content: evidenceSummary)
+                        }
                         if let trends = reportContext?.trends {
                             let trendText = "Trayectoria \(trends.trendDirection == "UPWARD" ? "ascendente" : trends.trendDirection == "DOWNWARD" ? "descendente" : "estable"). Cobertura LOMLOE: \(IosFormatting.decimal(from: trends.curriculumCoveragePct))%. Asistencia: \(IosFormatting.decimal(from: trends.attendanceRate))%."
                             WorkspaceDetailBlock(title: "Auditoría de Tendencias IA", content: trendText)
@@ -1439,7 +1442,7 @@ struct ReportsWorkspaceView: View {
         case .operationsSnapshot:
             return "Salida operativa para asistencia, incidencias y estado del trabajo reciente."
         case .lomloeEvaluationComment:
-            return "Comentario trimestral breve y competencial de Educación Física, alineado con CE1-CE5 y listo para informe."
+            return "Comentario trimestral breve y competencial, apoyado en tu valoración, los criterios de rúbrica y tus observaciones."
         }
     }
 
@@ -1671,7 +1674,7 @@ struct ReportsWorkspaceView: View {
             let generation = try await aiOrchestrator.generateWithTrace(
                 .report(reportContext, aiAudience, aiTone),
                 dataSource: reportContext.className,
-                includedEvidence: reportContext.factLines + reportContext.curriculumReferences
+                includedEvidence: reportContext.factLines + reportContext.curriculumReferences + reportContext.criterionResults + reportContext.qualitativeObservations
             )
             guard case .report(let draft) = generation.result else { return }
             aiDraft = draft
@@ -2319,7 +2322,7 @@ struct BulkLOMLOEGenerationSheet: View {
                 let generation = try await aiOrchestrator.generateWithTrace(
                     .report(context, audience, tone),
                     dataSource: context.className,
-                    includedEvidence: context.factLines + context.curriculumReferences
+                    includedEvidence: context.factLines + context.curriculumReferences + context.criterionResults + context.qualitativeObservations
                 )
                 guard case .report(let draft) = generation.result else {
                     rows[index].status = .failed("Respuesta IA inesperada")

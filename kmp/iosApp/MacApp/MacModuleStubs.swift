@@ -465,6 +465,9 @@ struct MacReportsView: View {
                     MacReportTextSection(title: "Hechos previos", lines: reportContext.factLines)
                 }
 
+                if let evidenceSummary = reportContext?.evidenceSummary {
+                    MacReportNotice(title: "Evidencia para la IA", message: evidenceSummary, tint: MacAppStyle.infoTint)
+                }
                 if let reportContext, let dataQualityNote = reportContext.dataQualityNote {
                     MacReportNotice(title: "Calidad de datos", message: dataQualityNote, tint: MacAppStyle.warningTint)
                 }

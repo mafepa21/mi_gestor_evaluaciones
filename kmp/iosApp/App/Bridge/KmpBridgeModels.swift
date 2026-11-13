@@ -304,7 +304,7 @@ extension KmpBridge {
             case .studentSummary: return "Seguimiento sintético para tutoría"
             case .evaluationDigest: return "Instrumentos, rúbricas y carga activa"
             case .operationsSnapshot: return "Asistencia, incidencias y estado docente"
-            case .lomloeEvaluationComment: return "Comentario trimestral de EF listo para informe"
+            case .lomloeEvaluationComment: return "Comentario trimestral listo para informe"
             }
         }
 
@@ -358,6 +358,12 @@ extension KmpBridge {
         /// Valoración cualitativa que el docente ha escrito para este alumno y trimestre.
         /// Privada: la IA la reformula, nunca se copia literal a un texto para familias.
         var teacherNote: String? = nil
+        /// Nivel logrado por criterio de rúbrica en el periodo, una línea por criterio.
+        var criterionResults: [String] = []
+        /// Textos del docente (Cuaderno, incidencias, acuerdos de tutoría). Privados: la IA los reformula.
+        var qualitativeObservations: [String] = []
+        /// Qué evidencia entra, cuánta queda fuera por espacio y si se filtró por trimestre.
+        var evidenceSummary: String? = nil
     }
 
     enum AnalyticsTimeRange: String, CaseIterable, Identifiable {

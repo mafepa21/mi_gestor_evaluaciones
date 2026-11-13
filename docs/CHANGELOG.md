@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Informes · Comentario LOMLOE: la IA local ya lee la evidencia del alumno (issue #407, parte A). Recibe el nivel logrado en cada criterio de rúbrica con su descriptor, las competencias realmente evaluadas en el trimestre y los textos del docente (celdas de texto y notas de celda del Cuaderno, incidencias y acuerdos de tutoría). Se filtra por las fechas del trimestre si el horario tiene periodos de evaluación. «Evidencia para la IA» indica en pantalla qué se usa, qué queda fuera por espacio y si se filtró por fechas. La redacción por reglas cita los niveles por criterio y las competencias.
 - Informes · Comentario LOMLOE: casilla «Tu valoración» por alumno y trimestre (issue #407, parte B). El docente escribe lo observado antes de la evaluación, se guarda sola y la IA local la usa como fuente principal, reformulada y sin copiarla literal. Está en Informes de iPad y Mac y, por alumno, en «Generar lote». Con solo la valoración y sin más datos ya se puede generar. La redacción por reglas (sin Apple Intelligence) no la incorpora y avisa de que hay que integrarla a mano.
 - Torneos: «Ampliar plazo» en la inscripción por enlace. El plazo va firmado en el enlace, así que se publica un formulario nuevo solo para quien no ha respondido y se abre el correo con esos enlaces. Las respuestas recibidas se conservan y las del formulario anterior se siguen importando (ficheros y buzón). Las inscripciones guardadas antes se leen igual (`previousRounds` opcional).
 - Cuaderno: «Evaluar grupo…» en listas de cotejo y rejillas de observación. Hoja masiva con alumnos en filas, ítems de cada sesión en columnas y «Para todos…» por ítem (solo vacíos o sobrescribir). Guarda por alumno con el mismo cálculo de nota en Kotlin.
@@ -25,6 +26,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Comentario LOMLOE: ya no deduce las competencias con reglas (CE1 a CE5 según asistencia o incidencias) ni está fijado a Educación Física. Cita solo competencias vinculadas a lo evaluado y, si no hay ninguna, lo avisa y no cita ninguna. La materia sale del grupo.
+- Comentario LOMLOE: si el prompt no cabe en el tope de la IA local, se recorta el final del cuerpo y los requisitos de salida se conservan enteros (`AppleFoundationReportService.assemblePrompt`). Antes se cortaba la cola, que eran los requisitos.
 - Rúbricas (fluidez): la hoja de evaluación de grupo ya no observa todo el puente; solo se repinta si cambia su estado (`KmpBridgeWatch`). Tocar un nivel repinta solo la fila de ese alumno (`BulkRubricStudentRow`, `BulkRubricCompactRow`, `Equatable`). La conversión de niveles y notas se hace una vez por estado.
 - Rúbricas (fluidez): la hoja de grupo se abre con lecturas por lote (`getRubricDetail`, `listGradesForClass`, `listRubricAssessmentsForStudents`) en vez de unas tres lecturas por alumno. Misma prioridad de datos que antes. Con columnas no guardadas en el grupo (`eval_<id>`) o notas ambiguas se mantiene la lectura individual.
 - Listas de cotejo (fluidez): en la hoja de grupo, tocar una casilla o un nivel repinta solo esa celda (`StructuredBulkScaleCell`, `StructuredBulkCheckCell`).
@@ -47,6 +50,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Evidencia del Comentario LOMLOE (issue #407, parte A), en Linux: `./gradlew :shared:desktopTest :data:desktopTest` en verde (191 y 236 tests, 0 fallos). Tests nuevos: `LomloeCommentEvidenceBuilderTest` (7) y `BuildLomloeCommentEvidenceIntegrationTest` (1). Añadido `LomloePromptAssemblyTests` (3, Swift) **sin ejecutar en local**: lo ejecuta el CI de Apple. **No ejecutado en local:** `xcodebuild` ni la prueba manual con Apple Intelligence. La media, la asistencia y la tendencia del contexto siguen siendo de todo el curso, no del trimestre.
 - Valoración del docente (issue #407, parte B), en Linux: `./gradlew :shared:desktopTest :data:desktopTest` en verde (183 y 235 tests, 0 fallos). Incluye 7 tests nuevos de repositorio y migración 49, 4 de SyncLAN y 4 de claves de trimestre. Se actualizó a 50 la versión de esquema esperada en `EvaluationSessionRepositorySqlDelightTest`. **No ejecutado:** `xcodebuild` de iOS y macOS (el entorno no tiene Xcode), los tests de Android e iOS de `:shared:test`, ni la prueba manual en un dispositivo con Apple Intelligence. El código Swift de este cambio no se ha compilado.
 - Fluidez de rúbricas (paquete 2): `:shared:desktopTest` 180 tests, 0 fallos (test nuevo de carga por lote en `RubricBulkEvaluationViewModelTest`). Build `MiGestorKMPMac` y `MiGestorKMPiOS` (simulador genérico): BUILD SUCCEEDED. No ejecutado: `:shared:test` completo (falta el SDK de Android en el worktree), prueba manual en iPad y Mac, y conteo de repintados antes y después.
 

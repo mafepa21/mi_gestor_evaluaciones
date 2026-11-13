@@ -36,6 +36,8 @@ final class NotebookBridgeStore: ObservableObject {
     let gridLayoutModel = NotebookGridLayoutModel()
     /// Situaciones de aprendizaje ya filtradas por grupo, para pintarlas al volver.
     var cachedClassSituations: [Int64: [LearningSituation]] = [:]
+    // `NotebookModuleView` no observa este store entero: ver `NotebookStoreRenderWatch`.
+    // Un `@Published` nuevo que deba repintar el Cuaderno hay que añadirlo allí.
     @Published private(set) var classes: [SchoolClass] = []
     @Published private(set) var notebookState: NotebookUiState = NotebookUiStateLoading()
     @Published private(set) var notebookStructureState = NotebookStructureState(
@@ -135,6 +137,40 @@ final class NotebookBridgeStore: ObservableObject {
         bridgeSink(bridge.$isNotebookRubricAutoAdvanceActive, \.isNotebookRubricAutoAdvanceActive, into: &cancellables)
         bridgeSink(bridge.$showingBulkRubricEvaluation, \.showingBulkRubricEvaluation, into: &cancellables)
         bridgeSink(bridge.$syncPendingChanges, \.syncPendingChanges, into: &cancellables)
+    }
+}
+
+/// Recalcula `NotebookModuleView` con los cambios de `NotebookBridgeStore` salvo
+/// los de guardado (`notebookSaveState`, `notebookSplitSaveState`): esos los
+/// pintan `NotebookToolbarSaveStatus` y `NotebookSaveStatusOverlay`, que observan
+/// el store por su cuenta. Cada nota pasaba por «sin guardar → guardando →
+/// guardado» y cada paso recalculaba la pantalla entera.
+/// Lista cerrada: todo `@Published` nuevo de `NotebookBridgeStore` que deba
+/// repintar el Cuaderno tiene que añadirse aquí.
+@MainActor
+final class NotebookStoreRenderWatch: ObservableObject {
+    private var cancellable: AnyCancellable?
+
+    init(store: NotebookBridgeStore) {
+        // `$x` emite el valor actual al suscribirse: `dropFirst` para no publicar al crear.
+        // Emite en `willSet`, igual que `objectWillChange`: misma vuelta que antes.
+        func trigger<P: Publisher>(_ publisher: P) -> AnyPublisher<Void, Never> where P.Failure == Never {
+            publisher.dropFirst().map { _ in () }.eraseToAnyPublisher()
+        }
+        cancellable = Publishers.MergeMany([
+            trigger(store.$classes),
+            trigger(store.$notebookState),
+            trigger(store.$notebookStructureState),
+            trigger(store.$notebookRowsState),
+            trigger(store.$notebookSelectionState),
+            trigger(store.$notebookInspectorState),
+            trigger(store.$notebookAverageState),
+            trigger(store.$rubricEvaluationState),
+            trigger(store.$isNotebookRubricAutoAdvanceActive),
+            trigger(store.$showingBulkRubricEvaluation),
+            trigger(store.$syncPendingChanges)
+        ])
+        .sink { [weak self] in self?.objectWillChange.send() }
     }
 }
 

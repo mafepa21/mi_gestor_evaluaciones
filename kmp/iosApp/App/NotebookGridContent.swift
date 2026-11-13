@@ -35,6 +35,9 @@ struct NotebookGridContent<
     let dividerHandle: () -> DividerHandle
     let header: ([NotebookDisplaySegment]) -> HeaderContent
     let rowContent: (Int, NotebookTableRow, [NotebookDisplaySegment]) -> RowContent
+    /// Resumen de celdas por fila que sobrevive entre pasadas del `body` (ver
+    /// `NotebookRowCellDigestCache`). Clase en `@State`: mutarla no repinta.
+    @State private var cellDigestCache = NotebookRowCellDigestCache()
 
     var body: some View {
         let fixedSegmentKey = Self.segmentKey(for: fixedSegments)
@@ -53,7 +56,8 @@ struct NotebookGridContent<
             rowReloadRevisions: rowReloadRevisions,
             transientCellIds: transientCellIds,
             rowContextDigest: rowContextDigest,
-            structuralInvalidationKey: structuralInvalidationKey
+            structuralInvalidationKey: structuralInvalidationKey,
+            cellDigestCache: cellDigestCache
         )
 
         NotebookGridContainer(
@@ -147,6 +151,7 @@ private final class NotebookRowFingerprintProvider {
     private let transientDigestByStudentId: [Int64: String]
     private let rowContextDigest: (Int, NotebookTableRow) -> Int
     private let structuralInvalidationKey: String
+    private let cellDigestCache: NotebookRowCellDigestCache
     private var signatures: [Key: Int] = [:]
 
     init(
@@ -155,9 +160,11 @@ private final class NotebookRowFingerprintProvider {
         rowReloadRevisions: [Int64: Int],
         transientCellIds: Set<String>,
         rowContextDigest: @escaping (Int, NotebookTableRow) -> Int,
-        structuralInvalidationKey: String
+        structuralInvalidationKey: String,
+        cellDigestCache: NotebookRowCellDigestCache
     ) {
         self.rowContextDigest = rowContextDigest
+        self.cellDigestCache = cellDigestCache
         self.rowsByStudentId = Dictionary(rows.map { ($0.student.id, $0) }, uniquingKeysWith: { first, _ in first })
         self.panesBySegmentKey = Dictionary(panes.map { ($0.segmentKey, $0) }, uniquingKeysWith: { first, _ in first })
         self.rowReloadRevisions = rowReloadRevisions
@@ -188,9 +195,61 @@ private final class NotebookRowFingerprintProvider {
         hasher.combine(rowReloadRevisions[studentId, default: 0])
         hasher.combine(rowContextDigest(index, item))
         hasher.combine(structuralInvalidationKey)
+        hasher.combine(cellDigestCache.digest(studentId: studentId, segmentKey: segmentKey, item: item, columnIds: pane.visibleColumnIds))
+        let value = hasher.finalize()
+        signatures[key] = value
+        return value
+    }
 
+    private static func transientDigestByStudentId(_ transientCellIds: Set<String>) -> [Int64: String] {
+        var grouped: [Int64: [String]] = [:]
+        for cellId in transientCellIds {
+            guard let separatorIndex = cellId.firstIndex(of: "|"),
+                  let studentId = Int64(cellId[..<separatorIndex]) else {
+                continue
+            }
+            grouped[studentId, default: []].append(cellId)
+        }
+        return grouped.mapValues { $0.sorted().joined(separator: "|") }
+    }
+}
+
+/// Resumen de las celdas y notas de una fila en un panel, guardado entre pasadas.
+/// Solo depende de `item.row` (clase Kotlin inmutable, como asume `NotebookRowLookupBox`)
+/// y de las columnas visibles del panel: se reutiliza si la fila es la misma instancia
+/// (`===`) y las columnas son las mismas; si no, se recalcula. Todo lo demás de la
+/// firma (contexto, borradores, revisiones, estructura) se sigue sumando en cada pasada.
+final class NotebookRowCellDigestCache {
+    private struct Key: Hashable {
+        let studentId: Int64
+        let segmentKey: String
+    }
+
+    private struct Entry {
+        let row: NotebookRow
+        let columnIds: [String]
+        let digest: Int
+    }
+
+    /// Tope de seguridad: al cambiar mucho de grupo se vacía en vez de crecer sin fin.
+    private static let maxEntries = 4_000
+    private var entries: [Key: Entry] = [:]
+
+    func digest(studentId: Int64, segmentKey: String, item: NotebookTableRow, columnIds: [String]) -> Int {
+        let key = Key(studentId: studentId, segmentKey: segmentKey)
+        if let entry = entries[key], entry.row === item.row, entry.columnIds == columnIds {
+            return entry.digest
+        }
+        let value = Self.computeDigest(item: item, columnIds: columnIds)
+        if entries.count >= Self.maxEntries { entries.removeAll(keepingCapacity: true) }
+        entries[key] = Entry(row: item.row, columnIds: columnIds, digest: value)
+        return value
+    }
+
+    private static func computeDigest(item: NotebookTableRow, columnIds: [String]) -> Int {
+        var hasher = Hasher()
         let lookup = item.lookup
-        for colId in pane.visibleColumnIds {
+        for colId in columnIds {
             if let cell = lookup.cellsByColumnId[colId] {
                 hasher.combine(cell.columnId)
                 hasher.combine(cell.textValue)
@@ -209,21 +268,7 @@ private final class NotebookRowFingerprintProvider {
                 hasher.combine(grade.rubricSelections)
             }
         }
-        let value = hasher.finalize()
-        signatures[key] = value
-        return value
-    }
-
-    private static func transientDigestByStudentId(_ transientCellIds: Set<String>) -> [Int64: String] {
-        var grouped: [Int64: [String]] = [:]
-        for cellId in transientCellIds {
-            guard let separatorIndex = cellId.firstIndex(of: "|"),
-                  let studentId = Int64(cellId[..<separatorIndex]) else {
-                continue
-            }
-            grouped[studentId, default: []].append(cellId)
-        }
-        return grouped.mapValues { $0.sorted().joined(separator: "|") }
+        return hasher.finalize()
     }
 }
 

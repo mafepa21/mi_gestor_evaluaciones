@@ -42,8 +42,13 @@ struct NotebookModuleView: View {
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     #endif
     let bridge: KmpBridge
-    @ObservedObject var notebookStore: NotebookBridgeStore
-    @ObservedObject var dashboardStore: DashboardBridgeStore
+    /// Sin `@ObservedObject`: el recálculo lo dispara `notebookStoreWatch`, que deja
+    /// fuera los cambios de guardado (los pinta `NotebookToolbarSaveStatus`).
+    let notebookStore: NotebookBridgeStore
+    @StateObject private var notebookStoreWatch: NotebookStoreRenderWatch
+    /// Sin `@ObservedObject`: solo `NotebookSyncStatusLabel` lo observa. Así el
+    /// estado de SyncLAN (cada pocos segundos) no recalcula el Cuaderno entero.
+    let dashboardStore: DashboardBridgeStore
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -196,6 +201,7 @@ struct NotebookModuleView: View {
     ) {
         self.bridge = bridge
         self.notebookStore = notebookStore
+        self._notebookStoreWatch = StateObject(wrappedValue: NotebookStoreRenderWatch(store: notebookStore))
         self.dashboardStore = dashboardStore
         self._selectedClassId = selectedClassId
         self._selectedStudentId = selectedStudentId
@@ -597,11 +603,17 @@ struct NotebookModuleView: View {
             gridNavigationContext.update(
                 rows: rows,
                 segments: renderModel.scrollableSegments,
-                categoryTintById: Dictionary(
-                    data.sheet.columnCategories.map { ($0.id, tint(for: $0)) },
-                    uniquingKeysWith: { first, _ in first }
-                ),
-                physicalPairsByScoreId: NotebookPhysicalColumns.pairsByScoreId(in: data.sheet.columns),
+                // Las tablas solo dependen de la hoja: se rehacen si cambia su instancia.
+                tablesSource: data.sheet,
+                categoryTintById: {
+                    Dictionary(
+                        data.sheet.columnCategories.map { ($0.id, tint(for: $0)) },
+                        uniquingKeysWith: { first, _ in first }
+                    )
+                },
+                physicalPairsByScoreId: {
+                    NotebookPhysicalColumns.pairsByScoreId(in: data.sheet.columns)
+                },
                 selectedCellRange: selectedCellRange
             )
         }
@@ -1706,6 +1718,14 @@ struct NotebookModuleView: View {
                 .appOnChange(of: toolbarStateKey(data: data)) { _ in
                     scheduleToolbarStateSync(data: data)
                 }
+                // El guardado ya no recalcula esta vista (`NotebookStoreRenderWatch`):
+                // este observador mínimo mantiene la resincronización de la barra que
+                // antes disparaba el estado de guardado dentro de `toolbarStateKey`.
+                .background {
+                    NotebookSaveStateChangeObserver(store: notebookStore) {
+                        scheduleToolbarStateSyncIfLoaded()
+                    }
+                }
                 .appOnChange(of: notebookStore.rubricEvaluationState.isSaveSuccessful) { saved in
                     guard saved, notebookStore.isNotebookRubricAutoAdvanceActive else { return }
                     openNextRubricStudentIfPossible()
@@ -1887,53 +1907,14 @@ struct NotebookModuleView: View {
                         // Barra de estado (.status)
                         ToolbarItem(placement: .status) {
                             HStack(spacing: 8) {
-                                // Estado de guardado
-                                HStack(spacing: 4) {
-                                    NotebookSavePulse(
-                                        isDirty: notebookStore.notebookSplitSaveState.isDirty,
-                                        isSaving: notebookStore.notebookSplitSaveState.isSaving,
-                                        isFailed: notebookStore.notebookSplitSaveState.state == .failed,
-                                        isSaved: notebookStore.notebookSplitSaveState.isSaved
-                                    )
-                                    if #available(iOS 18.0, macOS 14.0, *) {
-                                        Image(systemName: saveBadge.icon)
-                                            .symbolEffect(.rotate, isActive: notebookStore.notebookSplitSaveState.isSaving)
-                                    } else {
-                                        Image(systemName: saveBadge.icon)
-                                    }
-                                    Text(saveBadge.text)
-                                }
-                                .foregroundStyle(saveBadge.color)
-
-                                if bridge.status.hasPrefix("No se pudo guardar la asistencia") {
-                                    Text(bridge.status)
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.red)
-                                        .lineLimit(2)
-                                }
-
-                                if notebookStore.notebookSplitSaveState.state == .failed {
-                                    Button {
-                                        bridge.saveNotebook()
-                                    } label: {
-                                        Label("Reintentar", systemImage: "arrow.clockwise")
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                    .accessibilityHint("Vuelve a intentar guardar los cambios pendientes")
-                                }
+                                // Estado de guardado: vista propia que observa el store.
+                                NotebookToolbarSaveStatus(store: notebookStore, bridge: bridge)
 
                                 Text("•")
                                     .foregroundStyle(.secondary)
 
                                 // Sincronización LAN: no confundir ausencia de host con estado al día.
-                                HStack(spacing: 4) {
-                                    Image(systemName: notebookSyncStatusState.systemImage)
-                                    Text(notebookSyncStatusText)
-                                }
-                                .foregroundStyle(notebookSyncStatusState.tint)
-                                .accessibilityElement(children: .ignore)
-                                .accessibilityLabel(notebookSyncStatusState.accessibilityLabel)
+                                NotebookSyncStatusLabel(store: dashboardStore)
 
                                 Text("•")
                                     .foregroundStyle(.secondary)

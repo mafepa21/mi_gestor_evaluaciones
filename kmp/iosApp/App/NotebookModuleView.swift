@@ -603,11 +603,17 @@ struct NotebookModuleView: View {
             gridNavigationContext.update(
                 rows: rows,
                 segments: renderModel.scrollableSegments,
-                categoryTintById: Dictionary(
-                    data.sheet.columnCategories.map { ($0.id, tint(for: $0)) },
-                    uniquingKeysWith: { first, _ in first }
-                ),
-                physicalPairsByScoreId: NotebookPhysicalColumns.pairsByScoreId(in: data.sheet.columns),
+                // Las tablas solo dependen de la hoja: se rehacen si cambia su instancia.
+                tablesSource: data.sheet,
+                categoryTintById: {
+                    Dictionary(
+                        data.sheet.columnCategories.map { ($0.id, tint(for: $0)) },
+                        uniquingKeysWith: { first, _ in first }
+                    )
+                },
+                physicalPairsByScoreId: {
+                    NotebookPhysicalColumns.pairsByScoreId(in: data.sheet.columns)
+                },
                 selectedCellRange: selectedCellRange
             )
         }

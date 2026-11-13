@@ -432,18 +432,28 @@ final class NotebookGridNavigationContext {
     private(set) var selectedRangeBounds: (columnId: String, lower: Int, upper: Int)?
     /// Pruebas físicas: columna de nota visible -> pareja marca/nota (una vez por render).
     private(set) var physicalPairsByScoreId: [String: NotebookPhysicalColumnPair] = [:]
+    /// Hoja Kotlin (inmutable) de la que salen `categoryTintById` y `physicalPairsByScoreId`.
+    /// Si es la misma instancia (`===`) que en la pasada anterior, las tablas siguen valiendo.
+    private var tablesSourceSheet: AnyObject?
 
+    /// `rows` y `segments` se asignan siempre (son referencias, coste O(1)) y el rango
+    /// seleccionado se recalcula en cada pasada. Las tablas por columna/categoría solo se
+    /// reconstruyen cuando cambia la hoja de la que salen (columnas o categorías nuevas).
     func update(
         rows: [NotebookTableRow],
         segments: [NotebookDisplaySegment],
-        categoryTintById: [String: Color],
-        physicalPairsByScoreId: [String: NotebookPhysicalColumnPair] = [:],
+        tablesSource sheet: AnyObject,
+        categoryTintById: () -> [String: Color],
+        physicalPairsByScoreId: () -> [String: NotebookPhysicalColumnPair],
         selectedCellRange: NotebookCellRange? = nil
     ) {
         self.rows = rows
         self.segments = segments
-        self.categoryTintById = categoryTintById
-        self.physicalPairsByScoreId = physicalPairsByScoreId
+        if tablesSourceSheet !== sheet {
+            self.categoryTintById = categoryTintById()
+            self.physicalPairsByScoreId = physicalPairsByScoreId()
+            tablesSourceSheet = sheet
+        }
         if let range = selectedCellRange,
            let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
            let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }) {

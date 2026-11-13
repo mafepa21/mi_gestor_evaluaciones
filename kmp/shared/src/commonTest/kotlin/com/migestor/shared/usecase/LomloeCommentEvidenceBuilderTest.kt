@@ -1,5 +1,6 @@
 package com.migestor.shared.usecase
 
+import com.migestor.shared.domain.Attendance
 import com.migestor.shared.domain.AuditTrace
 import com.migestor.shared.domain.CompetencyCriterion
 import com.migestor.shared.domain.Evaluation
@@ -245,5 +246,129 @@ class LomloeCommentEvidenceBuilderTest {
         assertNull(LomloeCommentEvidenceBuilder.resolvePeriod(periods, "X_final", TimeZone.UTC))
         assertNull(LomloeCommentEvidenceBuilder.resolvePeriod(listOf(periods[1].copy(startDateIso = "ayer")), "T1", TimeZone.UTC))
         assertNull(LomloeCommentEvidenceBuilder.resolvePeriod(emptyList(), "T1", TimeZone.UTC))
+    }
+
+    // --- Cifras del trimestre (media y asistencia) ---
+
+    private val term = LomloePeriod(startEpochMs = 1_000, endEpochMs = 2_000)
+
+    private fun attendance(id: Long, studentId: Long, ms: Long, status: String) =
+        Attendance(id = id, studentId = studentId, classId = 7, date = Instant.fromEpochMilliseconds(ms), status = status)
+
+    private fun grade(studentId: Long, columnId: String, evaluationId: Long?, ms: Long) =
+        Grade(id = ms, classId = 7, studentId = studentId, columnId = columnId, evaluationId = evaluationId, value = 7.0, trace = at(ms))
+
+    @Test
+    fun laAsistenciaDelTrimestreSoloCuentaRegistrosDelAlumnoDentroDelPeriodo() {
+        val metrics = assertNotNull(
+            LomloeCommentEvidenceBuilder.build(
+                LomloeEvidenceInput(
+                    studentId = ana,
+                    attendance = listOf(
+                        attendance(1, ana, 1_500, "PRESENTE"),
+                        attendance(2, ana, 1_600, "Presente"),
+                        attendance(3, ana, 1_700, "AUSENTE"),
+                        attendance(4, ana, 1_800, "TARDE"),
+                        // Fuera del periodo y de otro alumno: no cuentan.
+                        attendance(5, ana, 500, "AUSENTE"),
+                        attendance(6, ana, 2_500, "AUSENTE"),
+                        attendance(7, luis, 1_500, "AUSENTE"),
+                    ),
+                ),
+                period = term,
+            ).termMetrics,
+        )
+        assertEquals(4, metrics.attendanceRecords)
+        assertEquals(2, metrics.presentRecords)
+        assertEquals(50.0, metrics.attendanceRate)
+    }
+
+    @Test
+    fun sinRegistrosDeAsistenciaEnElPeriodoLaTasaEsNulaYNoSeRellenaConElCurso() {
+        val metrics = assertNotNull(
+            LomloeCommentEvidenceBuilder.build(
+                LomloeEvidenceInput(studentId = ana, attendance = listOf(attendance(1, ana, 5_000, "PRESENTE"))),
+                period = term,
+            ).termMetrics,
+        )
+        assertNull(metrics.attendanceRate)
+        assertEquals(0, metrics.attendanceRecords)
+    }
+
+    @Test
+    fun unRegistroDeAsistenciaSinFechaNoSeDescarta() {
+        val metrics = assertNotNull(
+            LomloeCommentEvidenceBuilder.build(
+                LomloeEvidenceInput(studentId = ana, attendance = listOf(attendance(1, ana, 0, "PRESENTE"))),
+                period = term,
+            ).termMetrics,
+        )
+        assertEquals(100.0, metrics.attendanceRate)
+    }
+
+    @Test
+    fun sinPeriodoNoHayCifrasDeTrimestreYSeUsaTodoElCurso() {
+        val evidence = LomloeCommentEvidenceBuilder.build(
+            LomloeEvidenceInput(studentId = ana, attendance = listOf(attendance(1, ana, 1_500, "PRESENTE"))),
+            period = null,
+            termAverage = LomloeTermAverage(value = 8.0, columnCount = 1),
+        )
+        assertFalse(evidence.periodApplied)
+        assertNull(evidence.termMetrics)
+    }
+
+    @Test
+    fun laMediaDelTrimestreSeCopiaDelMotorDelCuadernoYSinNotasEsNula() {
+        val withAverage = LomloeCommentEvidenceBuilder.build(
+            LomloeEvidenceInput(studentId = ana),
+            period = term,
+            termAverage = LomloeTermAverage(value = 6.5, columnCount = 3),
+        )
+        assertEquals(6.5, withAverage.termMetrics?.averageScore)
+        assertEquals(3, withAverage.termMetrics?.averagedColumnCount)
+        // Sin notas en el periodo: periodo aplicado, pero media nula.
+        val noGrades = LomloeCommentEvidenceBuilder.build(LomloeEvidenceInput(studentId = ana), period = term)
+        assertTrue(noGrades.periodApplied)
+        assertNull(assertNotNull(noGrades.termMetrics).averageScore)
+    }
+
+    @Test
+    fun laMediaSoloUsaLasColumnasDelTrimestreSegunFechaDeColumnaONota() {
+        val inTerm = NotebookColumnDefinition(id = "c_in", title = "Dentro", type = NotebookColumnType.NUMERIC, dateEpochMs = 1_500)
+        val outOfTerm = NotebookColumnDefinition(id = "c_out", title = "Fuera", type = NotebookColumnType.NUMERIC, dateEpochMs = 5_000)
+        // Sin fecha de columna: manda la última modificación de la nota del alumno.
+        val gradedIn = NotebookColumnDefinition(id = "eval_50", title = "Proyecto", type = NotebookColumnType.NUMERIC, evaluationId = 50)
+        val gradedOut = NotebookColumnDefinition(id = "eval_51", title = "Prueba", type = NotebookColumnType.NUMERIC, evaluationId = 51)
+        // Sin fecha de columna ni nota: no se descarta.
+        val undated = NotebookColumnDefinition(id = "c_undated", title = "Sin fecha", type = NotebookColumnType.NUMERIC)
+        val selection = LomloeCommentEvidenceBuilder.selectNotebookForPeriod(
+            LomloeEvidenceInput(
+                studentId = ana,
+                evaluations = listOf(project, exam),
+                columns = listOf(inTerm, outOfTerm, gradedIn, gradedOut, undated),
+                grades = listOf(
+                    grade(ana, "eval_50", 50, 1_200),
+                    grade(ana, "eval_51", 51, 9_000),
+                    // La nota de otro alumno no mueve la fecha del alumno.
+                    grade(luis, "eval_51", 51, 1_200),
+                ),
+            ),
+            term,
+        )
+        assertEquals(listOf("c_in", "eval_50", "c_undated"), selection.columns.map { it.id })
+        assertEquals(listOf(50L), selection.evaluations.map { it.id })
+    }
+
+    @Test
+    fun unaEvaluacionSinColumnaConfiguradaUsaLaFechaDeSuNota() {
+        val selection = LomloeCommentEvidenceBuilder.selectNotebookForPeriod(
+            LomloeEvidenceInput(
+                studentId = ana,
+                evaluations = listOf(project, exam),
+                grades = listOf(grade(ana, "eval_50", 50, 1_200), grade(ana, "eval_51", 51, 3_000)),
+            ),
+            term,
+        )
+        assertEquals(listOf(50L), selection.evaluations.map { it.id })
     }
 }

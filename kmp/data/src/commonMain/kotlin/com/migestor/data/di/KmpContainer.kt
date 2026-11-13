@@ -176,6 +176,9 @@ class KmpContainer(val driver: SqlDriver) {
         incidents = incidentsRepository,
         tutoring = studentTutoringSessionRepository,
         schedules = teacherScheduleRepository,
+        classes = classesRepository,
+        attendance = attendanceRepository,
+        notebookSheet = buildNotebookSheet,
     )
 
     val notebookRepository = NotebookRepositorySqlDelight(

@@ -1,5 +1,6 @@
 package com.migestor.shared.usecase
 
+import com.migestor.shared.domain.Attendance
 import com.migestor.shared.domain.CompetencyCriterion
 import com.migestor.shared.domain.Evaluation
 import com.migestor.shared.domain.Grade
@@ -12,6 +13,8 @@ import com.migestor.shared.domain.PlannerEvaluationPeriod
 import com.migestor.shared.domain.RubricAssessment
 import com.migestor.shared.domain.RubricDetail
 import com.migestor.shared.domain.StudentTutoringSession
+import com.migestor.shared.repository.AttendanceRepository
+import com.migestor.shared.repository.ClassesRepository
 import com.migestor.shared.repository.CompetenciesRepository
 import com.migestor.shared.repository.EvaluationsRepository
 import com.migestor.shared.repository.GradesRepository
@@ -31,7 +34,8 @@ import kotlinx.datetime.plus
  * Evidencia cualitativa y por criterio de un alumno en un trimestre, lista para que
  * la IA local redacte el Comentario LOMLOE (issue #407, parte A).
  *
- * Todo sale de lo ya guardado: aquí no se calcula ninguna nota ni media. Las listas
+ * Todo sale de lo ya guardado. La única cifra que se calcula es [termMetrics] (media y
+ * asistencia del trimestre), con el motor de medias del Cuaderno. Las listas
  * llegan ya recortadas y ordenadas por prioridad; [omittedCriterionResults] y
  * [omittedObservations] dicen cuánto quedó fuera para poder avisarlo en pantalla.
  */
@@ -43,6 +47,11 @@ data class LomloeCommentEvidence(
     val omittedObservations: Int = 0,
     /** `true` si la evidencia se filtró por las fechas del trimestre. */
     val periodApplied: Boolean = false,
+    /**
+     * Media y asistencia del alumno restringidas al trimestre. Solo existe si [periodApplied];
+     * sin periodo configurado es `null` y quien consume usa las cifras de todo el curso.
+     */
+    val termMetrics: LomloeTermMetrics? = null,
 ) {
     val isEmpty: Boolean get() = criterionResults.isEmpty() && observations.isEmpty() && competencies.isEmpty()
 }
@@ -75,6 +84,36 @@ data class LomloeObservation(
     val dateEpochMs: Long = 0,
 )
 
+/**
+ * Cifras del alumno dentro del trimestre (issue #407). Nunca se mezclan con las de curso:
+ * si no hay datos en el periodo, el valor es `null` y no se rellena con el curso.
+ *
+ * - [averageScore]: media ponderada del Cuaderno (0-10) sobre las columnas del trimestre,
+ *   o `null` si ninguna columna del periodo tiene nota.
+ * - [attendanceRate]: porcentaje de asistencia 0-100 (sin redondear), o `null` si no hay
+ *   registros en el periodo. "Presente" es lo mismo que en el perfil del alumno: estado `PRESENTE`.
+ */
+data class LomloeTermMetrics(
+    val averageScore: Double? = null,
+    /** Columnas que han entrado en [averageScore]. */
+    val averagedColumnCount: Int = 0,
+    val attendanceRate: Double? = null,
+    val attendanceRecords: Int = 0,
+    val presentRecords: Int = 0,
+)
+
+/** Resultado de calcular la media del Cuaderno con las columnas del trimestre. */
+data class LomloeTermAverage(
+    val value: Double? = null,
+    val columnCount: Int = 0,
+)
+
+/** Evaluaciones y columnas del Cuaderno cuya fecha cae en el trimestre. */
+data class LomloeNotebookSelection(
+    val evaluations: List<Evaluation>,
+    val columns: List<NotebookColumnDefinition>,
+)
+
 /** Tramo de fechas de un trimestre, inclusivo en ambos extremos. */
 data class LomloePeriod(
     val startEpochMs: Long,
@@ -96,6 +135,7 @@ data class LomloeEvidenceInput(
     val cells: List<PersistedNotebookCell> = emptyList(),
     val incidents: List<Incident> = emptyList(),
     val tutoringSessions: List<StudentTutoringSession> = emptyList(),
+    val attendance: List<Attendance> = emptyList(),
 )
 
 object LomloeCommentEvidenceBuilder {
@@ -129,11 +169,66 @@ object LomloeCommentEvidenceBuilder {
         )
     }
 
+    /**
+     * Qué parte del Cuaderno cuenta para la media del trimestre.
+     *
+     * Regla: una columna (o evaluación) entra si su fecha cae en [period]. Fecha de la columna:
+     * la fecha propia de la columna si la tiene; si no, la última modificación de la nota o celda
+     * del alumno en ella; sin ninguna fecha (0) no se descarta, igual que el resto de la evidencia.
+     * Una evaluación sin columna configurada usa la última modificación de su nota.
+     * No toca pesos, categorías ni columnas ocultas: eso lo resuelve el mismo motor de medias del Cuaderno.
+     */
+    fun selectNotebookForPeriod(input: LomloeEvidenceInput, period: LomloePeriod): LomloeNotebookSelection {
+        val grades = input.grades.filter { it.studentId == input.studentId }
+        val cells = input.cells.filter { it.studentId == input.studentId }
+
+        fun valueDate(columnId: String, evaluationId: Long?): Long {
+            val gradeDates = grades
+                .filter { it.columnId == columnId || (evaluationId != null && it.evaluationId == evaluationId) }
+                .map { it.trace.updatedAt.toEpochMilliseconds() }
+            val cellDates = cells.filter { it.columnId == columnId }.map { it.trace.updatedAt.toEpochMilliseconds() }
+            return (gradeDates + cellDates).maxOrNull() ?: 0L
+        }
+
+        fun columnDate(column: NotebookColumnDefinition): Long =
+            column.dateEpochMs?.takeIf { it > 0L } ?: valueDate(column.id, column.evaluationId)
+
+        val columnByEvaluationId = input.columns
+            .filter { it.evaluationId != null }
+            .associateBy { it.evaluationId }
+        val evaluations = input.evaluations.filter { evaluation ->
+            val date = columnByEvaluationId[evaluation.id]?.let(::columnDate)
+                ?: valueDate("eval_${evaluation.id}", evaluation.id)
+            period.contains(date)
+        }
+        val columns = input.columns.filter { period.contains(columnDate(it)) }
+        return LomloeNotebookSelection(evaluations = evaluations, columns = columns)
+    }
+
+    /**
+     * Asistencia del alumno en el trimestre. Mismo criterio de "presente" que el perfil del
+     * alumno (`loadStudentProfile`): el estado contiene `PRESENT` sin distinguir mayúsculas,
+     * así que solo cuenta `PRESENTE` (tarde, justificado o exento no suman). Un registro sin
+     * fecha (0) no se descarta.
+     */
+    fun termAttendance(input: LomloeEvidenceInput, period: LomloePeriod): LomloeTermMetrics {
+        val records = input.attendance.filter {
+            it.studentId == input.studentId && period.contains(it.date.toEpochMilliseconds())
+        }
+        val present = records.count { it.status.uppercase().contains("PRESENT") }
+        return LomloeTermMetrics(
+            attendanceRate = if (records.isEmpty()) null else present * 100.0 / records.size,
+            attendanceRecords = records.size,
+            presentRecords = present,
+        )
+    }
+
     fun build(
         input: LomloeEvidenceInput,
         period: LomloePeriod? = null,
         maxCriterionResults: Int = DEFAULT_MAX_CRITERION_RESULTS,
         maxObservations: Int = DEFAULT_MAX_OBSERVATIONS,
+        termAverage: LomloeTermAverage? = null,
     ): LomloeCommentEvidence {
         fun inPeriod(epochMs: Long) = period?.contains(epochMs) ?: true
 
@@ -240,6 +335,12 @@ object LomloeCommentEvidenceBuilder {
             omittedCriterionResults = allResults.size - criterionResults.size,
             omittedObservations = allObservations.size - observations.size,
             periodApplied = period != null,
+            termMetrics = period?.let {
+                termAttendance(input, it).copy(
+                    averageScore = termAverage?.value,
+                    averagedColumnCount = termAverage?.columnCount ?: 0,
+                )
+            },
         )
     }
 
@@ -283,6 +384,10 @@ class BuildLomloeCommentEvidenceUseCase(
     private val incidents: IncidentsRepository,
     private val tutoring: StudentTutoringSessionRepository,
     private val schedules: TeacherScheduleRepository,
+    private val classes: ClassesRepository,
+    private val attendance: AttendanceRepository,
+    /** El mismo motor de medias que el Cuaderno: así la media del trimestre es coherente con la pantalla. */
+    private val notebookSheet: BuildNotebookSheetUseCase,
 ) {
     @Throws(Throwable::class)
     suspend fun invoke(
@@ -305,22 +410,54 @@ class BuildLomloeCommentEvidenceUseCase(
         val period = schedules.findExistingSchedule()
             ?.let { schedules.listEvaluationPeriods(it.id) }
             ?.let { LomloeCommentEvidenceBuilder.resolvePeriod(it, termKey) }
+        val studentGrades = grades.listGradesForClass(classId).filter { it.studentId == studentId }
+        val studentCells = notebookCells.listClassCells(classId).filter { it.studentId == studentId }
+        val columns = notebookConfig.listColumns(classId)
+        val input = LomloeEvidenceInput(
+            studentId = studentId,
+            evaluations = classEvaluations,
+            rubrics = classRubrics,
+            assessments = assessments,
+            grades = studentGrades,
+            competencies = competencies.listCompetencies(),
+            columns = columns,
+            cells = studentCells,
+            incidents = incidents.listIncidents(classId).filter { it.studentId == studentId },
+            tutoringSessions = tutoring.listByStudent(studentId),
+            attendance = attendance.listAttendance(classId).filter { it.studentId == studentId },
+        )
         return LomloeCommentEvidenceBuilder.build(
-            input = LomloeEvidenceInput(
-                studentId = studentId,
-                evaluations = classEvaluations,
-                rubrics = classRubrics,
-                assessments = assessments,
-                grades = grades.listGradesForClass(classId).filter { it.studentId == studentId },
-                competencies = competencies.listCompetencies(),
-                columns = notebookConfig.listColumns(classId),
-                cells = notebookCells.listClassCells(classId).filter { it.studentId == studentId },
-                incidents = incidents.listIncidents(classId).filter { it.studentId == studentId },
-                tutoringSessions = tutoring.listByStudent(studentId),
-            ),
+            input = input,
             period = period,
             maxCriterionResults = maxCriterionResults,
             maxObservations = maxObservations,
+            termAverage = period?.let { termAverage(classId, studentId, input, it) },
+        )
+    }
+
+    /** Media del Cuaderno del alumno, calculada solo con las columnas del trimestre. */
+    private suspend fun termAverage(
+        classId: Long,
+        studentId: Long,
+        input: LomloeEvidenceInput,
+        period: LomloePeriod,
+    ): LomloeTermAverage {
+        val student = classes.listStudentsInClass(classId).firstOrNull { it.id == studentId }
+            ?: return LomloeTermAverage()
+        val selection = LomloeCommentEvidenceBuilder.selectNotebookForPeriod(input, period)
+        val sheet = notebookSheet.build(
+            classId = classId,
+            evaluations = selection.evaluations,
+            students = listOf(student),
+            tabs = notebookConfig.listTabs(classId),
+            configuredColumns = selection.columns,
+            persistedGrades = input.grades,
+            persistedCells = input.cells,
+        )
+        val row = sheet.rows.firstOrNull { it.student.id == studentId }
+        return LomloeTermAverage(
+            value = row?.weightedAverage,
+            columnCount = row?.averageExplanation?.included?.size ?: 0,
         )
     }
 }

@@ -1,6 +1,7 @@
 package com.migestor.desktop.sync
 
 import kotlinx.serialization.json.Json
+import kotlin.math.abs
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -24,6 +25,12 @@ internal sealed interface LiveAcceptResult {
 internal const val LIVE_BODY_LIMIT_BYTES = 16 * 1024
 internal const val LIVE_RETENTION_MS = 30_000L
 internal const val LIVE_MAX_SCORES = 64
+/** Margen admitido entre la hora que manda el iPad y la del Mac (24 h). Fuera de él, inválido. */
+internal const val LIVE_CLOCK_WINDOW_MS = 24L * 60 * 60 * 1000
+/** Tope de segundos de un reloj de ronda (24 h). */
+internal const val LIVE_MAX_SECONDS = 86_400
+/** Tope de número de ronda. */
+internal const val LIVE_MAX_ROUND = 10_000
 
 /**
  * Guarda en memoria el último estado en directo de un torneo (iPad -> helper -> Mac).
@@ -71,7 +78,7 @@ internal class LiveStateRelay {
         val sessionId = root.string("sessionId")?.takeIf { it.length in 1..64 } ?: return null
         val tournamentId = root.string("tournamentId")?.takeIf { it.length in 1..64 } ?: return null
         val seq = root.long("seq")?.takeIf { it >= 0 } ?: return null
-        val sentAtMs = root.long("sentAtMs") ?: return null
+        val sentAtMs = root.long("sentAtMs")?.takeIf { abs(it - nowMs) <= LIVE_CLOCK_WINDOW_MS } ?: return null
         val rawStatus = root.string("status") ?: return null
         val status = if (rawStatus in KNOWN_STATUS) rawStatus else "paused"
         val rawScene = root.string("scene") ?: "auto"
@@ -79,18 +86,19 @@ internal class LiveStateRelay {
 
         val roundElement = root["roundNumber"]
         val roundNumber: Int? = if (roundElement == null || roundElement is JsonNull) null
-        else root.int("roundNumber")?.takeIf { it >= 0 } ?: return null
+        else root.int("roundNumber")?.takeIf { it in 0..LIVE_MAX_ROUND } ?: return null
 
         val timerElement = root["timer"]
         var timerJson: JsonObject? = null
         if (timerElement != null && timerElement !is JsonNull) {
             val timer = timerElement as? JsonObject ?: return null
-            val totalS = timer.int("totalS")?.takeIf { it >= 0 } ?: return null
+            val totalS = timer.int("totalS")?.takeIf { it in 0..LIVE_MAX_SECONDS } ?: return null
             val endAt = timer["endAtMs"]
             val paused = timer["pausedRemainingS"]
-            val endAtMs = if (endAt == null || endAt is JsonNull) null else timer.long("endAtMs") ?: return null
+            val endAtMs = if (endAt == null || endAt is JsonNull) null
+            else timer.long("endAtMs")?.takeIf { abs(it - nowMs) <= LIVE_CLOCK_WINDOW_MS } ?: return null
             val pausedS = if (paused == null || paused is JsonNull) null
-            else timer.int("pausedRemainingS")?.takeIf { it >= 0 } ?: return null
+            else timer.int("pausedRemainingS")?.takeIf { it in 0..LIVE_MAX_SECONDS } ?: return null
             timerJson = buildJsonObject {
                 if (endAtMs != null) put("endAtMs", endAtMs)
                 if (pausedS != null) put("pausedRemainingS", pausedS)

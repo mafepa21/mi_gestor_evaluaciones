@@ -115,6 +115,8 @@ struct TournamentLiveState: Codable, Equatable, Sendable {
 /// diferencia entre relojes más la latencia, y el mínimo se queda con la muestra más rápida.
 struct TournamentLiveClock: Equatable, Sendable {
     static let maxSamples = 12
+    /// Desfase máximo creíble entre relojes (24 h); más allá se ignora la muestra.
+    static let maxOffsetMs: Int64 = 24 * 60 * 60 * 1000
 
     private(set) var offsets: [Int64] = []
 
@@ -123,7 +125,10 @@ struct TournamentLiveClock: Equatable, Sendable {
     /// Anota el desfase de un estado recién llegado (si trae `receivedAtMs`).
     mutating func observe(_ state: TournamentLiveState) {
         guard let received = state.receivedAtMs else { return }
-        offsets.append(received - state.sentAtMs)
+        // Resta segura: un valor extremo nunca debe cerrar la app del Mac.
+        let (offset, overflow) = received.subtractingReportingOverflow(state.sentAtMs)
+        guard !overflow, abs(offset) <= Self.maxOffsetMs else { return }
+        offsets.append(offset)
         if offsets.count > Self.maxSamples {
             offsets.removeFirst(offsets.count - Self.maxSamples)
         }
@@ -136,8 +141,11 @@ struct TournamentLiveClock: Equatable, Sendable {
         guard let timer = state.timer else { return nil }
         if state.status == .timeUp { return 0 }
         if state.status == .running, let end = timer.endAtMs {
-            let diff = end + offsetMs - nowMs
-            return diff <= 0 ? 0 : Int((diff + 999) / 1000)
+            let (shifted, o1) = end.addingReportingOverflow(offsetMs)
+            let (diff, o2) = shifted.subtractingReportingOverflow(nowMs)
+            guard !o1, !o2 else { return 0 }
+            if diff <= 0 { return 0 }
+            return Int((min(diff, Self.maxOffsetMs) + 999) / 1000)
         }
         return max(0, timer.pausedRemainingS ?? timer.totalS)
     }

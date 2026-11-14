@@ -105,7 +105,9 @@ final class TournamentLivePublisher: ObservableObject {
         components.port = 8765
         components.path = "/live/state"
         guard let url = components.url else { return nil }
-        return Target(url: url, token: token, fingerprint: bridge.pairedServerFingerprint)
+        // Sin huella del Mac no hay TLS anclado: no se manda el token (se trata como no enlazado).
+        guard let fingerprint = bridge.pairedServerFingerprint, !fingerprint.isEmpty else { return nil }
+        return Target(url: url, token: token, fingerprint: fingerprint)
     }
 
     private func sendIfPossible(force: Bool) {

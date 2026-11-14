@@ -133,4 +133,19 @@ class LiveStateRelayTest {
         assertTrue(frame.endsWith("}\n\n"))
         assertEquals(1, frame.trimEnd('\n').lines().size)
     }
+
+    @Test
+    fun rechazaHorasYNumerosFueraDeRango() {
+        val relay = LiveStateRelay()
+        val now = 1_000_000L
+        fun raw(sent: String, endAt: String = "${now + 60_000}", totalS: String = "60", round: String = "2") = """
+            {"v":1,"sessionId":"s9","tournamentId":"t1","seq":1,"sentAtMs":$sent,"status":"running",
+             "roundNumber":$round,"timer":{"endAtMs":$endAt,"totalS":$totalS},"scene":"auto","scores":{}}
+        """.trimIndent()
+        assertEquals(LiveAcceptResult.Invalid, relay.accept(raw(sent = Long.MIN_VALUE.toString()), now))
+        assertEquals(LiveAcceptResult.Invalid, relay.accept(raw(sent = "$now", endAt = Long.MAX_VALUE.toString()), now))
+        assertEquals(LiveAcceptResult.Invalid, relay.accept(raw(sent = "$now", totalS = "86401"), now))
+        assertEquals(LiveAcceptResult.Invalid, relay.accept(raw(sent = "$now", round = "10001"), now))
+        assertIs<LiveAcceptResult.Accepted>(relay.accept(raw(sent = "$now"), now))
+    }
 }

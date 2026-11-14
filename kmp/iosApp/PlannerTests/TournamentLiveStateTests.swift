@@ -96,6 +96,18 @@ final class TournamentLiveStateTests: XCTestCase {
         XCTAssertEqual(clock.offsetMs, 80)
     }
 
+    func testValoresExtremosNoCierranLaApp() {
+        // Una muestra imposible se ignora y el reloj no se desborda.
+        var clock = TournamentLiveClock()
+        let extreme = state(sentAtMs: .min, receivedAtMs: .max)
+        clock.observe(extreme)
+        XCTAssertEqual(clock.offsetMs, 0)
+        let timer = TournamentLiveTimer(endAtMs: .max, pausedRemainingS: nil, totalS: 60)
+        let live = state(timer: timer)
+        XCTAssertNotNil(clock.remainingSeconds(of: live, nowMs: .min))
+        XCTAssertNotNil(clock.remainingSeconds(of: live, nowMs: 0))
+    }
+
     func testRelojEnPausaYAlLlegarACero() {
         let clock = TournamentLiveClock()
         let paused = state(status: .paused, timer: TournamentLiveTimer(endAtMs: nil, pausedRemainingS: 37, totalS: 480))

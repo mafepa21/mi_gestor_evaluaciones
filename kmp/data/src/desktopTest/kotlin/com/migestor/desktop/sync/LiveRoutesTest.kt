@@ -32,8 +32,9 @@ class LiveRoutesTest {
     private lateinit var sslContext: SSLContext
     private lateinit var pairedToken: String
 
-    private val validBody = """
-        {"v":1,"sessionId":"s-live","tournamentId":"t1","seq":SEQ,"sentAtMs":1000,"status":"running",
+    // Hora real: el helper rechaza horas a más de 24 h de la suya.
+    private val validBody get() = """
+        {"v":1,"sessionId":"s-live","tournamentId":"t1","seq":SEQ,"sentAtMs":${System.currentTimeMillis()},"status":"running",
          "scene":"auto","scores":{"11111111-2222-3333-4444-555555555555":[1,2]}}
     """.trimIndent()
 

@@ -90,6 +90,13 @@ extension KmpBridge {
             .map(Self.tournamentRecord(from:))
     }
 
+    /// Un torneo por su id, o `nil` si no existe (borrado en el otro dispositivo, por ejemplo).
+    func tournament(id: String) async throws -> TournamentRecord? {
+        try await container.learningSituationsRepository
+            .getTournament(id: id)
+            .map(Self.tournamentRecord(from:))
+    }
+
     /// Torneos de un curso, con o sin SdA, del más antiguo al más reciente.
     func tournaments(forClassId classId: Int64) async throws -> [TournamentRecord] {
         try await container.learningSituationsRepository

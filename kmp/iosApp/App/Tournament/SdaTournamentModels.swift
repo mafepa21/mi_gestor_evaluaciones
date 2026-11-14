@@ -157,6 +157,17 @@ final class SdaTournamentStore: ObservableObject {
         saveFailed = false
     }
 
+    /// Vuelve a leer el torneo de la base cuando llegan cambios del otro dispositivo (los resultados
+    /// del iPad). No toca nada si hay cambios propios sin guardar: gana lo que se está editando aquí.
+    func refreshFromDatabase() async {
+        guard !isDeleted, !isDirty, saveTask == nil else { return }
+        guard let fresh = try? await bridge.tournament(id: record.id), fresh != record else { return }
+        // Mientras se esperaba la base pudo empezar una edición: entonces no se pisa.
+        guard !isDeleted, !isDirty, saveTask == nil, let freshPlan = try? fresh.plan() else { return }
+        record = fresh
+        if freshPlan != plan { plan = freshPlan }
+    }
+
     private func startSaving() {
         guard saveTask == nil, isDirty, !isDeleted else { return }
         saveTask = Task { [weak self] in
@@ -173,6 +184,7 @@ final class SdaTournamentStore: ObservableObject {
                 record = saved
                 saveFailed = false
                 onSaved?(saved)
+                NotificationCenter.default.post(name: .tournamentPlanSaved, object: nil, userInfo: ["id": saved.id])
             } catch {
                 isDirty = true
                 saveFailed = true
@@ -181,6 +193,12 @@ final class SdaTournamentStore: ObservableObject {
         }
         saveTask = nil
     }
+}
+
+extension Notification.Name {
+    /// Se publica tras guardar un torneo en este dispositivo; `userInfo["id"]` es el id del torneo.
+    /// La proyección del Mac lo usa para refrescarse con lo que se anota en el propio Mac.
+    static let tournamentPlanSaved = Notification.Name("tournamentPlanSaved")
 }
 
 /// Destino de una hoja: id estable para `.sheet(item:)`.

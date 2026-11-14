@@ -111,6 +111,15 @@ struct MiGestorKMPMacApp: App {
         .defaultSize(width: 900, height: 640)
         .defaultPosition(.center)
 
+        // Proyección de un torneo: una ventana por torneo (el valor es su id). Se abre a mano desde el torneo.
+        WindowGroup("Proyección", id: MacTournamentProjectionWindowID.value, for: String.self) { $tournamentId in
+            MacTournamentProjectionWindow(tournamentId: tournamentId, session: session)
+        }
+        .defaultSize(width: 1280, height: 720)
+        .defaultPosition(.center)
+        .windowStyle(.hiddenTitleBar)
+        .commandsRemoved()
+
         Window("Sync LAN", id: MacDesktopWindowID.sync.rawValue) {
             MacAuxiliaryWindowRoot(themeMode: themeMode) {
                 MacSyncWindowScene(session: session)

@@ -603,7 +603,8 @@ extension TournamentPlan {
         PlacementStandings.rank(teamNames: teamNames, results: savedResults)
     }
 
-    private var placementBracket: PlacementBracket {
+    /// Árbol fijo del cuadro de puestos. Se expone para dibujarlo (`BracketTreeLayout`); no cambia el calendario.
+    var placementBracket: PlacementBracket {
         PlacementBracket(teamCount: teamCount, maxRounds: placementRounds)
     }
 

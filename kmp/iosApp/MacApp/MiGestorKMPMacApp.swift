@@ -254,8 +254,15 @@ private struct MacAuxiliaryWindowRoot<Content: View>: View {
 
 private struct MacApplicationRootView: View {
     @ObservedObject var session: MacAppSessionController
+    @ObservedObject private var liveListener: MacTournamentLiveListener
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.openWindow) private var openWindow
     @AppStorage("mac_reduce_motion") private var prefersReducedMotion = false
+
+    init(session: MacAppSessionController) {
+        self.session = session
+        _liveListener = ObservedObject(wrappedValue: session.liveListener)
+    }
 
     var body: some View {
         MacRootView(session: session)
@@ -263,6 +270,15 @@ private struct MacApplicationRootView: View {
                 \.uiFeatureFlags,
                 UiFeatureFlags.default.withReducedMotion(accessibilityReduceMotion || prefersReducedMotion)
             )
+            // El iPad empezó el modo competición: la proyección se abre sola (necesita esta ventana abierta).
+            .onChange(of: liveListener.pendingOpenTournamentId) { _, _ in openPendingProjection() }
+            .onAppear { openPendingProjection() }
+    }
+
+    private func openPendingProjection() {
+        guard let tournamentId = liveListener.pendingOpenTournamentId else { return }
+        liveListener.consumeOpenRequest()
+        openWindow(id: MacTournamentProjectionWindowID.value, value: tournamentId)
     }
 }
 

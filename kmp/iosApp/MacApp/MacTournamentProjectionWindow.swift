@@ -14,7 +14,17 @@ enum MacTournamentProjectionWindowID {
 struct MacTournamentProjectionWindow: View {
     let tournamentId: String?
     @ObservedObject var session: MacAppSessionController
+    @ObservedObject private var live: MacTournamentLiveListener
     @AppStorage("mac_reduce_motion") private var prefersReducedMotion = false
+    @Environment(\.dismiss) private var dismiss
+    /// Cierre pendiente tras enseñar el podio (ventana abierta sola).
+    @State private var podiumCloseTask: Task<Void, Never>?
+
+    init(tournamentId: String?, session: MacAppSessionController) {
+        self.tournamentId = tournamentId
+        self.session = session
+        _live = ObservedObject(wrappedValue: session.liveListener)
+    }
 
     private enum Phase {
         case loading
@@ -34,6 +44,15 @@ struct MacTournamentProjectionWindow: View {
                 session.start()
                 await load()
             }
+            .onAppear {
+                if let tournamentId { live.windowOpened(tournamentID: tournamentId) }
+            }
+            .onDisappear {
+                podiumCloseTask?.cancel()
+                podiumCloseTask = nil
+                if let tournamentId { live.windowClosed(tournamentID: tournamentId) }
+            }
+            .onChange(of: live.latestState) { _, _ in evaluateWindowClosing() }
             .reloadOnLanSync(.learningSituations) { await load() }
             .onReceive(NotificationCenter.default.publisher(for: .tournamentPlanSaved)) { notification in
                 guard notification.userInfo?["id"] as? String == tournamentId else { return }
@@ -45,7 +64,11 @@ struct MacTournamentProjectionWindow: View {
     private var content: some View {
         switch phase {
         case .ready(let plan):
-            SdaProjectionView(plan: plan, forceReduceMotion: prefersReducedMotion)
+            SdaProjectionView(
+                plan: plan,
+                forceReduceMotion: prefersReducedMotion,
+                live: tournamentId.flatMap { live.projection(for: $0) }
+            )
         case .loading:
             message("Cargando el torneo…")
         case .missing:
@@ -61,6 +84,49 @@ struct MacTournamentProjectionWindow: View {
             .padding(40)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.white)
+    }
+
+    /// Ventana abierta sola: se cierra cuando el iPad termina. Con el torneo terminado (hay campeón)
+    /// enseña el podio `podiumHoldSeconds` y luego se cierra; sin terminar, se cierra al momento.
+    /// Una sesión nueva durante el podio cancela el cierre. Una ventana abierta a mano nunca se cierra sola.
+    private func evaluateWindowClosing() {
+        guard let tournamentId, let state = live.latestState else { return }
+        var finished = false
+        if case .ready(let plan) = phase {
+            // El estado de cierre trae los últimos marcadores: así el podio se ve aunque la sync aún no haya llegado.
+            let finalPlan = TournamentLiveOverlay.apply(
+                state, to: plan, tournamentID: tournamentId, isStale: false, allowEnded: true
+            )
+            finished = TournamentPhaseTimeline.make(plan: finalPlan).currentKind == .podium
+        }
+        let action = TournamentLiveProjectionPolicy.windowAction(
+            openedAutomatically: live.wasOpenedAutomatically(tournamentID: tournamentId),
+            windowTournamentID: tournamentId,
+            state: state,
+            tournamentFinished: finished
+        )
+        switch action {
+        case .keepOpen:
+            podiumCloseTask?.cancel()
+            podiumCloseTask = nil
+        case .closeNow:
+            podiumCloseTask?.cancel()
+            podiumCloseTask = nil
+            closeByPolicy(tournamentId)
+        case .closeAfter(let seconds):
+            guard podiumCloseTask == nil else { return }
+            podiumCloseTask = Task {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                podiumCloseTask = nil
+                closeByPolicy(tournamentId)
+            }
+        }
+    }
+
+    private func closeByPolicy(_ tournamentId: String) {
+        live.willCloseByPolicy(tournamentID: tournamentId)
+        dismiss()
     }
 
     private func load() async {

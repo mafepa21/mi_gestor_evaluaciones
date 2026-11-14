@@ -4,7 +4,8 @@
 
 - Torneos ligados a una Situación de Aprendizaje. Formatos: Liga, Rotaciones, Eliminatoria, Liguilla + eliminatorias y Liguilla + puestos (nadie queda eliminado: quien gana sigue por los puestos de arriba).
 - F1 (`codex/torneos-cuadro-f1`): línea de fases y cuadro en árbol con «Seguir a» en el detalle (iPad y Mac).
-- Pendiente: F2 (ventana de proyección en el Mac con la sync de hoy) y F3 (canal en directo iPad → helper → Mac). Decisiones del docente: la proyección se abre sola, solo muestra «Equipo N · Pista P» (sin nombres) y usa fondo claro.
+- F2 (`codex/torneos-proyeccion-f2`): ventana de proyección en el Mac abierta con «Proyectar» (`MacTournamentProjectionWindow`, `SdaProjectionScenes`, `TournamentProjectionModel`) y recarga con la sync.
+- Pendiente: F3 (canal en directo iPad → helper → Mac). Decisiones del docente: la proyección se abre sola, solo muestra «Equipo N · Pista P» (sin nombres) y usa fondo claro.
 
 ## Terreno de juego
 
@@ -21,5 +22,12 @@
 - Si el calendario guardado no cuadra con el árbol (p. ej. cambió `placementRounds`), `BracketTreeLayout.make` devuelve nil y la vista muestra un aviso en vez del cuadro.
 - «En juego» en el árbol es una deducción (primera ronda con partidos pendientes y las dos parejas conocidas): el plan no guarda qué se está jugando. El estado real llegará con F3.
 - `BracketTreeLayout.make` se recalcula en cada render del detalle; vigilar con torneos muy grandes.
-- Las vistas de torneo no llevan `.reloadOnLanSync`: un torneo abierto en el Mac no se refresca al llegar resultados (lo arregla F2).
 - `SyncEventListener` trata cualquier `data:` desconocido como «sincroniza ya»: el canal en directo de F3 no puede ir por `/sync/events`.
+- `TournamentProjectionModel` nunca expone nombres: todo equipo pasa por `ProjectionTeamLabels` («Equipo N», N = posición en `plan.teams`). Un texto nuevo de la proyección debe entrar en `allTexts` para que el test de nombres lo cubra.
+- En la proyección, la ronda «en juego» y el «descanso» son deducciones (primera ronda con partidos pendientes; descanso = ronda previa completa y ningún resultado en la actual). No hay reloj hasta F3.
+- El cuadro proyectado se parte en mitades solo si una ronda tiene más de 8 partidos.
+- La proyección se refresca con `.tournamentPlanSaved` (guardado en este Mac) y con `.reloadOnLanSync(.learningSituations)`. Un guardado que no pase por `SdaTournamentStore` no la refresca.
+- `SdaTournamentStore.refreshFromDatabase()` no hace nada si hay cambios sin guardar. El detalle aplaza la recarga mientras haya una hoja, integrantes, inscripción o modo directo abiertos (`hasPendingRemoteReload`).
+- «Proyectar» y `openWindow` solo existen bajo `#if os(macOS)`. `SdaProjectionScenes.swift` es SwiftUI puro: no meter AppKit ahí.
+- La ventana de proyección guarda un monitor de teclado (Esc) y una actividad de `ProcessInfo` para no dormir el Mac. Ambos se liberan en `willClose`.
+- `groupStandings` devuelve «Grupo Grupo A» (bug previo, sin arreglar). La proyección usa `GroupStageConfiguration.groupName`.

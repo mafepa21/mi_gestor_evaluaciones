@@ -42,6 +42,11 @@ struct SdaTournamentDetailView: View {
     @State private var contentWidth: CGFloat = 0
     @State private var showingRegistration = false
     @State private var showingMembers = false
+    /// Llegaron cambios del otro dispositivo mientras había una hoja abierta: se recargan al cerrarla.
+    @State private var hasPendingRemoteReload = false
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    #endif
 
     /// Ancho a partir del cual la clasificación de una liga se muestra al lado del calendario.
     private static let wideLayoutWidth: CGFloat = 820
@@ -210,6 +215,13 @@ struct SdaTournamentDetailView: View {
             if isFromScratch, plan.registration == nil { showingRegistration = true }
             await loadRoster()
         }
+        // Resultados anotados en el iPad: se recargan, salvo con una hoja o el modo directo abiertos
+        // (se pisaría lo que se está escribiendo); entonces esperan a que se cierre.
+        .reloadOnLanSync(.learningSituations) { await reloadAfterRemoteChange() }
+        .onChange(of: scoreTarget?.id) { _, _ in reloadPendingIfPossible() }
+        .onChange(of: showingMembers) { _, _ in reloadPendingIfPossible() }
+        .onChange(of: showingRegistration) { _, _ in reloadPendingIfPossible() }
+        .onChange(of: isLive) { _, _ in reloadPendingIfPossible() }
         .onChange(of: tabs) { _, newTabs in
             if !newTabs.contains(selectedTab) { selectedTab = .calendar }
         }
@@ -271,6 +283,40 @@ struct SdaTournamentDetailView: View {
         }
     }
 
+    private var hasOpenSheet: Bool {
+        scoreTarget != nil || showingMembers || showingRegistration || isLive
+    }
+
+    private func reloadAfterRemoteChange() async {
+        guard !hasOpenSheet else {
+            hasPendingRemoteReload = true
+            return
+        }
+        hasPendingRemoteReload = false
+        await store.refreshFromDatabase()
+    }
+
+    private func reloadPendingIfPossible() {
+        guard hasPendingRemoteReload, !hasOpenSheet else { return }
+        Task { await reloadAfterRemoteChange() }
+    }
+
+    #if os(macOS)
+    /// Abre la ventana de proyección de este torneo (se mueve al proyector si lo hay).
+    private var projectButton: some View {
+        Button {
+            openWindow(id: MacTournamentProjectionWindowID.value, value: store.record.id)
+        } label: {
+            Label("Proyectar", systemImage: "tv")
+                .frame(minHeight: 44)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+        .disabled(plan.savedSchedule.isEmpty)
+        .accessibilityHint("Abre una ventana a pantalla completa con la ronda en juego, la clasificación y el cuadro, sin nombres.")
+    }
+    #endif
+
     private func enterLiveMode() {
         isLive = true
     }
@@ -324,6 +370,9 @@ struct SdaTournamentDetailView: View {
                 .frame(minHeight: 44)
                 if !isEmbedded, !plan.savedSchedule.isEmpty {
                     liveModeButton(fillsWidth: true)
+                    #if os(macOS)
+                    projectButton
+                    #endif
                 }
             }
         }
@@ -368,10 +417,16 @@ struct SdaTournamentDetailView: View {
                     HStack(spacing: 12) {
                         liveModeButton(fillsWidth: false)
                         printButton(prominent: false, fillsWidth: false)
+                        #if os(macOS)
+                        projectButton
+                        #endif
                     }
                     VStack(spacing: 12) {
                         liveModeButton(fillsWidth: true)
                         printButton(prominent: false, fillsWidth: true)
+                        #if os(macOS)
+                        projectButton
+                        #endif
                     }
                 }
             }

@@ -33,7 +33,21 @@ struct ProjectionTeamLabels: Equatable, Sendable {
     }
 
     func label(name: String) -> String {
-        numberByName[name].map { "Equipo \($0)" } ?? name
+        if let number = numberByName[name] { return "Equipo \(number)" }
+        return Self.isSlotPlaceholder(name) ? name : Self.unknownTeam
+    }
+
+    /// Texto para un participante que no es un equipo del plan ni un hueco conocido. Nunca se
+    /// devuelve el texto original: podría ser un nombre antiguo del alumnado.
+    static let unknownTeam = "Equipo"
+
+    /// Huecos del cuadro que genera la app («Gana P5», «Ganador P3», «Clasificado 1 Grupo A»,
+    /// «3º liguilla», «1º Grupo A»). Solo estos pasan tal cual a la proyección.
+    static func isSlotPlaceholder(_ text: String) -> Bool {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.range(of: #"^(Gana|Pierde|Ganador|Perdedor) P\d+$"#, options: .regularExpression) != nil
+            || value.range(of: #"^Clasificado \d+( Grupo [A-Z0-9]+)?$"#, options: .regularExpression) != nil
+            || value.range(of: #"^\d+º (liguilla|Grupo [A-Z0-9]+)$"#, options: .regularExpression) != nil
     }
 
     func label(id: String) -> String? {
@@ -604,7 +618,7 @@ struct TournamentProjectionModel: Equatable, Sendable {
     }
 
     private static func side(_ side: BracketSide, labels: ProjectionTeamLabels) -> ProjectionBracketSide {
-        let label = side.teamID.flatMap { labels.label(id: $0) } ?? side.label
+        let label = side.teamID.flatMap { labels.label(id: $0) } ?? labels.label(name: side.label)
         return ProjectionBracketSide(label: label, score: side.score, isWinner: side.isWinner, isDirectPass: side.isDirectPass)
     }
 

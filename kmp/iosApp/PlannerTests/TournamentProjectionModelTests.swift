@@ -272,6 +272,16 @@ final class TournamentProjectionModelTests: XCTestCase {
         let home = try XCTUnwrap(plan.teams.firstIndex { $0.name == slot.match.homeTeam })
         XCTAssertEqual(round.matches.first?.home, "Equipo \(home + 1)")
     }
+    func testUnNombreDesconocidoNuncaLlegaALaProyeccion() throws {
+        let labels = ProjectionTeamLabels(plan: try placement(teams: 8, venues: 4))
+        // Nombre que no está en el plan (p. ej. de una edición anterior): no se proyecta.
+        XCTAssertEqual(labels.label(name: "Marta y Leo"), ProjectionTeamLabels.unknownTeam)
+        XCTAssertEqual(labels.label(name: "Andrés y Pablo 2"), ProjectionTeamLabels.unknownTeam)
+        // Los huecos del cuadro sí pasan tal cual.
+        for slot in ["Gana P5", "Pierde P12", "Ganador P3", "Perdedor P1", "Clasificado 2 Grupo B", "Clasificado 3", "3º liguilla", "1º Grupo A"] {
+            XCTAssertEqual(labels.label(name: slot), slot)
+        }
+    }
 }
 
 private extension ProjectionBracket {

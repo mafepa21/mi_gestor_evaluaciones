@@ -23,7 +23,7 @@
 - «En juego» en el árbol es una deducción (primera ronda con partidos pendientes y las dos parejas conocidas): el plan no guarda qué se está jugando. El estado real llegará con F3.
 - `BracketTreeLayout.make` se recalcula en cada render del detalle; vigilar con torneos muy grandes.
 - `SyncEventListener` trata cualquier `data:` desconocido como «sincroniza ya»: el canal en directo de F3 no puede ir por `/sync/events`.
-- `TournamentProjectionModel` nunca expone nombres: todo equipo pasa por `ProjectionTeamLabels` («Equipo N», N = posición en `plan.teams`). Un texto nuevo de la proyección debe entrar en `allTexts` para que el test de nombres lo cubra.
+- `TournamentProjectionModel` nunca expone nombres: todo equipo pasa por `ProjectionTeamLabels` («Equipo N», N = posición en `plan.teams`). Un texto nuevo de la proyección debe entrar en `allTexts` para que el test de nombres lo cubra. Un participante que no es equipo del plan solo pasa tal cual si es un hueco de la lista `isSlotPlaceholder` («Gana P5», «Clasificado 1 Grupo A», «3º liguilla»…); si no, sale «Equipo». Un formato nuevo de hueco hay que añadirlo ahí.
 - En la proyección, la ronda «en juego» y el «descanso» son deducciones (primera ronda con partidos pendientes; descanso = ronda previa completa y ningún resultado en la actual). No hay reloj hasta F3.
 - El cuadro proyectado se parte en mitades solo si una ronda tiene más de 8 partidos.
 - La proyección se refresca con `.tournamentPlanSaved` (guardado en este Mac) y con `.reloadOnLanSync(.learningSituations)`. Un guardado que no pase por `SdaTournamentStore` no la refresca.

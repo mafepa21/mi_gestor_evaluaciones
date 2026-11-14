@@ -53,6 +53,9 @@ struct SdaProjectionView: View {
     let plan: TournamentPlan
     /// Si el Mac tiene su propio ajuste de «Reducir movimiento».
     var forceReduceMotion = false
+    /// Estado en directo del iPad (reloj, marcadores provisionales, ronda y escena). Sin él, el
+    /// aspecto es el de siempre: lo guardado en el plan.
+    var live: TournamentLiveProjection?
 
     @State private var rotation = 0
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
@@ -60,7 +63,8 @@ struct SdaProjectionView: View {
     private var reduceMotion: Bool { systemReduceMotion || forceReduceMotion }
 
     var body: some View {
-        let model = TournamentProjectionModel.make(plan: plan)
+        let shownPlan = live?.plan(overlaying: plan) ?? plan
+        let model = TournamentProjectionModel.make(plan: shownPlan, hints: live?.hints)
         GeometryReader { geometry in
             let metrics = ProjectionMetrics(size: geometry.size)
             ZStack {
@@ -72,6 +76,9 @@ struct SdaProjectionView: View {
                             .transition(.opacity)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if let live, live.showsOfflineNotice {
+                        ProjectionOfflineNotice(receivedAtMs: live.state.arrivalMs, metrics: metrics)
+                    }
                     ProjectionFooterView(model: model, metrics: metrics)
                 }
                 .padding(.horizontal, metrics.length(3))
@@ -104,7 +111,8 @@ struct SdaProjectionView: View {
         case .empty(let value): ProjectionMessageScene(value: value, metrics: metrics)
         case .notStarted(let value): ProjectionUpNextScene(value: value, metrics: metrics)
         case .upNext(let value): ProjectionUpNextScene(value: value, metrics: metrics)
-        case .round(let value): ProjectionRoundScene(value: value, metrics: metrics)
+        case .round(let value):
+            ProjectionRoundScene(value: value, metrics: metrics, live: live?.showsClock == true ? live : nil)
         case .standings(let value): ProjectionStandingsScene(value: value, metrics: metrics)
         case .bracket(let value): ProjectionBracketScene(value: value, metrics: metrics)
         case .phaseEnd(let value): ProjectionPhaseEndScene(value: value, metrics: metrics)
@@ -203,6 +211,8 @@ private struct ProjectionMessageScene: View {
 private struct ProjectionRoundScene: View {
     let value: ProjectionRound
     let metrics: ProjectionMetrics
+    /// Con reloj en directo, se pinta a la derecha del título.
+    var live: TournamentLiveProjection?
 
     private var columns: Int {
         switch value.matches.count {
@@ -215,7 +225,12 @@ private struct ProjectionRoundScene: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: metrics.length(1)) {
-            ProjectionHeaderView(header: value.header, metrics: metrics)
+            HStack(alignment: .top, spacing: metrics.length(2)) {
+                ProjectionHeaderView(header: value.header, metrics: metrics)
+                if let live {
+                    ProjectionClockView(live: live, metrics: metrics)
+                }
+            }
             Spacer(minLength: 0)
             let rows = value.matches.projectionChunks(columns)
             // Con muchas filas las tarjetas se encogen para caber.
@@ -240,6 +255,62 @@ private struct ProjectionRoundScene: View {
             }
             Spacer(minLength: 0)
         }
+    }
+}
+
+/// Reloj de la ronda: cuenta con el desfase entre el reloj del iPad y el del Mac, se refresca dos
+/// veces por segundo y al llegar a cero dice «¡Tiempo!». Con el iPad sin conexión sigue contando.
+private struct ProjectionClockView: View {
+    let live: TournamentLiveProjection
+    let metrics: ProjectionMetrics
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { context in
+            let nowMs = Int64(context.date.timeIntervalSince1970 * 1000)
+            let seconds = live.clock.remainingSeconds(of: live.state, nowMs: nowMs) ?? 0
+            let timeUp = seconds == 0
+            let isPaused = live.state.status == .paused && !timeUp
+            VStack(alignment: .trailing, spacing: metrics.length(0.2)) {
+                if timeUp {
+                    Text(ProjectionLiveTexts.timeUp)
+                        .font(metrics.font(5.2, .heavy))
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, metrics.length(1.4))
+                        .padding(.vertical, metrics.length(0.3))
+                        .background(ProjectionPalette.live, in: RoundedRectangle(cornerRadius: metrics.length(1), style: .continuous))
+                } else {
+                    Text(ProjectionLiveTexts.clock(seconds: seconds))
+                        .font(metrics.font(6.4, .heavy).monospacedDigit())
+                        .foregroundStyle(isPaused ? ProjectionPalette.muted : (seconds <= 10 ? ProjectionPalette.live : ProjectionPalette.text))
+                    if isPaused {
+                        Text(ProjectionLiveTexts.paused)
+                            .font(metrics.font(1.8, .semibold))
+                            .foregroundStyle(ProjectionPalette.muted)
+                    }
+                }
+            }
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+            .accessibilityElement(children: .combine)
+        }
+    }
+}
+
+/// Aviso discreto cuando el iPad dejó de enviar: la proyección sigue con la última foto.
+private struct ProjectionOfflineNotice: View {
+    let receivedAtMs: Int64
+    let metrics: ProjectionMetrics
+
+    var body: some View {
+        Text(ProjectionLiveTexts.offlineNotice(atMs: receivedAtMs))
+            .font(metrics.font(1.8, .semibold))
+            .foregroundStyle(ProjectionPalette.muted)
+            .padding(.horizontal, metrics.length(1.4))
+            .padding(.vertical, metrics.length(0.4))
+            .background(ProjectionPalette.card, in: Capsule())
+            .overlay(Capsule().stroke(ProjectionPalette.line, lineWidth: metrics.length(0.12)))
+            .padding(.bottom, metrics.length(0.4))
+            .accessibilityLabel(ProjectionLiveTexts.offlineNotice(atMs: receivedAtMs))
     }
 }
 

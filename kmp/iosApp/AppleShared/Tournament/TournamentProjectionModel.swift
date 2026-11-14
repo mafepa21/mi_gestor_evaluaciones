@@ -9,9 +9,9 @@ import Foundation
 // `plan.teams`, fija durante todo el torneo. Ninguna escena contiene el nombre de un equipo ni
 // de un alumno: lo asegura `ProjectionTeamLabels` y lo vigilan las pruebas.
 //
-// Sin reloj: en esta fase no hay canal en directo, así que no se pinta ningún cronómetro (un
-// reloj sin fuente fiable en el iPad sería un dato inventado). La ronda en juego es una
-// deducción: la primera con partidos sin resultado.
+// El reloj y los marcadores provisionales llegan por el canal en directo (`TournamentLiveState`);
+// sin él no se pinta ningún cronómetro. La ronda en juego es la que marca el iPad o, sin canal,
+// una deducción: la primera con partidos sin resultado.
 
 // MARK: - Equipos sin nombre
 
@@ -373,12 +373,19 @@ struct TournamentProjectionModel: Equatable, Sendable {
 
     /// Todas las cadenas de todas las escenas y del pie.
     var allTexts: [String] {
-        [tournamentName] + footer.map(\.title) + scenes.flatMap(\.texts)
+        [tournamentName] + footer.map(\.title) + scenes.flatMap(\.texts) + ProjectionLiveTexts.fixedTexts
     }
 
     // MARK: Construcción
 
     static func make(plan: TournamentPlan) -> TournamentProjectionModel {
+        make(plan: plan, hints: nil)
+    }
+
+    /// Igual que `make(plan:)`, pero con las pistas del iPad en directo: `roundNumber` sustituye
+    /// la ronda de liga deducida (en cuadro se ignora en v1) y `scene` deja solo un tipo de escena
+    /// (si no queda ninguna, vuelve la rotación automática).
+    static func make(plan: TournamentPlan, hints: ProjectionLiveHints?) -> TournamentProjectionModel {
         let labels = ProjectionTeamLabels(plan: plan)
         guard !plan.savedSchedule.isEmpty, plan.teams.count >= 2 else {
             return emptyModel(
@@ -402,7 +409,12 @@ struct TournamentProjectionModel: Equatable, Sendable {
         }
 
         func make(_ stage: Stage, _ scenes: [TournamentProjectionScene]) -> TournamentProjectionModel {
-            TournamentProjectionModel(tournamentName: plan.name, stage: stage, footer: footer, scenes: scenes)
+            TournamentProjectionModel(
+                tournamentName: plan.name,
+                stage: stage,
+                footer: footer,
+                scenes: filteredScenes(scenes, scene: hints?.scene ?? .auto)
+            )
         }
 
         let leaguePhase = timeline.phase(.league)
@@ -443,7 +455,11 @@ struct TournamentProjectionModel: Equatable, Sendable {
             return make(.finished, [.podium(podium)])
 
         case .league:
-            guard let index = leagueSchedule.indices.first(where: { index in
+            // La ronda que marca el iPad manda sobre la deducida (primera con partidos sin resultado).
+            let hintedIndex = hints?.roundNumber.flatMap { number in
+                leagueSchedule.firstIndex { $0.number == number }
+            }
+            guard let index = hintedIndex ?? leagueSchedule.indices.first(where: { index in
                 leagueRounds[index].matches.contains { !$0.isPlayed }
             }) else {
                 return make(.leagueInPlay, [.standings(standings(plan: plan, labels: labels, isFinal: false, leagueTitle: leagueTitle))])
@@ -531,6 +547,25 @@ struct TournamentProjectionModel: Equatable, Sendable {
             )
             return make(.bracketInPlay, [scene] + brackets)
         }
+    }
+
+    // MARK: Escena forzada desde el iPad
+
+    /// Deja solo el tipo de escena pedido. Sin coincidencias (p. ej. «Cuadro» en una liga) devuelve
+    /// todas: la rotación automática nunca se queda vacía.
+    private static func filteredScenes(
+        _ scenes: [TournamentProjectionScene],
+        scene: TournamentLiveScene
+    ) -> [TournamentProjectionScene] {
+        let kinds: Set<TournamentProjectionScene.Kind>
+        switch scene {
+        case .auto: return scenes
+        case .courts: kinds = [.round, .upNext, .notStarted, .phaseEnd]
+        case .standings: kinds = [.standings]
+        case .bracket: kinds = [.bracket]
+        }
+        let kept = scenes.filter { kinds.contains($0.kind) }
+        return kept.isEmpty ? scenes : kept
     }
 
     // MARK: Casos sueltos

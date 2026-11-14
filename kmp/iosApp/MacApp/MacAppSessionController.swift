@@ -30,6 +30,8 @@ final class MacAppSessionController: ObservableObject {
     /// Reutiliza el arranque del bridge: llamar a `current()` aquí abría otra base de datos.
     var bootstrap: AppleBridgeBootstrap { bridge.appleBootstrap }
     let commandCenter = MacCommandCenterCoordinator()
+    /// Canal en directo de torneos (iPad -> helper -> esta app): abre y alimenta la proyección.
+    let liveListener = MacTournamentLiveListener()
     let backupStore: MacBackupStore
 
     init() {

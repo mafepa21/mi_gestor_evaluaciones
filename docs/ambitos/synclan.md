@@ -46,3 +46,10 @@
 - **Regla para pantallas nuevas**: si una vista carga sus datos en `.task`/`.task(id:)` y los guarda en `@State` o en un store propio, tiene que llevar `.reloadOnLanSync(.pantalla) { … }` con la misma carga. Si no, lo llegado del otro dispositivo no se ve hasta tocar la sección. Las hojas de edición abiertas no deben recargarse solas.
 - El POST `/sync/local-changes` solo se acepta desde loopback (decisión de seguridad, no tocar).
 - Si un paquete de Mac a iPad deja sin una clave un dato opcional, el iPad no debe descartar la entidad nueva: no hay nada que conservar. Pasó con `rubric_bundle` (sin `classId`/`teachingUnitId`): la columna llegaba y la rúbrica no («No se pudo abrir la rúbrica»). `sync.recovery.rubricas-nuevas.v1` fuerza una descarga completa única para recuperarlas.
+- Canal en directo de torneos (ADR-2026-11-14): rutas propias `POST /live/state`, `GET /live/state` y `GET /live/events`, con su lista `liveConnections`, separada de `sseConnections`. `/sync/events` y `SyncEventListener` no cambian. `HttpServer.createContext` casa por prefijo: `/live` comprueba la ruta exacta y responde 404 al resto.
+- `/live/events` y `GET /live/state` solo se aceptan por loopback con `isAuthorized`; el POST lo acepta del iPad enlazado. Un helper antiguo responde 404 «No context found», que se lee como «Mac sin proyección».
+- Un 401 en `/live/events` NO debe publicar `.syncListenerUnauthorized` (el coordinador relanzaría el helper). Lo gestiona `MacTournamentLiveListener`, que reintenta cada 30 s y lee `helperLocalToken` en cada intento.
+- Límites del relé: 16 KB por cuerpo (413), 64 marcadores, horas a menos de 24 h de la del Mac, un solo estado en memoria y retención de 30 s. Si el helper se reinicia, el iPad repone el estado en menos de 5 s.
+- El aviso SSE del canal va en una sola línea `data:` (por `AsyncLineSequence`).
+- Pendiente (fuera de F3): `PinnedTLSDelegate` acepta cualquier certificado si no hay huella guardada, y `isAuthorized` no compara tokens en tiempo constante. Afecta también a la sync normal.
+

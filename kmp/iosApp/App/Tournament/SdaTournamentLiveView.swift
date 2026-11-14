@@ -1,13 +1,20 @@
 import SwiftUI
 
 /// Modo directo: ronda actual, temporizador, marcadores grandes con − / + y paso de ronda.
-/// Cada toque se guarda al momento a través del `SdaTournamentStore`.
+/// Cada toque se guarda al momento a través del `SdaTournamentStore`. En el iPad, además, publica
+/// su estado (ronda, reloj, marcadores, escena) para la proyección del Mac (`TournamentLivePublisher`);
+/// si no hay Mac enlazado o proyectando, no cambia nada.
 struct SdaTournamentLiveView: View {
     @ObservedObject var store: SdaTournamentStore
     /// Cuando el modo directo ocupa toda la pantalla, quien lo presenta da aquí cómo cerrarlo
     /// y se muestra un botón «Salir» explícito. Sin él (uso apilado) se vuelve con «Atrás».
     var onExit: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+    #if os(iOS)
+    @StateObject private var publisher: TournamentLivePublisher
+    #endif
+    @State private var projectionScene: TournamentLiveScene = .auto
 
     @State private var roundIndex: Int
     @State private var timerEnd: Date?
@@ -19,9 +26,13 @@ struct SdaTournamentLiveView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var scoreSize: CGFloat = 88
     @ScaledMetric(relativeTo: .body) private var tapSize: CGFloat = 44
 
-    init(store: SdaTournamentStore, onExit: (() -> Void)? = nil) {
+    /// `bridge` da el enlace con el Mac para la proyección; sin él (o en macOS) no se publica nada.
+    init(store: SdaTournamentStore, bridge: KmpBridge? = nil, onExit: (() -> Void)? = nil) {
         self.store = store
         self.onExit = onExit
+        #if os(iOS)
+        _publisher = StateObject(wrappedValue: TournamentLivePublisher(bridge: bridge))
+        #endif
         _roundIndex = State(initialValue: Self.firstPendingRoundIndex(store.plan))
     }
 
@@ -128,6 +139,14 @@ struct SdaTournamentLiveView: View {
                     .accessibilityHint("Sale del modo directo y guarda los cambios.")
                 }
             }
+            #if os(iOS)
+            if publisher.connection != .notPaired {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    projectionSceneMenu
+                    projectionChip
+                }
+            }
+            #endif
         }
         .sensoryFeedback(.warning, trigger: timeIsUp)
         .task(id: timerEnd) { await watchTimer() }
@@ -140,10 +159,110 @@ struct SdaTournamentLiveView: View {
         }
         .onDisappear { Task { await store.flush() } }
         #if os(iOS)
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .onAppear {
+            UIApplication.shared.isIdleTimerDisabled = true
+            publisher.publish(livePayload)
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+            publisher.end()
+        }
+        .onChange(of: liveDraft) { _, _ in publisher.publish(livePayload) }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .background: publisher.suspend()
+            case .active: publisher.resume()
+            default: break
+            }
+        }
         #endif
     }
+
+    // MARK: Proyección en el Mac
+
+    /// Lo que cambia de verdad (no cada segundo): ronda, reloj, marcadores y escena. Un cambio
+    /// de cualquiera de ellos se publica al momento.
+    private struct LiveDraft: Equatable {
+        var roundNumber: Int?
+        var timerEnd: Date?
+        var pausedRemaining: Int?
+        var totalSeconds: Int
+        var isRunning: Bool
+        var timeIsUp: Bool
+        var scene: TournamentLiveScene
+        var scores: [String: [Int]]
+    }
+
+    private var liveDraft: LiveDraft {
+        var scores: [String: [Int]] = [:]
+        for slot in roundSlots.prefix(TournamentLiveState.maxScores) {
+            guard let result = plan.result(for: slot) else { continue }
+            scores[slot.id.uuidString] = [min(max(result.homeScore, 0), 999), min(max(result.awayScore, 0), 999)]
+        }
+        return LiveDraft(
+            roundNumber: currentRound?.number,
+            timerEnd: timerEnd,
+            pausedRemaining: pausedRemaining,
+            totalSeconds: totalSeconds,
+            isRunning: isRunning,
+            timeIsUp: timeIsUp,
+            scene: projectionScene,
+            scores: scores
+        )
+    }
+
+    private var livePayload: TournamentLivePayload {
+        let draft = liveDraft
+        let status: TournamentLiveStatus = draft.timeIsUp ? .timeUp : (draft.isRunning ? .running : .paused)
+        return TournamentLivePayload(
+            tournamentId: store.record.id,
+            status: status,
+            roundNumber: draft.roundNumber,
+            timer: TournamentLiveTimer(
+                endAtMs: draft.timerEnd.map { Int64(($0.timeIntervalSince1970 * 1000).rounded()) },
+                pausedRemainingS: draft.pausedRemaining,
+                totalS: draft.totalSeconds
+            ),
+            scene: draft.scene,
+            scores: draft.scores
+        )
+    }
+
+    #if os(iOS)
+    /// Chip discreto: gris, sin aspecto de error. «Mac sin proyección» no impide seguir apuntando.
+    private var projectionChip: some View {
+        let isProjecting = publisher.connection == .projecting
+        return HStack(spacing: 6) {
+            Image(systemName: isProjecting ? "tv.fill" : "tv")
+            Text(isProjecting ? "Proyectando en Mac" : "Mac sin proyección")
+                .lineLimit(1)
+        }
+        .font(.footnote.weight(.semibold))
+        .foregroundStyle(isProjecting ? Color.accentColor : Color.secondary)
+        .padding(.horizontal, 10)
+        .frame(minHeight: 28)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(isProjecting ? "Proyectando en el Mac" : "El Mac no está proyectando")
+    }
+
+    /// Qué enseña la proyección: «Automático» rota sola; las demás fijan una escena.
+    private var projectionSceneMenu: some View {
+        Menu {
+            Picker("En el proyector", selection: $projectionScene) {
+                Text("Automático").tag(TournamentLiveScene.auto)
+                Text("Pistas").tag(TournamentLiveScene.courts)
+                Text("Clasificación").tag(TournamentLiveScene.standings)
+                if plan.format.includesKnockoutPhase {
+                    Text("Cuadro").tag(TournamentLiveScene.bracket)
+                }
+            }
+        } label: {
+            Label("En el proyector", systemImage: "tv.and.mediabox")
+        }
+        .disabled(publisher.connection != .projecting)
+        .accessibilityHint("Elige qué se ve en la proyección del Mac.")
+    }
+    #endif
 
     // MARK: Temporizador
 
@@ -432,6 +551,9 @@ struct SdaTournamentLiveView: View {
     }
 
     private func leave() {
+        #if os(iOS)
+        publisher.end()
+        #endif
         if let onExit {
             onExit()
         } else {

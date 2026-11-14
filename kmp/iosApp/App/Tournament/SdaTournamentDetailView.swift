@@ -189,7 +189,7 @@ struct SdaTournamentDetailView: View {
         }
         .modifier(SdaLiveModePresentation(isPresented: $isLive) {
             NavigationStack {
-                SdaTournamentLiveView(store: store, onExit: exitLiveMode)
+                SdaTournamentLiveView(store: store, bridge: bridgeReference, onExit: exitLiveMode)
             }
         })
         .onChange(of: isLive) { _, live in onLiveModeChange(live) }

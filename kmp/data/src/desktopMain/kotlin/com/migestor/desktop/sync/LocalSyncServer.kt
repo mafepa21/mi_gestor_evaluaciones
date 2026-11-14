@@ -288,6 +288,10 @@ class LocalSyncServer(
     private val learningSituationDocumentsDirectory = File(getAppDataPath("learning-situations")).apply { mkdirs() }
     private val json = Json { ignoreUnknownKeys = true }
     private val sseConnections = java.util.concurrent.CopyOnWriteArrayList<HttpExchange>()
+    // Canal en directo de torneos (/live/*): lista propia para no mezclarla con los avisos de sync
+    // (`broadcastSseEvent` y `hasRemoteSseConnection` solo deben ver `sseConnections`).
+    private val liveConnections = java.util.concurrent.CopyOnWriteArrayList<HttpExchange>()
+    private val liveRelay = LiveStateRelay()
     @Volatile
     private var lastAdoptionStatus: String = "idle"
     private var server: HttpsServer? = null
@@ -569,6 +573,17 @@ class LocalSyncServer(
             }.toString())
         }
 
+        // `createContext` casa por prefijo: "/live" también recibiría "/liveXYZ" o "/live/otra".
+        // Se comprueba la ruta exacta y, si no es ninguna conocida, 404 (un helper antiguo sin
+        // este contexto responde 404 «No context found», que el Mac lee como «sin proyección»).
+        https.createContext("/live") { ex ->
+            when (ex.requestURI.path) {
+                "/live/state" -> handleLiveState(ex)
+                "/live/events" -> handleLiveEvents(ex)
+                else -> ex.respond(404, """{"error":"not_found"}""")
+            }
+        }
+
         https.createContext("/sync/documents") { ex ->
             if (!isAuthorized(ex)) return@createContext
             val hash = ex.requestURI.path.substringAfterLast('/').lowercase()
@@ -788,6 +803,9 @@ class LocalSyncServer(
         val connections = sseConnections.toList()
         sseConnections.clear()
         connections.forEach { runCatching { it.close() } }
+        val liveClosing = liveConnections.toList()
+        liveConnections.clear()
+        liveClosing.forEach { runCatching { it.close() } }
 
         bonjour.close()
         advertisedLanAddress = null
@@ -1089,6 +1107,112 @@ class LocalSyncServer(
         responseHeaders.add("Content-Type", contentType)
         sendResponseHeaders(status, bytes.size.toLong())
         responseBody.use { it.write(bytes) }
+    }
+
+    /** POST: el iPad publica su estado. GET: diagnóstico (solo loopback). */
+    private fun handleLiveState(ex: HttpExchange) {
+        when (ex.requestMethod) {
+            "POST" -> {
+                if (!isAuthorized(ex)) return
+                val body = ex.readBodyOrReject(LIVE_BODY_LIMIT_BYTES) ?: return
+                when (val result = liveRelay.accept(body, System.currentTimeMillis())) {
+                    is LiveAcceptResult.Accepted -> {
+                        broadcastLive(result.json)
+                        val listeners = liveConnections.size
+                        ex.respond(200, buildJsonObject {
+                            put("accepted", JsonPrimitive(true))
+                            put("listeners", JsonPrimitive(listeners))
+                            put("receivedAtMs", JsonPrimitive(System.currentTimeMillis()))
+                        }.toString())
+                    }
+                    LiveAcceptResult.Stale -> ex.respond(200, """{"accepted":false}""")
+                    LiveAcceptResult.Invalid -> ex.respond(400, """{"error":"invalid_live_state"}""")
+                }
+            }
+            "GET" -> {
+                if (!isAuthorized(ex)) return
+                if (!isLoopbackSyncRequest(ex.remoteAddress?.address)) {
+                    ex.respond(403, """{"error":"loopback_only"}""")
+                    return
+                }
+                val latest = liveRelay.latest(System.currentTimeMillis())
+                if (latest == null) ex.respondEmpty(204) else ex.respond(200, latest)
+            }
+            else -> ex.respond(405, """{"error":"method_not_allowed"}""")
+        }
+    }
+
+    /** SSE del canal en directo: solo la app del Mac, por loopback. */
+    private fun handleLiveEvents(ex: HttpExchange) {
+        if (ex.requestMethod != "GET") {
+            ex.respond(405, """{"error":"method_not_allowed"}""")
+            return
+        }
+        if (!isAuthorized(ex)) return
+        if (!isLoopbackSyncRequest(ex.remoteAddress?.address)) {
+            ex.respond(403, """{"error":"loopback_only"}""")
+            return
+        }
+
+        ex.responseHeaders.add("Content-Type", "text/event-stream")
+        ex.responseHeaders.add("Cache-Control", "no-cache")
+        ex.responseHeaders.add("Connection", "keep-alive")
+        ex.sendResponseHeaders(200, 0)
+
+        val out = ex.responseBody
+        liveConnections.add(ex)
+        try {
+            // Mismo lock que `broadcastLive`: sin él, un aviso y el keep-alive entrelazarían bytes.
+            synchronized(ex) {
+                out.write(": ok\n\n".toByteArray())
+                liveRelay.latest(System.currentTimeMillis())?.let { out.write(liveRelay.sseFrame(it).toByteArray()) }
+                out.flush()
+            }
+        } catch (e: Exception) {
+            liveConnections.remove(ex)
+            runCatching { ex.close() }
+            return
+        }
+
+        try {
+            while (server != null && liveConnections.contains(ex)) {
+                Thread.sleep(15000)
+                try {
+                    synchronized(ex) {
+                        out.write(": keep-alive\n\n".toByteArray())
+                        out.flush()
+                    }
+                } catch (e: Exception) {
+                    break
+                }
+            }
+        } catch (e: InterruptedException) {
+            // Interrumpido al parar el servidor.
+        } finally {
+            liveConnections.remove(ex)
+            runCatching { ex.close() }
+        }
+    }
+
+    private fun broadcastLive(json: String) {
+        if (liveConnections.isEmpty()) return
+        val bytes = liveRelay.sseFrame(json).toByteArray()
+        val disconnected = mutableListOf<HttpExchange>()
+        for (conn in liveConnections) {
+            try {
+                synchronized(conn) {
+                    val out = conn.responseBody
+                    out.write(bytes)
+                    out.flush()
+                }
+            } catch (e: Exception) {
+                disconnected.add(conn)
+            }
+        }
+        if (disconnected.isNotEmpty()) {
+            liveConnections.removeAll(disconnected)
+            disconnected.forEach { runCatching { it.close() } }
+        }
     }
 
     private fun broadcastSseEvent(changes: List<SyncChange>, serverEpochMs: Long) {

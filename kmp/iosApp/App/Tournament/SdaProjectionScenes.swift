@@ -70,12 +70,23 @@ struct SdaProjectionView: View {
             ZStack {
                 ProjectionPalette.background.ignoresSafeArea()
                 VStack(spacing: 0) {
+                    let scene = model.scene(at: rotation)
                     ZStack {
-                        sceneView(model.scene(at: rotation), metrics: metrics)
-                            .id(model.scene(at: rotation).id)
+                        sceneView(scene, metrics: metrics)
+                            .id(scene.id)
                             .transition(.opacity)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Mientras se juega, el reloj no desaparece al rotar: en las escenas que no son
+                    // de pistas va más pequeño en la esquina.
+                    .overlay(alignment: .topTrailing) {
+                        if let live, live.showsClock, !scene.isRound {
+                            ProjectionClockView(live: live, metrics: metrics, scale: 0.6)
+                                .padding(.horizontal, metrics.length(1.2))
+                                .padding(.vertical, metrics.length(0.4))
+                                .background(ProjectionPalette.background.opacity(0.94), in: RoundedRectangle(cornerRadius: metrics.length(1), style: .continuous))
+                        }
+                    }
                     if let live, live.showsOfflineNotice {
                         ProjectionOfflineNotice(receivedAtMs: live.state.arrivalMs, metrics: metrics)
                     }
@@ -118,6 +129,13 @@ struct SdaProjectionView: View {
         case .phaseEnd(let value): ProjectionPhaseEndScene(value: value, metrics: metrics)
         case .podium(let value): ProjectionPodiumScene(value: value, metrics: metrics)
         }
+    }
+}
+
+private extension TournamentProjectionScene {
+    var isRound: Bool {
+        if case .round = self { return true }
+        return false
     }
 }
 
@@ -263,6 +281,8 @@ private struct ProjectionRoundScene: View {
 private struct ProjectionClockView: View {
     let live: TournamentLiveProjection
     let metrics: ProjectionMetrics
+    /// 1 en la escena de pistas; más pequeño en la esquina del resto de escenas.
+    var scale: CGFloat = 1
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { context in
@@ -273,18 +293,18 @@ private struct ProjectionClockView: View {
             VStack(alignment: .trailing, spacing: metrics.length(0.2)) {
                 if timeUp {
                     Text(ProjectionLiveTexts.timeUp)
-                        .font(metrics.font(5.2, .heavy))
+                        .font(metrics.font(5.2 * scale, .heavy))
                         .foregroundStyle(Color.white)
                         .padding(.horizontal, metrics.length(1.4))
                         .padding(.vertical, metrics.length(0.3))
                         .background(ProjectionPalette.live, in: RoundedRectangle(cornerRadius: metrics.length(1), style: .continuous))
                 } else {
                     Text(ProjectionLiveTexts.clock(seconds: seconds))
-                        .font(metrics.font(6.4, .heavy).monospacedDigit())
+                        .font(metrics.font(6.4 * scale, .heavy).monospacedDigit())
                         .foregroundStyle(isPaused ? ProjectionPalette.muted : (seconds <= 10 ? ProjectionPalette.live : ProjectionPalette.text))
                     if isPaused {
                         Text(ProjectionLiveTexts.paused)
-                            .font(metrics.font(1.8, .semibold))
+                            .font(metrics.font(max(1.8, 1.8 * scale), .semibold))
                             .foregroundStyle(ProjectionPalette.muted)
                     }
                 }

@@ -286,6 +286,9 @@ enum ProjectionLiveTexts {
 enum TournamentLiveConnection: Equatable, Sendable {
     /// El iPad no está enlazado con un Mac: no hay chip.
     case notPaired
+    /// Enlazado con un Mac, pero sin la huella de su certificado (enlace antiguo): no se publica
+    /// hasta volver a enlazar, para no mandar el token sin TLS anclado.
+    case needsRepair
     /// El helper recibe, pero ninguna ventana de proyección escucha (o no hay helper nuevo).
     case noProjection
     case projecting

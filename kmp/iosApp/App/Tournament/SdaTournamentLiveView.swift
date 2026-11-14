@@ -94,36 +94,30 @@ struct SdaTournamentLiveView: View {
     // MARK: Cuerpo
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                timerCard
-                if currentRound == nil {
-                    LearningSituationInlineNotice(kind: .warning, message: "Este torneo no tiene rondas.")
+        GeometryReader { geometry in
+            let size = geometry.size
+            // Horizontal: reloj a la izquierda y pistas a la derecha. Vertical: reloj arriba.
+            if size.width > size.height, size.width >= 700 {
+                HStack(alignment: .top, spacing: 24) {
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            timerCard(compact: false)
+                            sideNotices
+                        }
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(width: min(320, size.width * 0.3))
+                    courtsGrid(available: CGSize(width: size.width - min(320, size.width * 0.3) - 24 - 32, height: size.height - 32))
                 }
-                ForEach(roundSlots) { slot in
-                    matchCard(slot)
+                .padding(16)
+            } else {
+                VStack(spacing: 16) {
+                    timerCard(compact: true)
+                    courtsGrid(available: CGSize(width: size.width - 32, height: size.height - 32 - compactTimerHeight - 16 - noticesReserve))
+                    sideNotices
                 }
-                if !restingTeams.isEmpty {
-                    Label("Descansan: \(restingTeams.joined(separator: ", "))", systemImage: "pause.circle")
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityElement(children: .combine)
-                }
-                if plan.format == .leaguePlacement, currentRound?.stage == .groupStage, !plan.placementLeagueIsClosed {
-                    SdaCloseLeagueButton(store: store)
-                }
-                if hasKnockoutDraw {
-                    LearningSituationInlineNotice(
-                        kind: .info,
-                        message: "En eliminatoria no puede haber empate. Suma un punto a quien gane para pasar de ronda."
-                    )
-                }
+                .padding(16)
             }
-            .padding(16)
-            .frame(maxWidth: 760)
-            .frame(maxWidth: .infinity)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
         .navigationTitle(currentRound.map { "Ronda \($0.number) de \(rounds.count)" } ?? "En directo")
@@ -176,6 +170,43 @@ struct SdaTournamentLiveView: View {
             }
         }
         #endif
+    }
+
+    // MARK: Avisos
+
+    /// Altura que se reserva para los avisos bajo las pistas en vertical.
+    private var noticesReserve: CGFloat { hasSideNotices ? 72 : 0 }
+
+    private var hasSideNotices: Bool {
+        currentRound == nil || !restingTeams.isEmpty || showsCloseLeague || hasKnockoutDraw
+    }
+
+    private var showsCloseLeague: Bool {
+        plan.format == .leaguePlacement && currentRound?.stage == .groupStage && !plan.placementLeagueIsClosed
+    }
+
+    @ViewBuilder
+    private var sideNotices: some View {
+        if currentRound == nil {
+            LearningSituationInlineNotice(kind: .warning, message: "Este torneo no tiene rondas.")
+        }
+        if !restingTeams.isEmpty {
+            Label("Descansan: \(restingTeams.joined(separator: ", "))", systemImage: "pause.circle")
+                .font(.body.weight(.medium))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+        }
+        if showsCloseLeague {
+            SdaCloseLeagueButton(store: store)
+        }
+        if hasKnockoutDraw {
+            LearningSituationInlineNotice(
+                kind: .info,
+                message: "En eliminatoria no puede haber empate. Suma un punto a quien gane para pasar de ronda."
+            )
+        }
     }
 
     // MARK: Proyección en el Mac
@@ -231,18 +262,26 @@ struct SdaTournamentLiveView: View {
     #if os(iOS)
     /// Chip discreto: gris, sin aspecto de error. «Mac sin proyección» no impide seguir apuntando.
     private var projectionChip: some View {
-        let isProjecting = publisher.connection == .projecting
+        let connection = publisher.connection
+        let isProjecting = connection == .projecting
+        let text: String
+        switch connection {
+        case .projecting: text = "Proyectando en Mac"
+        case .needsRepair: text = "Vuelve a enlazar el iPad con el Mac para proyectar"
+        default: text = "Mac sin proyección"
+        }
         return HStack(spacing: 6) {
-            Image(systemName: isProjecting ? "tv.fill" : "tv")
-            Text(isProjecting ? "Proyectando en Mac" : "Mac sin proyección")
+            Image(systemName: connection == .needsRepair ? "link.badge.plus" : (isProjecting ? "tv.fill" : "tv"))
+            Text(text)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
         .font(.footnote.weight(.semibold))
         .foregroundStyle(isProjecting ? Color.accentColor : Color.secondary)
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 8)
         .frame(minHeight: 28)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(isProjecting ? "Proyectando en el Mac" : "El Mac no está proyectando")
+        .accessibilityLabel(isProjecting ? "Proyectando en el Mac" : text)
     }
 
     /// Qué enseña la proyección: «Automático» rota sola; las demás fijan una escena.
@@ -283,39 +322,52 @@ struct SdaTournamentLiveView: View {
         "\(sdaPlural(seconds / 60, "minuto", "minutos")) y \(sdaPlural(seconds % 60, "segundo", "segundos"))"
     }
 
-    private var timerCard: some View {
+    /// Alto del reloj compacto (modo vertical), para repartir el resto entre las pistas.
+    private var compactTimerHeight: CGFloat { max(tapSize, 64) + 32 }
+
+    private func timerCard(compact: Bool) -> some View {
         LearningSituationCard(title: nil) {
-            VStack(spacing: 16) {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    let seconds = remainingSeconds(at: context.date)
-                    VStack(spacing: 4) {
-                        if timeIsUp {
-                            Text("¡Tiempo!")
-                                .font(.system(size: timerSize * 0.6, weight: .heavy, design: .rounded))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.5)
-                        }
-                        Text(clock(seconds))
-                            .font(.system(size: timerSize, weight: .bold, design: .rounded).monospacedDigit())
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.5)
-                    }
-                    .foregroundStyle(timeIsUp ? Color.white : Color.primary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, timeIsUp ? 12 : 0)
-                    // Fin de tiempo: cambio visual muy fuerte además del aviso háptico y de VoiceOver.
-                    .background(timeIsUp ? Color.red : Color.clear, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Temporizador")
-                    .accessibilityValue(timeIsUp ? "¡Tiempo! \(spoken(seconds))" : spoken(seconds))
-                    .accessibilityAddTraits(.updatesFrequently)
+            if compact {
+                HStack(spacing: 16) {
+                    timerFace(size: 56)
+                    HStack(spacing: 8) { timerButtons }
+                        .frame(maxWidth: 360)
                 }
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 12) { timerButtons }
+                .frame(maxWidth: .infinity)
+            } else {
+                VStack(spacing: 16) {
+                    timerFace(size: timerSize)
                     VStack(spacing: 8) { timerButtons }
                 }
+                .frame(maxWidth: .infinity)
             }
+        }
+    }
+
+    private func timerFace(size: CGFloat) -> some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let seconds = remainingSeconds(at: context.date)
+            VStack(spacing: 4) {
+                if timeIsUp {
+                    Text("¡Tiempo!")
+                        .font(.system(size: size * 0.6, weight: .heavy, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                }
+                Text(clock(seconds))
+                    .font(.system(size: size, weight: .bold, design: .rounded).monospacedDigit())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+            }
+            .foregroundStyle(timeIsUp ? Color.white : Color.primary)
             .frame(maxWidth: .infinity)
+            .padding(.vertical, timeIsUp ? 8 : 0)
+            // Fin de tiempo: cambio visual muy fuerte además del aviso háptico y de VoiceOver.
+            .background(timeIsUp ? Color.red : Color.clear, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Temporizador")
+            .accessibilityValue(timeIsUp ? "¡Tiempo! \(spoken(seconds))" : spoken(seconds))
+            .accessibilityAddTraits(.updatesFrequently)
         }
     }
 
@@ -377,40 +429,66 @@ struct SdaTournamentLiveView: View {
 
     // MARK: Partidos
 
-    private func matchCard(_ slot: ScheduledMatchSlot) -> some View {
-        let names = plan.displayTeams(for: slot)
-        let score = plan.result(for: slot)
-        let canScore = plan.canScore(slot)
-        return LearningSituationCard(title: nil) {
-            VStack(spacing: 16) {
-                Text("Pista \(slot.venueNumber)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 16) {
-                        side(slot, name: names.home, score: score?.homeScore, isHome: true, enabled: canScore)
-                        side(slot, name: names.away, score: score?.awayScore, isHome: false, enabled: canScore)
-                    }
-                    VStack(spacing: 16) {
-                        side(slot, name: names.home, score: score?.homeScore, isHome: true, enabled: canScore)
-                        side(slot, name: names.away, score: score?.awayScore, isHome: false, enabled: canScore)
-                    }
-                }
-                if !canScore {
-                    Text(unavailableText(for: slot))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else if score == nil {
-                    Button("Registrar 0 – 0") {
-                        store.mutate { $0.setScore(for: slot, home: 0, away: 0) }
-                    }
-                    .buttonStyle(.bordered)
-                    .frame(minHeight: tapSize)
-                    .accessibilityLabel("Registrar 0 a 0")
+    /// Separación entre tarjetas y relleno interior (rejilla de 8 pt).
+    private let gridSpacing: CGFloat = 16
+    private let cardPadding: CGFloat = 16
+    private let cardHeaderHeight: CGFloat = 32
+
+    /// Todas las pistas a la vista: 2 columnas (1 si no caben) y filas que se reparten la altura.
+    /// Si ni con el mínimo táctil caben, la cuadrícula se desplaza en lugar de cortar botones.
+    private func courtsGrid(available: CGSize) -> some View {
+        let count = max(roundSlots.count, 1)
+        let columns = available.width >= 560 && count > 1 ? 2 : 1
+        let rows = Int(ceil(Double(count) / Double(columns)))
+        let perCard = (available.height - CGFloat(rows - 1) * gridSpacing) / CGFloat(rows)
+        // Cada tarjeta: cabecera + dos filas de equipo + separaciones.
+        let rowHeight = min(96, max(tapSize + 4, (perCard - cardHeaderHeight - cardPadding * 2 - 16) / 2))
+        return ScrollView {
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: gridSpacing, alignment: .top), count: columns),
+                spacing: gridSpacing
+            ) {
+                ForEach(roundSlots) { slot in
+                    courtCard(slot, rowHeight: rowHeight)
                 }
             }
         }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func courtCard(_ slot: ScheduledMatchSlot, rowHeight: CGFloat) -> some View {
+        let names = plan.displayTeams(for: slot)
+        let score = plan.result(for: slot)
+        let canScore = plan.canScore(slot)
+        return VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Pista \(slot.venueNumber)")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                if !canScore {
+                    Text(unavailableText(for: slot))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.trailing)
+                } else if score == nil {
+                    Button("0 – 0") {
+                        store.mutate { $0.setScore(for: slot, home: 0, away: 0) }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityLabel("Registrar 0 a 0")
+                }
+            }
+            .frame(minHeight: cardHeaderHeight)
+            side(slot, name: names.home, score: score?.homeScore, isHome: true, enabled: canScore, height: rowHeight)
+            side(slot, name: names.away, score: score?.awayScore, isHome: false, enabled: canScore, height: rowHeight)
+        }
+        .padding(cardPadding)
+        .frame(maxWidth: .infinity)
+        .background(IOSAppStyle.cardBackground, in: RoundedRectangle(cornerRadius: IOSAppStyle.cardRadius, style: .continuous))
     }
 
     private func unavailableText(for slot: ScheduledMatchSlot) -> String {
@@ -424,45 +502,42 @@ struct SdaTournamentLiveView: View {
         return "Aún no se conocen las dos parejas."
     }
 
-    private func side(_ slot: ScheduledMatchSlot, name: String, score: Int?, isHome: Bool, enabled: Bool) -> some View {
-        VStack(spacing: 8) {
-            VStack(spacing: 4) {
-                Text(name)
-                    .font(.title2.weight(.semibold))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.5)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                Text(score.map(String.init) ?? "–")
-                    .font(.system(size: scoreSize, weight: .bold, design: .rounded).monospacedDigit())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                    .foregroundStyle(score == nil ? Color.secondary : Color.primary)
+    private func side(_ slot: ScheduledMatchSlot, name: String, score: Int?, isHome: Bool, enabled: Bool, height: CGFloat) -> some View {
+        let button = max(tapSize, min(height, 72))
+        return HStack(spacing: 8) {
+            Text(name)
+                .font(.system(size: min(28, max(17, height * 0.32)), weight: .semibold))
+                .lineLimit(2)
+                .minimumScaleFactor(0.6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                adjust(slot, name: name, isHome: isHome, by: -1)
+            } label: {
+                Image(systemName: "minus")
+                    .font(.title2.weight(.bold))
+                    .frame(width: button, height: button)
+                    .contentShape(Rectangle())
             }
-            HStack(spacing: 28) {
-                Button {
-                    adjust(slot, name: name, isHome: isHome, by: -1)
-                } label: {
-                    Image(systemName: "minus")
-                        .font(.title2.weight(.bold))
-                        .frame(minWidth: tapSize + 12, minHeight: tapSize + 12)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.bordered)
-                .disabled(!enabled || (score ?? 0) == 0)
-                Button {
-                    adjust(slot, name: name, isHome: isHome, by: 1)
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.title2.weight(.bold))
-                        .frame(minWidth: tapSize + 12, minHeight: tapSize + 12)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!enabled)
+            .buttonStyle(.bordered)
+            .disabled(!enabled || (score ?? 0) == 0)
+            Text(score.map(String.init) ?? "–")
+                .font(.system(size: min(scoreSize, height * 0.8), weight: .bold, design: .rounded).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .foregroundStyle(score == nil ? Color.secondary : Color.primary)
+                .frame(minWidth: height * 1.2)
+            Button {
+                adjust(slot, name: name, isHome: isHome, by: 1)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.title2.weight(.bold))
+                    .frame(width: button, height: button)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.borderedProminent)
+            .disabled(!enabled)
         }
-        .frame(maxWidth: .infinity)
+        .frame(minHeight: height)
         // Para VoiceOver el equipo es un único control ajustable (deslizar arriba/abajo suma o resta).
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(name)

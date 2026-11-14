@@ -92,6 +92,13 @@ final class TournamentLivePublisher: ObservableObject {
         let fingerprint: String?
     }
 
+    /// Enlazado pero sin huella del Mac: hay que volver a enlazar para proyectar.
+    private var isPairedWithoutFingerprint: Bool {
+        guard let bridge, let token = bridge.syncToken, !token.isEmpty,
+              let host = bridge.pairedSyncHost, !host.isEmpty else { return false }
+        return bridge.pairedServerFingerprint?.isEmpty ?? true
+    }
+
     private func target() -> Target? {
         guard let bridge,
               let rawHost = bridge.pairedSyncHost,
@@ -116,7 +123,7 @@ final class TournamentLivePublisher: ObservableObject {
         guard !inFlight else { return } // lo último se manda al terminar el envío en curso
         guard force || Date() >= retryNotBefore else { return }
         guard let target = target() else {
-            connection = .notPaired
+            connection = isPairedWithoutFingerprint ? .needsRepair : .notPaired
             scheduleHeartbeat(after: TournamentLivePublishOutcome.heartbeatSeconds)
             return
         }

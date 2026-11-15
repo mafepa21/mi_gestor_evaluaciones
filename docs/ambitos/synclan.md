@@ -52,4 +52,5 @@
 - Límites del relé: 16 KB por cuerpo (413), 64 marcadores, horas a menos de 24 h de la del Mac, un solo estado en memoria y retención de 30 s. Si el helper se reinicia, el iPad repone el estado en menos de 5 s.
 - El aviso SSE del canal va en una sola línea `data:` (por `AsyncLineSequence`).
 - Pendiente (fuera de F3): `PinnedTLSDelegate` acepta cualquier certificado si no hay huella guardada, y `isAuthorized` no compara tokens en tiempo constante. Afecta también a la sync normal.
+- `/live/state` lleva `showNames`, un booleano opcional. Si llega con otro tipo, el helper lo da por inválido; si falta, vale falso. Como el helper reconstruye el JSON, un campo nuevo del contrato solo llega al Mac si se añade en `LiveStateRelay.parse`. Un helper antiguo lo descarta y la proyección sigue con «Team N».
 

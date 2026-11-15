@@ -83,6 +83,27 @@ class LiveStateRelayTest {
     }
 
     @Test
+    fun showNamesFaltaEsFalseYBooleanoSeConserva() {
+        val relay = LiveStateRelay()
+        assertEquals("false", accepted(relay.accept(body(), 0))["showNames"]!!.jsonPrimitive.content)
+        assertEquals("true", accepted(relay.accept(body(seq = 1, extra = ""","showNames":true"""), 0))["showNames"]!!.jsonPrimitive.content)
+        assertEquals("false", accepted(relay.accept(body(seq = 2, extra = ""","showNames":false"""), 0))["showNames"]!!.jsonPrimitive.content)
+        assertEquals("false", accepted(relay.accept(body(seq = 3, extra = ""","showNames":null"""), 0))["showNames"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun showNamesNoBooleanoEsInvalido() {
+        val relay = LiveStateRelay()
+        for (valor in listOf(""""si"""", """"true"""", "1", "0", "[]", """{"a":1}""")) {
+            assertEquals(
+                LiveAcceptResult.Invalid,
+                relay.accept(body(extra = ""","showNames":$valor"""), 0),
+                "showNames=$valor debe ser inválido",
+            )
+        }
+    }
+
+    @Test
     fun estadoDesconocidoPasaAPausedYEscenaAAuto() {
         val relay = LiveStateRelay()
         val raw = body(status = "volando").replace("\"courts\"", "\"otra\"")

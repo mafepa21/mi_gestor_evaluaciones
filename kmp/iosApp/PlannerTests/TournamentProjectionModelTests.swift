@@ -272,6 +272,28 @@ final class TournamentProjectionModelTests: XCTestCase {
         let home = try XCTUnwrap(plan.teams.firstIndex { $0.name == slot.match.homeTeam })
         XCTAssertEqual(round.matches.first?.home, "Equipo \(home + 1)")
     }
+    func testConNombresLosEquiposTienenSuNombreYLosHuecosSiguenSinNombres() throws {
+        var plan = try placement(teams: 8, venues: 4)
+        Fixtures.playLeague(&plan)
+        Fixtures.playBracket(&plan, limit: 1)
+        let model = TournamentProjectionModel.make(plan: plan, hints: ProjectionLiveHints(showNames: true))
+        let teamNames = Set(plan.teams.map(\.name))
+        XCTAssertTrue(model.allTexts.contains { text in teamNames.contains { text.contains($0) } })
+        XCTAssertFalse(model.allTexts.contains { $0.hasPrefix("Equipo ") })
+        // Un hueco sin resolver no se sustituye por ningún nombre.
+        let labels = ProjectionTeamLabels(plan: plan, showNames: true)
+        XCTAssertEqual(labels.label(name: "Gana P5"), "Gana P5")
+        XCTAssertEqual(labels.label(name: "3º liguilla"), "3º liguilla")
+        XCTAssertEqual(labels.label(name: "Lucía y Hugo 3"), "Lucía y Hugo 3")
+        XCTAssertEqual(labels.label(id: "alumno-8"), "Lucía y Hugo 8")
+        XCTAssertEqual(labels.label(name: "Marta y Leo"), ProjectionTeamLabels.unknownTeam)
+        // Sin pistas o con el interruptor apagado, nada cambia.
+        XCTAssertEqual(
+            TournamentProjectionModel.make(plan: plan, hints: ProjectionLiveHints(showNames: false)),
+            TournamentProjectionModel.make(plan: plan)
+        )
+    }
+
     func testUnNombreDesconocidoNuncaLlegaALaProyeccion() throws {
         let labels = ProjectionTeamLabels(plan: try placement(teams: 8, venues: 4))
         // Nombre que no está en el plan (p. ej. de una edición anterior): no se proyecta.

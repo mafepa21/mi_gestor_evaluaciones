@@ -84,6 +84,16 @@ internal class LiveStateRelay {
         val rawScene = root.string("scene") ?: "auto"
         val scene = if (rawScene in KNOWN_SCENES) rawScene else "auto"
 
+        // Interruptor «Nombres en la proyección»: solo un booleano. Si falta, es false; si viene y no
+        // es booleano, el cuerpo es inválido. Nunca viajan nombres, solo esta marca.
+        val showNamesElement = root["showNames"]
+        val showNames: Boolean = when {
+            showNamesElement == null || showNamesElement is JsonNull -> false
+            showNamesElement is JsonPrimitive && !showNamesElement.isString ->
+                showNamesElement.content.toBooleanStrictOrNull() ?: return null
+            else -> return null
+        }
+
         val roundElement = root["roundNumber"]
         val roundNumber: Int? = if (roundElement == null || roundElement is JsonNull) null
         else root.int("roundNumber")?.takeIf { it in 0..LIVE_MAX_ROUND } ?: return null
@@ -136,6 +146,7 @@ internal class LiveStateRelay {
             if (roundNumber != null) put("roundNumber", roundNumber)
             if (timerJson != null) put("timer", timerJson)
             put("scene", scene)
+            put("showNames", showNames)
             put("scores", scoresJson)
         }
         return Parsed(sessionId, seq, sellado.toString())

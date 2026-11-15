@@ -15,6 +15,8 @@ struct SdaTournamentLiveView: View {
     @StateObject private var publisher: TournamentLivePublisher
     #endif
     @State private var projectionScene: TournamentLiveScene = .auto
+    /// «Nombres en la proyección»: empieza apagado en cada sesión del modo directo.
+    @State private var showNamesOnProjection = false
 
     @State private var roundIndex: Int
     @State private var timerEnd: Date?
@@ -175,7 +177,16 @@ struct SdaTournamentLiveView: View {
     // MARK: Avisos
 
     /// Altura que se reserva para los avisos bajo las pistas en vertical.
-    private var noticesReserve: CGFloat { hasSideNotices ? 72 : 0 }
+    private var noticesReserve: CGFloat { (hasSideNotices ? 72 : 0) + projectionNamesReserve }
+
+    /// Alto que ocupa el interruptor de nombres (fila táctil de 44 pt + ayuda + separación).
+    private var projectionNamesReserve: CGFloat {
+        #if os(iOS)
+        return 72
+        #else
+        return 0
+        #endif
+    }
 
     private var hasSideNotices: Bool {
         currentRound == nil || !restingTeams.isEmpty || showsCloseLeague || hasKnockoutDraw
@@ -201,6 +212,10 @@ struct SdaTournamentLiveView: View {
         if showsCloseLeague {
             SdaCloseLeagueButton(store: store)
         }
+        #if os(iOS)
+        // Siempre visible en la columna de controles, con o sin el botón de arriba.
+        projectionNamesToggle
+        #endif
         if hasKnockoutDraw {
             LearningSituationInlineNotice(
                 kind: .info,
@@ -221,6 +236,7 @@ struct SdaTournamentLiveView: View {
         var isRunning: Bool
         var timeIsUp: Bool
         var scene: TournamentLiveScene
+        var showNames: Bool
         var scores: [String: [Int]]
     }
 
@@ -238,6 +254,7 @@ struct SdaTournamentLiveView: View {
             isRunning: isRunning,
             timeIsUp: timeIsUp,
             scene: projectionScene,
+            showNames: showNamesOnProjection,
             scores: scores
         )
     }
@@ -255,6 +272,7 @@ struct SdaTournamentLiveView: View {
                 totalS: draft.totalSeconds
             ),
             scene: draft.scene,
+            showNames: draft.showNames,
             scores: draft.scores
         )
     }
@@ -282,6 +300,19 @@ struct SdaTournamentLiveView: View {
         .frame(minHeight: 28)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(isProjecting ? "Proyectando en el Mac" : text)
+    }
+
+    /// Interruptor de nombres: por la red solo viaja el booleano; el Mac pone los nombres de su copia del plan.
+    private var projectionNamesToggle: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("Nombres en la proyección", isOn: $showNamesOnProjection)
+                .frame(minHeight: tapSize)
+                .disabled(publisher.connection != .projecting)
+            Text("Muestra los nombres en vez de “Team N”.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Qué enseña la proyección: «Automático» rota sola; las demás fijan una escena.

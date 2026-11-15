@@ -5,9 +5,10 @@ import Foundation
 // ven y en qué orden rotan. Reutiliza `TournamentPhaseTimeline` y `BracketTreeLayout`: no
 // repite ninguna regla de cuadro ni de fases. Sin vistas ni base de datos.
 //
-// SIN NOMBRES: cada equipo se llama «Equipo N», con N su posición (empezando en 1) en
-// `plan.teams`, fija durante todo el torneo. Ninguna escena contiene el nombre de un equipo ni
-// de un alumno: lo asegura `ProjectionTeamLabels` y lo vigilan las pruebas.
+// SIN NOMBRES POR DEFECTO: cada equipo se llama «Equipo N», con N su posición (empezando en 1) en
+// `plan.teams`, fija durante todo el torneo. Solo con el interruptor del iPad (`showNames`, con
+// el directo vigente) se usan los nombres de `plan.teams`: lo decide `ProjectionTeamLabels` y lo
+// vigilan las pruebas. Los huecos del cuadro nunca llevan nombres.
 //
 // El reloj y los marcadores provisionales llegan por el canal en directo (`TournamentLiveState`);
 // sin él no se pinta ningún cronómetro. La ronda en juego es la que marca el iPad o, sin canal,
@@ -20,8 +21,14 @@ import Foundation
 struct ProjectionTeamLabels: Equatable, Sendable {
     private let numberByName: [String: Int]
     private let numberByID: [String: Int]
+    /// Nombres de `plan.teams` (los mismos que ve el docente en el iPad), por posición.
+    private let namesByPosition: [String]
+    /// Con `true` (interruptor del iPad) se pone el nombre del equipo en vez de «Equipo N».
+    let showNames: Bool
 
-    init(plan: TournamentPlan) {
+    init(plan: TournamentPlan, showNames: Bool = false) {
+        self.showNames = showNames
+        namesByPosition = plan.teams.map(\.name)
         var byName: [String: Int] = [:]
         var byID: [String: Int] = [:]
         for (offset, team) in plan.teams.enumerated() {
@@ -33,7 +40,7 @@ struct ProjectionTeamLabels: Equatable, Sendable {
     }
 
     func label(name: String) -> String {
-        if let number = numberByName[name] { return "Equipo \(number)" }
+        if let number = numberByName[name] { return label(number: number) }
         return Self.isSlotPlaceholder(name) ? name : Self.unknownTeam
     }
 
@@ -51,7 +58,13 @@ struct ProjectionTeamLabels: Equatable, Sendable {
     }
 
     func label(id: String) -> String? {
-        numberByID[id].map { "Equipo \($0)" }
+        numberByID[id].map { label(number: $0) }
+    }
+
+    /// Etiqueta del equipo en la posición `number` (empieza en 1): «Equipo N» o su nombre.
+    func label(number: Int) -> String {
+        if showNames, namesByPosition.indices.contains(number - 1) { return namesByPosition[number - 1] }
+        return "Equipo \(number)"
     }
 
     /// Para ordenar equipos por su número.
@@ -386,7 +399,7 @@ struct TournamentProjectionModel: Equatable, Sendable {
     /// la ronda de liga deducida (en cuadro se ignora en v1) y `scene` deja solo un tipo de escena
     /// (si no queda ninguna, vuelve la rotación automática).
     static func make(plan: TournamentPlan, hints: ProjectionLiveHints?) -> TournamentProjectionModel {
-        let labels = ProjectionTeamLabels(plan: plan)
+        let labels = ProjectionTeamLabels(plan: plan, showNames: hints?.showNames ?? false)
         guard !plan.savedSchedule.isEmpty, plan.teams.count >= 2 else {
             return emptyModel(
                 plan: plan,
@@ -632,7 +645,7 @@ struct TournamentProjectionModel: Equatable, Sendable {
             let playing = Set(round.matches.flatMap { [$0.homeTeam, $0.awayTeam] })
             let waiting = plan.teams.enumerated()
                 .filter { !playing.contains($0.element.name) }
-                .map { "Equipo \($0.offset + 1)" }
+                .map { labels.label(number: $0.offset + 1) }
             if waiting.count == 1 {
                 resting = "Descansa: \(waiting[0])"
             } else if waiting.count > 1, waiting.count <= 6 {

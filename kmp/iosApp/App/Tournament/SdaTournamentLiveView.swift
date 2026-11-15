@@ -465,15 +465,22 @@ struct SdaTournamentLiveView: View {
     private let cardPadding: CGFloat = 16
     private let cardHeaderHeight: CGFloat = 32
 
+    /// Separación vertical entre los elementos de una tarjeta (cabecera y las dos filas de equipo).
+    private let cardInnerSpacing: CGFloat = 8
+
     /// Todas las pistas a la vista: 2 columnas (1 si no caben) y filas que se reparten la altura.
     /// Si ni con el mínimo táctil caben, la cuadrícula se desplaza en lugar de cortar botones.
+    ///
+    /// La cuenta es exacta porque cada fila mide justo `rowHeight` (botones circulares de tamaño fijo,
+    /// sin el relleno de `.bordered`): alto de tarjeta = relleno 2·16 + cabecera 32 + 2 separaciones de 8
+    /// + 2·rowHeight; alto total = filas·tarjeta + (filas − 1)·16.
     private func courtsGrid(available: CGSize) -> some View {
         let count = max(roundSlots.count, 1)
         let columns = available.width >= 560 && count > 1 ? 2 : 1
         let rows = Int(ceil(Double(count) / Double(columns)))
         let perCard = (available.height - CGFloat(rows - 1) * gridSpacing) / CGFloat(rows)
-        // Cada tarjeta: cabecera + dos filas de equipo + separaciones.
-        let rowHeight = min(96, max(tapSize + 4, (perCard - cardHeaderHeight - cardPadding * 2 - 16) / 2))
+        let cardChrome = cardPadding * 2 + cardHeaderHeight + cardInnerSpacing * 2
+        let rowHeight = min(96, max(tapSize, (perCard - cardChrome) / 2))
         return ScrollView {
             LazyVGrid(
                 columns: Array(repeating: GridItem(.flexible(), spacing: gridSpacing, alignment: .top), count: columns),
@@ -492,7 +499,7 @@ struct SdaTournamentLiveView: View {
         let names = plan.displayTeams(for: slot)
         let score = plan.result(for: slot)
         let canScore = plan.canScore(slot)
-        return VStack(spacing: 8) {
+        return VStack(spacing: cardInnerSpacing) {
             HStack(spacing: 8) {
                 Text("Pista \(slot.venueNumber)")
                     .font(.headline)
@@ -503,6 +510,7 @@ struct SdaTournamentLiveView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
+                        .minimumScaleFactor(0.8)
                         .multilineTextAlignment(.trailing)
                 } else if score == nil {
                     Button("0 – 0") {
@@ -513,7 +521,7 @@ struct SdaTournamentLiveView: View {
                     .accessibilityLabel("Registrar 0 a 0")
                 }
             }
-            .frame(minHeight: cardHeaderHeight)
+            .frame(height: cardHeaderHeight)
             side(slot, name: names.home, score: score?.homeScore, isHome: true, enabled: canScore, height: rowHeight)
             side(slot, name: names.away, score: score?.awayScore, isHome: false, enabled: canScore, height: rowHeight)
         }
@@ -541,15 +549,9 @@ struct SdaTournamentLiveView: View {
                 .lineLimit(2)
                 .minimumScaleFactor(0.6)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Button {
+            ScoreStepButton(kind: .minus, diameter: button) {
                 adjust(slot, name: name, isHome: isHome, by: -1)
-            } label: {
-                Image(systemName: "minus")
-                    .font(.title2.weight(.bold))
-                    .frame(width: button, height: button)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.bordered)
             .disabled(!enabled || (score ?? 0) == 0)
             Text(score.map(String.init) ?? "–")
                 .font(.system(size: min(scoreSize, height * 0.8), weight: .bold, design: .rounded).monospacedDigit())
@@ -557,18 +559,13 @@ struct SdaTournamentLiveView: View {
                 .minimumScaleFactor(0.5)
                 .foregroundStyle(score == nil ? Color.secondary : Color.primary)
                 .frame(minWidth: height * 1.2)
-            Button {
+            ScoreStepButton(kind: .plus, diameter: button) {
                 adjust(slot, name: name, isHome: isHome, by: 1)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.title2.weight(.bold))
-                    .frame(width: button, height: button)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.borderedProminent)
             .disabled(!enabled)
         }
-        .frame(minHeight: height)
+        // Altura exacta: la cuenta de `courtsGrid` depende de que la fila mida justo esto.
+        .frame(height: height)
         // Para VoiceOver el equipo es un único control ajustable (deslizar arriba/abajo suma o resta).
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(name)
@@ -674,5 +671,39 @@ struct SdaTournamentLiveView: View {
         } else {
             move(by: 1)
         }
+    }
+}
+
+/// Botón − / + del marcador: círculo de tamaño exacto (sin el relleno interno de `.bordered`), para que
+/// la fila mida justo lo que calcula la cuadrícula. «−» gris, «+» con el color de acento; desactivado se
+/// ve apagado pero legible.
+private struct ScoreStepButton: View {
+    enum Kind { case minus, plus }
+
+    let kind: Kind
+    let diameter: CGFloat
+    let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+
+    private var fill: Color {
+        guard isEnabled else { return Color.secondary.opacity(0.14) }
+        return kind == .plus ? Color.accentColor : Color.secondary.opacity(0.24)
+    }
+
+    private var foreground: Color {
+        guard isEnabled else { return Color.secondary.opacity(0.55) }
+        return kind == .plus ? Color.white : Color.primary
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: kind == .plus ? "plus" : "minus")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(foreground)
+                .frame(width: diameter, height: diameter)
+                .background(Circle().fill(fill))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
     }
 }

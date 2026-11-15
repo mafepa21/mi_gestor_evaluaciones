@@ -287,8 +287,8 @@ struct TournamentLiveProjection: Equatable, Sendable {
 
 /// Textos que la proyección pinta por el canal en directo. Ninguno lleva nombres.
 enum ProjectionLiveTexts {
-    static let timeUp = "¡Tiempo!"
-    static let paused = "En pausa"
+    static let timeUp = "Time!"
+    static let paused = "Paused"
 
     /// Textos fijos, para que la prueba de nombres los cubra junto al resto de la proyección.
     static let fixedTexts = [timeUp, paused, offlineNotice(atMs: 0, timeZone: TimeZone(secondsFromGMT: 0)!)]
@@ -298,14 +298,14 @@ enum ProjectionLiveTexts {
         return String(format: "%02d:%02d", value / 60, value % 60)
     }
 
-    /// «Sin conexión con el iPad · datos de las 10:32».
+    /// «iPad disconnected · last update 10:32».
     static func offlineNotice(atMs: Int64, timeZone: TimeZone = .current) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(atMs) / 1000)
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let parts = calendar.dateComponents([.hour, .minute], from: date)
         let text = String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
-        return "Sin conexión con el iPad · datos de las \(text)"
+        return "iPad disconnected · last update \(text)"
     }
 }
 

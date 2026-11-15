@@ -5,7 +5,7 @@ import XCTest
 final class TournamentProjectionModelTests: XCTestCase {
     private typealias Fixtures = TournamentTreeFixtures
 
-    /// Nombres que no se parecen a «Equipo N»: si alguno aparece en la proyección, se nota.
+    /// Nombres que no se parecen a «Team N»: si alguno aparece en la proyección, se nota.
     private func names(_ count: Int) -> [TournamentPlanTeam] {
         (1...count).map { TournamentPlanTeam(id: "alumno-\($0)", name: "Lucía y Hugo \($0)", studentIDs: ["est-\($0)"]) }
     }
@@ -53,11 +53,11 @@ final class TournamentProjectionModelTests: XCTestCase {
         XCTAssertEqual(model.stage, .notStarted)
         XCTAssertEqual(kinds(model), [.notStarted])
         guard case .notStarted(let upNext) = model.scenes[0] else { return XCTFail("escena inesperada") }
-        XCTAssertEqual(upNext.header.title, "Prepárate")
+        XCTAssertEqual(upNext.header.title, "Get ready")
         XCTAssertEqual(upNext.matches.count, leagueFirstRoundSize(plan))
         XCTAssertTrue(upNext.matches.allSatisfy { !$0.isPlayed })
         XCTAssertEqual(model.footer.map(\.state), [.current, .upcoming, .upcoming])
-        XCTAssertEqual(model.footer.map(\.title), ["1 · Liguilla", "2 · Cuadro", "Podio"])
+        XCTAssertEqual(model.footer.map(\.title), ["1 · Group stage", "2 · Bracket", "Podium"])
     }
 
     func testLiguillaEnJuegoRotaPistasYClasificacion() throws {
@@ -68,13 +68,13 @@ final class TournamentProjectionModelTests: XCTestCase {
         XCTAssertEqual(model.stage, .leagueInPlay)
         XCTAssertEqual(kinds(model), [.round, .standings])
         guard case .round(let round) = model.scenes[0] else { return XCTFail("escena inesperada") }
-        XCTAssertEqual(round.header.title, "Ahora en juego")
-        XCTAssertTrue(round.header.kicker.contains("Ronda 2 de"), round.header.kicker)
+        XCTAssertEqual(round.header.title, "Now playing")
+        XCTAssertTrue(round.header.kicker.contains("Round 2 of"), round.header.kicker)
         XCTAssertEqual(round.playedCount, 1)
-        // Un partido con marcador se ve como «Equipo N · Pista P».
+        // Un partido con marcador se ve como «Team N · Court P».
         let played = try XCTUnwrap(round.matches.first(where: \.isPlayed))
-        XCTAssertTrue(played.markerText.hasPrefix("Equipo "))
-        XCTAssertTrue(played.markerText.contains("· Pista"))
+        XCTAssertTrue(played.markerText.hasPrefix("Team "))
+        XCTAssertTrue(played.markerText.contains("· Court"))
     }
 
     func testDescansoEntreRondasEnseñaLaSiguiente() throws {
@@ -84,8 +84,8 @@ final class TournamentProjectionModelTests: XCTestCase {
         XCTAssertEqual(model.stage, .rest)
         XCTAssertEqual(kinds(model), [.upNext, .standings])
         guard case .upNext(let upNext) = model.scenes[0] else { return XCTFail("escena inesperada") }
-        XCTAssertEqual(upNext.header.kicker, "Descanso · Prepárate")
-        XCTAssertTrue(upNext.header.title.contains("Ronda 2 de"), upNext.header.title)
+        XCTAssertEqual(upNext.header.kicker, "Break · Get ready")
+        XCTAssertTrue(upNext.header.title.contains("Round 2 of"), upNext.header.title)
     }
 
     func testFinDeLiguillaAnunciaElCuadro() throws {
@@ -95,7 +95,7 @@ final class TournamentProjectionModelTests: XCTestCase {
         XCTAssertEqual(model.stage, .leagueEnded)
         XCTAssertEqual(kinds(model), [.phaseEnd, .standings])
         guard case .phaseEnd(let end) = model.scenes[0] else { return XCTFail("escena inesperada") }
-        XCTAssertEqual(end.header.kicker, "Fin de la fase 1")
+        XCTAssertEqual(end.header.kicker, "Phase complete")
         XCTAssertFalse(end.matches.isEmpty)
         XCTAssertNotNil(end.note)
         XCTAssertEqual(model.footer.map(\.state), [.done, .current, .upcoming])
@@ -110,8 +110,8 @@ final class TournamentProjectionModelTests: XCTestCase {
         XCTAssertEqual(kinds(model), [.round, .bracket])
         guard case .round(let round) = model.scenes[0] else { return XCTFail("escena inesperada") }
         XCTAssertEqual(round.playedCount, 2)
-        XCTAssertTrue(round.matches.allSatisfy { $0.destination?.hasPrefix("Gana:") == true })
-        XCTAssertTrue(round.matches.allSatisfy { $0.caption?.hasPrefix("Puestos") == true })
+        XCTAssertTrue(round.matches.allSatisfy { $0.destination?.hasPrefix("Win:") == true })
+        XCTAssertTrue(round.matches.allSatisfy { $0.caption?.hasPrefix("Places") == true })
         XCTAssertEqual(model.footer.map(\.state), [.done, .current, .upcoming])
     }
 
@@ -143,8 +143,8 @@ final class TournamentProjectionModelTests: XCTestCase {
         let model = TournamentProjectionModel.make(plan: plan)
         guard case .standings(let standings) = model.scenes.last else { return XCTFail("falta la clasificación") }
         XCTAssertEqual(standings.tables.count, 2)
-        XCTAssertEqual(standings.tables.map(\.title), ["Grupo A", "Grupo B"])
-        XCTAssertEqual(standings.header.title, "Clasificación por grupos")
+        XCTAssertEqual(standings.tables.map(\.title), ["Group A", "Group B"])
+        XCTAssertEqual(standings.header.title, "Group standings")
     }
 
     func testEliminatoriaEnJuegoYDescanso() throws {
@@ -193,8 +193,8 @@ final class TournamentProjectionModelTests: XCTestCase {
             return nil
         }
         XCTAssertEqual(parts.map(\.part), [.first, .second])
-        XCTAssertEqual(parts[0].header.title, "Cuadro · puestos 1 a 12")
-        XCTAssertEqual(parts[1].header.title, "Cuadro · puestos 13 a 24")
+        XCTAssertEqual(parts[0].header.title, "Bracket · places 1 to 12")
+        XCTAssertEqual(parts[1].header.title, "Bracket · places 13 to 24")
         // Cada mitad lleva sus partidos, sin repetirse.
         let firstIDs = Set(parts[0].nodes.map(\.id))
         let secondIDs = Set(parts[1].nodes.map(\.id))
@@ -261,8 +261,8 @@ final class TournamentProjectionModelTests: XCTestCase {
     func testElNumeroDeEquipoEsFijoSegunPlanTeams() throws {
         var plan = try placement(teams: 8, venues: 4)
         let labels = ProjectionTeamLabels(plan: plan)
-        XCTAssertEqual(labels.label(name: "Lucía y Hugo 3"), "Equipo 3")
-        XCTAssertEqual(labels.label(id: "alumno-8"), "Equipo 8")
+        XCTAssertEqual(labels.label(name: "Lucía y Hugo 3"), "Team 3")
+        XCTAssertEqual(labels.label(id: "alumno-8"), "Team 8")
         // Jugar no cambia los números.
         Fixtures.playLeague(&plan, limit: 3)
         XCTAssertEqual(ProjectionTeamLabels(plan: plan), labels)
@@ -270,7 +270,7 @@ final class TournamentProjectionModelTests: XCTestCase {
         guard case .round(let round) = model.scenes[0] else { return XCTFail("escena inesperada") }
         let slot = try XCTUnwrap(plan.slots.first(where: { $0.id == round.matches.first?.id }))
         let home = try XCTUnwrap(plan.teams.firstIndex { $0.name == slot.match.homeTeam })
-        XCTAssertEqual(round.matches.first?.home, "Equipo \(home + 1)")
+        XCTAssertEqual(round.matches.first?.home, "Team \(home + 1)")
     }
     func testConNombresLosEquiposTienenSuNombreYLosHuecosSiguenSinNombres() throws {
         var plan = try placement(teams: 8, venues: 4)
@@ -279,11 +279,11 @@ final class TournamentProjectionModelTests: XCTestCase {
         let model = TournamentProjectionModel.make(plan: plan, hints: ProjectionLiveHints(showNames: true))
         let teamNames = Set(plan.teams.map(\.name))
         XCTAssertTrue(model.allTexts.contains { text in teamNames.contains { text.contains($0) } })
-        XCTAssertFalse(model.allTexts.contains { $0.hasPrefix("Equipo ") })
+        XCTAssertFalse(model.allTexts.contains { $0.hasPrefix("Team ") })
         // Un hueco sin resolver no se sustituye por ningún nombre.
         let labels = ProjectionTeamLabels(plan: plan, showNames: true)
-        XCTAssertEqual(labels.label(name: "Gana P5"), "Gana P5")
-        XCTAssertEqual(labels.label(name: "3º liguilla"), "3º liguilla")
+        XCTAssertEqual(labels.label(name: "Gana P5"), "Winner M5")
+        XCTAssertEqual(labels.label(name: "3º liguilla"), "3rd group stage")
         XCTAssertEqual(labels.label(name: "Lucía y Hugo 3"), "Lucía y Hugo 3")
         XCTAssertEqual(labels.label(id: "alumno-8"), "Lucía y Hugo 8")
         XCTAssertEqual(labels.label(name: "Marta y Leo"), ProjectionTeamLabels.unknownTeam)
@@ -299,9 +299,15 @@ final class TournamentProjectionModelTests: XCTestCase {
         // Nombre que no está en el plan (p. ej. de una edición anterior): no se proyecta.
         XCTAssertEqual(labels.label(name: "Marta y Leo"), ProjectionTeamLabels.unknownTeam)
         XCTAssertEqual(labels.label(name: "Andrés y Pablo 2"), ProjectionTeamLabels.unknownTeam)
-        // Los huecos del cuadro sí pasan tal cual.
-        for slot in ["Gana P5", "Pierde P12", "Ganador P3", "Perdedor P1", "Clasificado 2 Grupo B", "Clasificado 3", "3º liguilla", "1º Grupo A"] {
-            XCTAssertEqual(labels.label(name: slot), slot)
+        // Los huecos del cuadro que genera la app se reconocen y se enseñan en inglés.
+        let expected = [
+            "Gana P5": "Winner M5", "Pierde P12": "Loser M12", "Ganador P3": "Winner M3", "Perdedor P1": "Loser M1",
+            "Clasificado 2 Grupo B": "2nd Group B", "Clasificado 3": "3rd group stage",
+            "3º liguilla": "3rd group stage", "1º Grupo A": "1st Group A", "11º liguilla": "11th group stage",
+        ]
+        for (slot, english) in expected {
+            XCTAssertTrue(ProjectionTeamLabels.isSlotPlaceholder(slot), slot)
+            XCTAssertEqual(labels.label(name: slot), english)
         }
     }
 }

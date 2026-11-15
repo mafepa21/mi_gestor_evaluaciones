@@ -41,15 +41,15 @@ struct ProjectionTeamLabels: Equatable, Sendable {
 
     func label(name: String) -> String {
         if let number = numberByName[name] { return label(number: number) }
-        return Self.isSlotPlaceholder(name) ? name : Self.unknownTeam
+        return Self.isSlotPlaceholder(name) ? ProjectionStrings.placeholder(name) : Self.unknownTeam
     }
 
     /// Texto para un participante que no es un equipo del plan ni un hueco conocido. Nunca se
     /// devuelve el texto original: podría ser un nombre antiguo del alumnado.
-    static let unknownTeam = "Equipo"
+    static let unknownTeam = ProjectionStrings.unknownTeam
 
-    /// Huecos del cuadro que genera la app («Gana P5», «Ganador P3», «Clasificado 1 Grupo A»,
-    /// «3º liguilla», «1º Grupo A»). Solo estos pasan tal cual a la proyección.
+    /// Huecos del cuadro que genera la app, en español («Gana P5», «Ganador P3», «Clasificado 1 Grupo A»,
+    /// «3º liguilla», «1º Grupo A»). Solo estos pasan a la proyección, traducidos por `ProjectionStrings.placeholder`.
     static func isSlotPlaceholder(_ text: String) -> Bool {
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.range(of: #"^(Gana|Pierde|Ganador|Perdedor) P\d+$"#, options: .regularExpression) != nil
@@ -64,7 +64,7 @@ struct ProjectionTeamLabels: Equatable, Sendable {
     /// Etiqueta del equipo en la posición `number` (empieza en 1): «Equipo N» o su nombre.
     func label(number: Int) -> String {
         if showNames, namesByPosition.indices.contains(number - 1) { return namesByPosition[number - 1] }
-        return "Equipo \(number)"
+        return ProjectionStrings.team(number)
     }
 
     /// Para ordenar equipos por su número.
@@ -96,7 +96,7 @@ struct ProjectionMatch: Identifiable, Equatable, Sendable {
     /// «Gana: sigue por 1–4 · Pierde: por 5–8», solo en el cuadro de puestos.
     var destination: String?
 
-    var venueTitle: String { "Pista \(venue)" }
+    var venueTitle: String { ProjectionStrings.court(venue) }
     var isPlayed: Bool { homeScore != nil && awayScore != nil }
 
     var winner: ProjectionSide? {
@@ -104,7 +104,7 @@ struct ProjectionMatch: Identifiable, Equatable, Sendable {
         return homeScore > awayScore ? .home : .away
     }
 
-    /// Cómo se lee un marcador: «Equipo 3 · Pista 2».
+    /// Cómo se lee un marcador: «Team 3 · Court 2».
     var markerText: String { "\(home) · \(venueTitle)" }
 
     var texts: [String] {
@@ -161,7 +161,7 @@ struct ProjectionStandings: Equatable, Sendable {
     var tables: [ProjectionStandingsTable]
 
     var texts: [String] {
-        header.texts + [recordHeader, extraHeader]
+        header.texts + [ProjectionStrings.teamHeader, recordHeader, extraHeader]
             + tables.flatMap { table in
                 [table.title].compactMap { $0 } + table.rows.flatMap { [$0.team, $0.record, $0.extra] }
             }
@@ -257,6 +257,8 @@ struct ProjectionPlace: Identifiable, Equatable, Sendable {
     let team: String
 
     var id: Int { position }
+    /// «1st», «2nd»…
+    var positionText: String { ProjectionStrings.ordinal(position) }
 }
 
 struct ProjectionPodium: Equatable, Sendable {
@@ -266,7 +268,10 @@ struct ProjectionPodium: Equatable, Sendable {
     /// El resto de la clasificación.
     var others: [ProjectionPlace]
 
-    var texts: [String] { header.texts + (places + others).map(\.team) }
+    var texts: [String] {
+        header.texts + (places + others).flatMap { [$0.positionText, $0.team] }
+            + (places.isEmpty ? [] : [ProjectionStrings.champions])
+    }
 }
 
 struct ProjectionMessage: Equatable, Sendable {
@@ -373,7 +378,7 @@ struct TournamentProjectionModel: Equatable, Sendable {
 
     let tournamentName: String
     let stage: Stage
-    /// Línea de fases del pie: «1 · Liguilla», «2 · Cuadro», «Podio».
+    /// Línea de fases del pie: «1 · Group stage», «2 · Bracket», «Podium».
     let footer: [ProjectionFooterPhase]
     /// Escenas en el orden de la rotación. Nunca vacío.
     let scenes: [TournamentProjectionScene]
@@ -403,8 +408,8 @@ struct TournamentProjectionModel: Equatable, Sendable {
         guard !plan.savedSchedule.isEmpty, plan.teams.count >= 2 else {
             return emptyModel(
                 plan: plan,
-                title: "Todavía no hay calendario",
-                message: "Prepara el torneo en el iPad o en el Mac y vuelve a proyectar."
+                title: "No schedule yet",
+                message: "Set up the tournament on the iPad or the Mac, then project it again."
             )
         }
 
@@ -431,7 +436,7 @@ struct TournamentProjectionModel: Equatable, Sendable {
         }
 
         let leaguePhase = timeline.phase(.league)
-        let leagueTitle = leaguePhase?.title ?? "Liga"
+        let leagueTitle = ProjectionStrings.phaseTitle(leaguePhase?.title ?? "Liga")
 
         // Sin ningún resultado: se enseña la primera ronda.
         if !timeline.hasStarted {
@@ -444,11 +449,11 @@ struct TournamentProjectionModel: Equatable, Sendable {
                 first = leagueRounds.first?.matches ?? []
                 resting = leagueRounds.first?.restingText
             }
-            let kicker = timeline.phases.first?.title ?? leagueTitle
+            let kicker = timeline.phases.first.map { ProjectionStrings.phaseTitle($0.title) } ?? leagueTitle
             let scene = TournamentProjectionScene.notStarted(
                 ProjectionUpNext(
-                    header: ProjectionHeader(kicker: "Empieza el torneo", title: "Prepárate"),
-                    note: "\(kicker). La clasificación aparecerá al terminar la primera ronda.",
+                    header: ProjectionHeader(kicker: ProjectionStrings.tournamentStarts, title: ProjectionStrings.getReady),
+                    note: ProjectionStrings.startNote(phase: kicker),
                     matches: first,
                     restingText: resting
                 )
@@ -461,8 +466,8 @@ struct TournamentProjectionModel: Equatable, Sendable {
             guard let podium = podium(plan: plan, layout: layout, labels: labels) else {
                 return emptyModel(
                     plan: plan,
-                    title: "Torneo terminado",
-                    message: "Los resultados están completos."
+                    title: "Tournament finished",
+                    message: "All the results are in."
                 )
             }
             return make(.finished, [.podium(podium)])
@@ -478,14 +483,14 @@ struct TournamentProjectionModel: Equatable, Sendable {
                 return make(.leagueInPlay, [.standings(standings(plan: plan, labels: labels, isFinal: false, leagueTitle: leagueTitle))])
             }
             let round = leagueRounds[index]
-            let roundText = "Ronda \(index + 1) de \(leagueRounds.count)"
+            let roundText = ProjectionStrings.round(index + 1, of: leagueRounds.count)
             let standingsScene = TournamentProjectionScene.standings(
                 standings(plan: plan, labels: labels, isFinal: false, leagueTitle: leagueTitle)
             )
             let playedCount = round.matches.filter(\.isPlayed).count
             if index > 0, playedCount == 0 {
                 let upNext = ProjectionUpNext(
-                    header: ProjectionHeader(kicker: "Descanso · Prepárate", title: "\(leagueTitle) · \(roundText)"),
+                    header: ProjectionHeader(kicker: ProjectionStrings.breakGetReady, title: "\(leagueTitle) · \(roundText)"),
                     note: nil,
                     matches: round.matches,
                     restingText: round.restingText
@@ -494,7 +499,7 @@ struct TournamentProjectionModel: Equatable, Sendable {
             }
             let scene = TournamentProjectionScene.round(
                 ProjectionRound(
-                    header: ProjectionHeader(kicker: "\(leagueTitle) · \(roundText)", title: "Ahora en juego"),
+                    header: ProjectionHeader(kicker: "\(leagueTitle) · \(roundText)", title: ProjectionStrings.nowPlaying),
                     matches: round.matches,
                     restingText: round.restingText,
                     playedCount: playedCount
@@ -506,19 +511,19 @@ struct TournamentProjectionModel: Equatable, Sendable {
             guard let layout else {
                 return emptyModel(
                     plan: plan,
-                    title: "No se puede dibujar el cuadro",
-                    message: "El cuadro no coincide con el calendario. Revísalo en el torneo."
+                    title: "The bracket can't be drawn",
+                    message: "The bracket doesn't match the schedule. Check it in the tournament."
                 )
             }
             // Liguilla o grupos recién cerrados y cuadro sin empezar.
             if timeline.bracketPlayed == 0, plan.format != .knockout, let column = layout.currentColumn {
                 let note: String? = plan.format == .leaguePlacement
-                    ? "Nadie queda eliminado: quien gana sigue por los puestos de arriba, quien pierde por los de abajo."
-                    : "Los mejores de cada grupo pasan al cuadro."
+                    ? ProjectionStrings.placementNote
+                    : ProjectionStrings.groupsNote
                 let end = ProjectionPhaseEnd(
                     header: ProjectionHeader(
-                        kicker: "Fin de la fase 1",
-                        title: "\(plan.format == .leaguePlacement ? "Liguilla" : "Grupos") terminados. Empieza el cuadro."
+                        kicker: ProjectionStrings.phaseComplete,
+                        title: ProjectionStrings.phaseFinished(isPlacement: plan.format == .leaguePlacement)
                     ),
                     note: note,
                     matches: bracketMatches(layout, column: column, labels: labels)
@@ -529,21 +534,21 @@ struct TournamentProjectionModel: Equatable, Sendable {
             guard let column = layout.currentColumn else {
                 return emptyModel(
                     plan: plan,
-                    title: "No se puede dibujar el cuadro",
-                    message: "El cuadro no coincide con el calendario. Revísalo en el torneo."
+                    title: "The bracket can't be drawn",
+                    message: "The bracket doesn't match the schedule. Check it in the tournament."
                 )
             }
-            let phaseTitle = timeline.phase(timeline.currentKind)?.title ?? "Cuadro"
+            let phaseTitle = timeline.phase(timeline.currentKind).map { ProjectionStrings.phaseTitle($0.title) } ?? ProjectionStrings.bracket
             let roundText = plan.format == .knockout
-                ? layout.columns[column].title
-                : "Ronda \(column + 1) de \(layout.columns.count)"
+                ? ProjectionStrings.stage(layout.columns[column].title)
+                : ProjectionStrings.round(column + 1, of: layout.columns.count)
             let kicker = plan.format == .knockout ? phaseTitle : "\(phaseTitle) · \(roundText)"
             let matches = bracketMatches(layout, column: column, labels: labels)
             let brackets = bracketScenes(layout: layout, plan: plan, labels: labels, phaseTitle: phaseTitle)
             let playedCount = matches.filter(\.isPlayed).count
             if column > 0, playedCount == 0 {
                 let upNext = ProjectionUpNext(
-                    header: ProjectionHeader(kicker: "Descanso · Prepárate", title: plan.format == .knockout ? roundText : "\(phaseTitle) · \(roundText)"),
+                    header: ProjectionHeader(kicker: ProjectionStrings.breakGetReady, title: plan.format == .knockout ? roundText : "\(phaseTitle) · \(roundText)"),
                     note: nil,
                     matches: matches,
                     restingText: nil
@@ -552,7 +557,7 @@ struct TournamentProjectionModel: Equatable, Sendable {
             }
             let scene = TournamentProjectionScene.round(
                 ProjectionRound(
-                    header: ProjectionHeader(kicker: kicker, title: "Ahora en juego"),
+                    header: ProjectionHeader(kicker: kicker, title: ProjectionStrings.nowPlaying),
                     matches: matches,
                     restingText: nil,
                     playedCount: playedCount
@@ -564,7 +569,7 @@ struct TournamentProjectionModel: Equatable, Sendable {
 
     // MARK: Escena forzada desde el iPad
 
-    /// Deja solo el tipo de escena pedido. Sin coincidencias (p. ej. «Cuadro» en una liga) devuelve
+    /// Deja solo el tipo de escena pedido. Sin coincidencias (p. ej. «Bracket» en una liga) devuelve
     /// todas: la rotación automática nunca se queda vacía.
     private static func filteredScenes(
         _ scenes: [TournamentProjectionScene],
@@ -588,7 +593,7 @@ struct TournamentProjectionModel: Equatable, Sendable {
             tournamentName: plan.name,
             stage: .empty,
             footer: [],
-            scenes: [.empty(ProjectionMessage(header: ProjectionHeader(kicker: "Torneo", title: title), message: message))]
+            scenes: [.empty(ProjectionMessage(header: ProjectionHeader(kicker: ProjectionStrings.tournament, title: title), message: message))]
         )
     }
 
@@ -596,10 +601,10 @@ struct TournamentProjectionModel: Equatable, Sendable {
         timeline.phases.enumerated().map { offset, phase in
             let title: String
             switch phase.kind {
-            case .podium: title = "Podio"
-            case .league: title = phase.title.replacingOccurrences(of: "Fase ", with: "")
-            case .bracket: title = plan.format == .leaguePlacement ? "\(phase.number) · Cuadro" : "\(phase.number) · Eliminatorias"
-            case .round: title = phase.title.replacingOccurrences(of: "Fase ", with: "")
+            case .podium: title = ProjectionStrings.podium
+            case .league: title = ProjectionStrings.footerTitle(phase.title)
+            case .bracket: title = ProjectionStrings.footerBracket(number: phase.number, isPlacement: plan.format == .leaguePlacement)
+            case .round: title = ProjectionStrings.footerTitle(phase.title)
             }
             let state: ProjectionFooterPhase.State
             switch phase.state {
@@ -646,13 +651,7 @@ struct TournamentProjectionModel: Equatable, Sendable {
             let waiting = plan.teams.enumerated()
                 .filter { !playing.contains($0.element.name) }
                 .map { labels.label(number: $0.offset + 1) }
-            if waiting.count == 1 {
-                resting = "Descansa: \(waiting[0])"
-            } else if waiting.count > 1, waiting.count <= 6 {
-                resting = "Descansan: \(waiting.joined(separator: ", "))"
-            } else if waiting.count > 6 {
-                resting = "Descansan \(waiting.count) equipos"
-            }
+            resting = ProjectionStrings.resting(waiting)
         }
         return LeagueRoundData(matches: matches, restingText: resting)
     }
@@ -660,9 +659,7 @@ struct TournamentProjectionModel: Equatable, Sendable {
     // MARK: Cuadro
 
     private static func positionsText(_ range: ClosedRange<Int>) -> String {
-        if range.lowerBound == range.upperBound { return "\(range.lowerBound)º" }
-        if range.count == 2 { return "\(range.lowerBound)º–\(range.upperBound)º" }
-        return "\(range.lowerBound)–\(range.upperBound)"
+        ProjectionStrings.positionsText(range)
     }
 
     private static func side(_ side: BracketSide, labels: ProjectionTeamLabels) -> ProjectionBracketSide {
@@ -687,9 +684,11 @@ struct TournamentProjectionModel: Equatable, Sendable {
                 away: away.label,
                 homeScore: played ? home.score : nil,
                 awayScore: played ? away.score : nil,
-                caption: node.positions.map { "Puestos \(positionsText($0))" },
+                caption: node.positions.map { ProjectionStrings.placesCaption($0) },
                 // «A qué lleva ganar o perder» solo tiene sentido en el cuadro de puestos.
-                destination: layout.isPlacement ? node.destinationText : nil
+                destination: layout.isPlacement
+                    ? ProjectionStrings.destination(winner: node.winnerDestination, loser: node.loserDestination)
+                    : nil
             )
         }.sorted { ($0.venue, $0.id.uuidString) < ($1.venue, $1.id.uuidString) }
     }
@@ -816,18 +815,13 @@ struct TournamentProjectionModel: Equatable, Sendable {
             let source = layout.columns[old]
             return ProjectionBracketColumn(
                 id: new,
-                title: source.title,
-                subtitle: source.subtitle,
+                title: ProjectionStrings.stage(source.title),
+                subtitle: source.subtitle.map(ProjectionStrings.columnSubtitle),
                 isCurrent: source.state == .current
             )
         }
 
-        let title: String
-        switch part {
-        case .whole: title = "Cuadro"
-        case .first: title = layout.isPlacement ? "Cuadro · puestos 1 a \(half)" : "Cuadro · mitad de arriba"
-        case .second: title = layout.isPlacement ? "Cuadro · puestos \(half + 1) a \(teamCount)" : "Cuadro · mitad de abajo"
-        }
+        let title = ProjectionStrings.bracketTitle(part: part, isPlacement: layout.isPlacement, half: half, teamCount: teamCount)
         return ProjectionBracket(
             header: ProjectionHeader(kicker: phaseTitle, title: title),
             part: part,
@@ -850,10 +844,12 @@ struct TournamentProjectionModel: Equatable, Sendable {
         isFinal: Bool,
         leagueTitle: String
     ) -> ProjectionStandings {
-        let kicker = isFinal ? "Fin de la fase 1" : leagueTitle
-        let title = isFinal ? "Clasificación final" : (plan.format == .groupStageKnockout ? "Clasificación por grupos" : "Clasificación")
+        let kicker = isFinal ? ProjectionStrings.phaseComplete : leagueTitle
+        let title = isFinal
+            ? ProjectionStrings.finalStandings
+            : (plan.format == .groupStageKnockout ? ProjectionStrings.groupStandings : ProjectionStrings.standings)
 
-        func points(_ value: Standing) -> String { "\(value.points) pts" }
+        func points(_ value: Standing) -> String { ProjectionStrings.points(value.points) }
 
         switch plan.format {
         case .leaguePlacement:
@@ -868,15 +864,15 @@ struct TournamentProjectionModel: Equatable, Sendable {
             }
             return ProjectionStandings(
                 header: ProjectionHeader(kicker: kicker, title: title),
-                recordHeader: "G-E-P",
-                extraHeader: "Dif",
+                recordHeader: ProjectionStrings.recordHeader,
+                extraHeader: ProjectionStrings.diffHeader,
                 tables: [ProjectionStandingsTable(title: nil, rows: rows)]
             )
         case .groupStageKnockout:
             // `groupStandings` antepone «Grupo » a un nombre que ya lo lleva: se usa el nombre limpio.
             let tables = plan.groupStandings.enumerated().map { index, group in
                 ProjectionStandingsTable(
-                    title: GroupStageConfiguration.groupName(index: index),
+                    title: ProjectionStrings.groupName(GroupStageConfiguration.groupName(index: index)),
                     rows: group.standings.enumerated().map { offset, row in
                         ProjectionStandingRow(
                             position: offset + 1,
@@ -889,8 +885,8 @@ struct TournamentProjectionModel: Equatable, Sendable {
             }
             return ProjectionStandings(
                 header: ProjectionHeader(kicker: kicker, title: title),
-                recordHeader: "G-E-P",
-                extraHeader: "Pts",
+                recordHeader: ProjectionStrings.recordHeader,
+                extraHeader: ProjectionStrings.pointsHeader,
                 tables: tables
             )
         default:
@@ -904,8 +900,8 @@ struct TournamentProjectionModel: Equatable, Sendable {
             }
             return ProjectionStandings(
                 header: ProjectionHeader(kicker: kicker, title: title),
-                recordHeader: "G-E-P",
-                extraHeader: "Pts",
+                recordHeader: ProjectionStrings.recordHeader,
+                extraHeader: ProjectionStrings.pointsHeader,
                 tables: [ProjectionStandingsTable(title: nil, rows: rows)]
             )
         }
@@ -939,7 +935,7 @@ struct TournamentProjectionModel: Equatable, Sendable {
         }
         guard !ranking.isEmpty else { return nil }
         return ProjectionPodium(
-            header: ProjectionHeader(kicker: "Fin del torneo", title: "Podio"),
+            header: ProjectionHeader(kicker: ProjectionStrings.tournamentComplete, title: ProjectionStrings.podium),
             places: ranking.filter { $0.position <= 3 },
             others: ranking.filter { $0.position > 3 }
         )

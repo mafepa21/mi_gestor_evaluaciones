@@ -70,9 +70,9 @@ struct MacTournamentProjectionWindow: View {
                 live: tournamentId.flatMap { live.projection(for: $0) }
             )
         case .loading:
-            message("Cargando el torneo…")
+            message(ProjectionStrings.loading)
         case .missing:
-            message("No se encuentra el torneo. Ciérrala y vuelve a proyectar desde el torneo.")
+            message(ProjectionStrings.tournamentNotFound)
         }
     }
 

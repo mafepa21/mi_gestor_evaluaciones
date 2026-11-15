@@ -392,7 +392,7 @@ private struct ProjectionMatchCard: View {
     private var accessibilityText: String {
         var parts = [match.venueTitle, match.home]
         if let score = match.homeScore { parts.append("\(score)") }
-        parts.append("contra")
+        parts.append(ProjectionStrings.versus)
         parts.append(match.away)
         if let score = match.awayScore { parts.append("\(score)") }
         return parts.joined(separator: " ")
@@ -420,7 +420,7 @@ private struct ProjectionMatchList: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.6)
                             (Text(match.home).font(metrics.font(size))
-                                + Text("  contra  ").font(metrics.font(size * 0.7, .regular)).foregroundColor(ProjectionPalette.muted)
+                                + Text("  \(ProjectionStrings.versus)  ").font(metrics.font(size * 0.7, .regular)).foregroundColor(ProjectionPalette.muted)
                                 + Text(match.away).font(metrics.font(size)))
                                 .foregroundStyle(ProjectionPalette.text)
                                 .lineLimit(1)
@@ -432,7 +432,7 @@ private struct ProjectionMatchList: View {
                             Rectangle().fill(ProjectionPalette.card).frame(height: metrics.length(0.15))
                         }
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("\(match.venueTitle), \(match.home) contra \(match.away)")
+                        .accessibilityLabel("\(match.venueTitle), \(match.home) \(ProjectionStrings.versus) \(match.away)")
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -547,7 +547,7 @@ private struct ProjectionStandingsScene: View {
         VStack(spacing: 0) {
             HStack(spacing: metrics.length(size * 0.4)) {
                 Text("#").frame(width: metrics.length(size * 1.5), alignment: .leading)
-                Text("Equipo").frame(maxWidth: .infinity, alignment: .leading)
+                Text(ProjectionStrings.teamHeader).frame(maxWidth: .infinity, alignment: .leading)
                 Text(value.recordHeader).frame(width: metrics.length(size * 3), alignment: .trailing)
                 Text(value.extraHeader).frame(width: metrics.length(size * 2.6), alignment: .trailing)
             }
@@ -577,7 +577,7 @@ private struct ProjectionStandingsScene: View {
                     Rectangle().fill(ProjectionPalette.card).frame(height: metrics.length(0.12))
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Puesto \(row.position), \(row.team), \(row.record), \(row.extra)")
+                .accessibilityLabel("\(ProjectionStrings.placeLabel(row.position)), \(row.team), \(row.record), \(row.extra)")
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -607,8 +607,8 @@ private struct ProjectionPodiumScene: View {
                         VStack(alignment: .leading, spacing: metrics.length(0.2)) {
                             ForEach(column) { place in
                                 HStack(spacing: metrics.length(0.8)) {
-                                    Text("\(place.position)º").foregroundStyle(ProjectionPalette.muted)
-                                        .frame(width: metrics.length(size * 1.6), alignment: .leading)
+                                    Text(place.positionText).foregroundStyle(ProjectionPalette.muted)
+                                        .frame(width: metrics.length(size * 2.2), alignment: .leading)
                                     Text(place.team).foregroundStyle(ProjectionPalette.text)
                                 }
                                 .font(metrics.font(size, .semibold))
@@ -634,7 +634,7 @@ private struct ProjectionPodiumScene: View {
     private func card(_ place: ProjectionPlace) -> some View {
         let isFirst = place.position == 1
         return VStack(spacing: metrics.length(0.5)) {
-            Text(isFirst ? "★ Campeones" : "\(place.position)º")
+            Text(isFirst ? "★ \(ProjectionStrings.champions)" : place.positionText)
                 .font(metrics.font(2.4))
                 .foregroundStyle(isFirst ? ProjectionPalette.gold : ProjectionPalette.muted)
             Text(place.team)
@@ -654,7 +654,7 @@ private struct ProjectionPodiumScene: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Puesto \(place.position): \(place.team)")
+        .accessibilityLabel("\(ProjectionStrings.placeLabel(place.position)): \(place.team)")
     }
 }
 
@@ -772,7 +772,7 @@ private struct ProjectionBracketCanvas: View {
                 )
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Partido \(node.number): \(node.home.label) contra \(node.away.label)")
+        .accessibilityLabel("\(ProjectionStrings.matchLabel(node.number)): \(node.home.label) \(ProjectionStrings.versus) \(node.away.label)")
     }
 
     private func sideRow(_ side: ProjectionBracketSide, rowHeight: CGFloat, fontSize: CGFloat, number: Int?) -> some View {

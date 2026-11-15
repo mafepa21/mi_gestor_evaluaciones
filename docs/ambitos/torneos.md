@@ -40,3 +40,8 @@
 - Un texto nuevo de la proyección en directo debe entrar en `ProjectionLiveTexts.fixedTexts` para que lo cubra la prueba de nombres.
 - El reloj del Mac resta y suma sin desbordar: no quitar `addingReportingOverflow`/`subtractingReportingOverflow` de `TournamentLiveClock`.
 - Kotlin: un `/*` dentro de un KDoc (p. ej. `/live/*`) abre un comentario anidado y rompe la compilación.
+- Los textos visibles de la proyección están solo en `ProjectionStrings`, en inglés. Un texto nuevo debe entrar en `allTexts` y pasar `ProjectionEnglishTests`, que falla si encuentra palabras españolas típicas.
+- `TournamentPhaseTimeline` y `BracketTreeLayout` siguen generando español para el iPad. La proyección lo traduce con expresiones regulares en `ProjectionStrings` (`phaseTitle`, `stage`, `columnSubtitle`, `destination`, `placeholder`). Si cambia el español de esas capas, hay que cambiar también la traducción. `isSlotPlaceholder` solo reconoce los huecos en español.
+- `ProjectionTeamLabels(plan:showNames:)` solo pone nombres si `hints.showNames` está activo, y eso exige un estado reciente, del mismo torneo y no `ended`. Si dos equipos se llaman igual, `label(name:)` usa el primero.
+- Modo directo: la cuenta de `courtsGrid` necesita que la fila y la cabecera midan exactamente `rowHeight` y `cardHeaderHeight`. No volver a `.bordered` ni a `minHeight` en los botones «−» y «+» (`ScoreStepButton`). En vertical, lo que se añada a la columna de controles debe sumarse a `noticesReserve` o `projectionNamesReserve`.
+

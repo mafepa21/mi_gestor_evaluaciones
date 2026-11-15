@@ -7,6 +7,8 @@ struct TournamentLivePayload: Equatable, Sendable {
     var roundNumber: Int?
     var timer: TournamentLiveTimer?
     var scene: TournamentLiveScene
+    /// Interruptor «Nombres en la proyección» (solo el booleano).
+    var showNames: Bool
     var scores: [String: [Int]]
 }
 
@@ -152,6 +154,7 @@ final class TournamentLivePublisher: ObservableObject {
             roundNumber: payload.roundNumber,
             timer: payload.timer,
             scene: payload.scene,
+            showNames: payload.showNames,
             scores: payload.scores
         )
         guard let body = try? state.encoded() else {

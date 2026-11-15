@@ -26,12 +26,13 @@ final class TournamentLiveStateTests: XCTestCase {
         roundNumber: Int? = nil,
         timer: TournamentLiveTimer? = nil,
         scene: TournamentLiveScene = .auto,
+        showNames: Bool = false,
         scores: [String: [Int]] = [:]
     ) -> TournamentLiveState {
         TournamentLiveState(
             sessionId: session, tournamentId: tournament, seq: seq, sentAtMs: sentAtMs,
             receivedAtMs: receivedAtMs, status: status, roundNumber: roundNumber,
-            timer: timer, scene: scene, scores: scores
+            timer: timer, scene: scene, showNames: showNames, scores: scores
         )
     }
 
@@ -46,6 +47,18 @@ final class TournamentLiveStateTests: XCTestCase {
         )
         let decoded = try XCTUnwrap(TournamentLiveState.decode(try original.encoded()))
         XCTAssertEqual(decoded, original)
+    }
+
+    func testShowNamesEsOpcionalAlDecodificarYViajaSoloComoBooleano() throws {
+        let sinClave = """
+        {"v":1,"sessionId":"s","tournamentId":"t","seq":0,"sentAtMs":1,"status":"running","scene":"auto","scores":{}}
+        """
+        XCTAssertFalse(try XCTUnwrap(TournamentLiveState.decode(Data(sinClave.utf8))).showNames)
+        let conClave = sinClave.replacingOccurrences(of: #""scores""#, with: #""showNames":true,"scores""#)
+        XCTAssertTrue(try XCTUnwrap(TournamentLiveState.decode(Data(conClave.utf8))).showNames)
+        let data = try state(showNames: true).encoded()
+        XCTAssertTrue(String(decoding: data, as: UTF8.self).contains(#""showNames":true"#))
+        XCTAssertEqual(try XCTUnwrap(TournamentLiveState.decode(data)), state(showNames: true))
     }
 
     func testValoresDesconocidosCaenEnPausaYAuto() throws {
@@ -202,15 +215,44 @@ final class TournamentLiveStateTests: XCTestCase {
         XCTAssertTrue(plan.savedResults.isEmpty)
     }
 
+    func testConElInterruptorLaProyeccionUsaNombresSoloConElDirectoVigente() throws {
+        let plan = try leaguePlan()
+        let names = plan.teams.map(\.name)
+        func texts(_ projection: TournamentLiveProjection) -> [String] {
+            TournamentProjectionModel.make(plan: projection.plan(overlaying: plan), hints: projection.hints).allTexts
+        }
+        func mentionsNames(_ texts: [String]) -> Bool {
+            texts.contains { text in names.contains { text.contains($0) } }
+        }
+        func live(_ state: TournamentLiveState, stale: Bool = false) -> TournamentLiveProjection {
+            TournamentLiveProjection(tournamentID: "t1", state: state, clock: TournamentLiveClock(), isStale: stale)
+        }
+        // Apagado: «Team N».
+        let off = texts(live(state(roundNumber: 1, showNames: false)))
+        XCTAssertFalse(mentionsNames(off))
+        XCTAssertTrue(off.contains { $0.contains("Team ") })
+        // Encendido y vigente: aparecen los nombres del torneo.
+        let on = texts(live(state(roundNumber: 1, showNames: true)))
+        XCTAssertTrue(mentionsNames(on))
+        // Estado viejo, cerrado, de otro torneo o sin directo: vuelve «Team N».
+        XCTAssertFalse(mentionsNames(texts(live(state(roundNumber: 1, showNames: true), stale: true))))
+        XCTAssertFalse(mentionsNames(texts(live(state(status: .ended, roundNumber: 1, showNames: true)))))
+        XCTAssertFalse(mentionsNames(texts(live(state(tournament: "t2", roundNumber: 1, showNames: true)))))
+        XCTAssertFalse(mentionsNames(TournamentProjectionModel.make(plan: plan).allTexts))
+        // El estado viejo conserva ronda y escena (última foto) pero no los nombres.
+        let stale = live(state(roundNumber: 2, scene: .courts, showNames: true), stale: true)
+        XCTAssertEqual(stale.hints, ProjectionLiveHints(roundNumber: 2, scene: .courts, showNames: false))
+    }
+
     func testLaRondaDelIPadSustituyeALaDeducida() throws {
         var plan = try leaguePlan()
         Fixtures.playLeague(&plan, limit: 1)
         let deduced = TournamentProjectionModel.make(plan: plan)
         guard case .round(let a) = deduced.scenes[0] else { return XCTFail("escena inesperada") }
-        XCTAssertTrue(a.header.kicker.contains("Ronda 1 de"), a.header.kicker)
+        XCTAssertTrue(a.header.kicker.contains("Round 1 of"), a.header.kicker)
         let hinted = TournamentProjectionModel.make(plan: plan, hints: ProjectionLiveHints(roundNumber: 3, scene: .auto))
         guard let first = hinted.scenes.first else { return XCTFail("sin escenas") }
-        XCTAssertTrue(first.header.title.contains("Ronda 3 de"), first.header.title)
+        XCTAssertTrue(first.header.title.contains("Round 3 of"), first.header.title)
         // Una ronda inexistente se ignora.
         let unknown = TournamentProjectionModel.make(plan: plan, hints: ProjectionLiveHints(roundNumber: 99, scene: .auto))
         XCTAssertEqual(unknown, deduced)
@@ -256,7 +298,7 @@ final class TournamentLiveStateTests: XCTestCase {
         live.state.status = .ended
         XCTAssertFalse(live.showsOfflineNotice)
         let notice = ProjectionLiveTexts.offlineNotice(atMs: 1_700_000_000_000, timeZone: TimeZone(secondsFromGMT: 0)!)
-        XCTAssertEqual(notice, "Sin conexión con el iPad · datos de las 22:13")
+        XCTAssertEqual(notice, "iPad disconnected · last update 22:13")
     }
 
     // MARK: Política de la ventana

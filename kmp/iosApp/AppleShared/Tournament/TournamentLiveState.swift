@@ -6,7 +6,7 @@ import Foundation
 // la proyección. El estado SOLO lleva ids (de torneo, de partido): ningún nombre de equipo ni de
 // alumno sale del iPad. Contrato v1 (lo valida también el helper, `LiveStateRelay.kt`):
 //   v, sessionId, tournamentId, seq, sentAtMs, [receivedAtMs lo añade el helper], status,
-//   roundNumber?, timer?{endAtMs?, pausedRemainingS?, totalS}, scene, scores{<uuid partido>:[local, visitante]}.
+//   roundNumber?, timer?{endAtMs?, pausedRemainingS?, totalS}, scene, showNames (bool, opcional), scores{<uuid partido>:[local, visitante]}.
 // Nada de esto se guarda nunca en el plan: es provisional hasta que el iPad guarda y la sync llega.
 
 // MARK: - Estado
@@ -61,8 +61,31 @@ struct TournamentLiveState: Codable, Equatable, Sendable {
     var roundNumber: Int?
     var timer: TournamentLiveTimer?
     var scene: TournamentLiveScene
+    /// Interruptor «Nombres en la proyección». Por la red viaja SOLO este booleano, nunca nombres.
+    var showNames: Bool
     /// `[idPartido: [local, visitante]]`.
     var scores: [String: [Int]]
+
+    private enum CodingKeys: String, CodingKey {
+        case v, sessionId, tournamentId, seq, sentAtMs, receivedAtMs, status, roundNumber, timer, scene, showNames, scores
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        v = try c.decode(Int.self, forKey: .v)
+        sessionId = try c.decode(String.self, forKey: .sessionId)
+        tournamentId = try c.decode(String.self, forKey: .tournamentId)
+        seq = try c.decode(Int64.self, forKey: .seq)
+        sentAtMs = try c.decode(Int64.self, forKey: .sentAtMs)
+        receivedAtMs = try c.decodeIfPresent(Int64.self, forKey: .receivedAtMs)
+        status = try c.decode(TournamentLiveStatus.self, forKey: .status)
+        roundNumber = try c.decodeIfPresent(Int.self, forKey: .roundNumber)
+        timer = try c.decodeIfPresent(TournamentLiveTimer.self, forKey: .timer)
+        scene = try c.decode(TournamentLiveScene.self, forKey: .scene)
+        // Un helper o un iPad antiguos no lo envían: sin él, la proyección sigue sin nombres.
+        showNames = try c.decodeIfPresent(Bool.self, forKey: .showNames) ?? false
+        scores = try c.decode([String: [Int]].self, forKey: .scores)
+    }
 
     init(
         v: Int = TournamentLiveState.currentVersion,
@@ -75,6 +98,7 @@ struct TournamentLiveState: Codable, Equatable, Sendable {
         roundNumber: Int? = nil,
         timer: TournamentLiveTimer? = nil,
         scene: TournamentLiveScene = .auto,
+        showNames: Bool = false,
         scores: [String: [Int]] = [:]
     ) {
         self.v = v
@@ -87,6 +111,7 @@ struct TournamentLiveState: Codable, Equatable, Sendable {
         self.roundNumber = roundNumber
         self.timer = timer
         self.scene = scene
+        self.showNames = showNames
         self.scores = scores
     }
 
@@ -209,10 +234,13 @@ struct ProjectionLiveHints: Equatable, Sendable {
     /// Número de ronda del iPad. Solo sustituye la ronda de liga deducida; en cuadro se ignora (v1).
     var roundNumber: Int?
     var scene: TournamentLiveScene
+    /// `true` solo con el interruptor encendido y un estado vigente (no viejo) del mismo torneo.
+    var showNames: Bool
 
-    init(roundNumber: Int? = nil, scene: TournamentLiveScene = .auto) {
+    init(roundNumber: Int? = nil, scene: TournamentLiveScene = .auto, showNames: Bool = false) {
         self.roundNumber = roundNumber
         self.scene = scene
+        self.showNames = showNames
     }
 }
 
@@ -237,7 +265,8 @@ struct TournamentLiveProjection: Equatable, Sendable {
     /// Pistas de ronda y escena: valen con el estado viejo (última foto), no con el de cierre.
     var hints: ProjectionLiveHints? {
         guard isForThisTournament, state.status != .ended else { return nil }
-        return ProjectionLiveHints(roundNumber: state.roundNumber, scene: state.scene)
+        // Los nombres exigen estado vigente: con el directo caducado vuelve «Team N».
+        return ProjectionLiveHints(roundNumber: state.roundNumber, scene: state.scene, showNames: state.showNames && !isStale)
     }
 
     /// Plan con los marcadores provisionales (solo si el estado es reciente y no es el de cierre).
@@ -258,8 +287,8 @@ struct TournamentLiveProjection: Equatable, Sendable {
 
 /// Textos que la proyección pinta por el canal en directo. Ninguno lleva nombres.
 enum ProjectionLiveTexts {
-    static let timeUp = "¡Tiempo!"
-    static let paused = "En pausa"
+    static let timeUp = "Time!"
+    static let paused = "Paused"
 
     /// Textos fijos, para que la prueba de nombres los cubra junto al resto de la proyección.
     static let fixedTexts = [timeUp, paused, offlineNotice(atMs: 0, timeZone: TimeZone(secondsFromGMT: 0)!)]
@@ -269,14 +298,14 @@ enum ProjectionLiveTexts {
         return String(format: "%02d:%02d", value / 60, value % 60)
     }
 
-    /// «Sin conexión con el iPad · datos de las 10:32».
+    /// «iPad disconnected · last update 10:32».
     static func offlineNotice(atMs: Int64, timeZone: TimeZone = .current) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(atMs) / 1000)
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let parts = calendar.dateComponents([.hour, .minute], from: date)
         let text = String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
-        return "Sin conexión con el iPad · datos de las \(text)"
+        return "iPad disconnected · last update \(text)"
     }
 }
 

@@ -17,6 +17,11 @@ struct SdaTournamentLiveView: View {
     @State private var projectionScene: TournamentLiveScene = .auto
     /// «Nombres en la proyección»: empieza apagado en cada sesión del modo directo.
     @State private var showNamesOnProjection = false
+    /// Para evaluar con rúbrica al tocar un equipo (solo iPad/iPhone).
+    private let bridge: KmpBridge?
+    @State private var rubricTarget: SdaRubricTeamTarget?
+    /// Rúbrica (evaluación) elegida: se recuerda mientras dure el modo directo.
+    @State private var rubricEvaluationId: Int64?
 
     @State private var roundIndex: Int
     @State private var timerEnd: Date?
@@ -32,6 +37,7 @@ struct SdaTournamentLiveView: View {
     init(store: SdaTournamentStore, bridge: KmpBridge? = nil, onExit: (() -> Void)? = nil) {
         self.store = store
         self.onExit = onExit
+        self.bridge = bridge
         #if os(iOS)
         _publisher = StateObject(wrappedValue: TournamentLivePublisher(bridge: bridge))
         #endif
@@ -164,6 +170,16 @@ struct SdaTournamentLiveView: View {
             publisher.end()
         }
         .onChange(of: liveDraft) { _, _ in publisher.publish(livePayload) }
+        .sheet(item: $rubricTarget) { target in
+            if let bridge {
+                SdaTournamentRubricSheet(
+                    bridge: bridge,
+                    classId: store.record.classId,
+                    team: target.team,
+                    selectedEvaluationId: $rubricEvaluationId
+                )
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background: publisher.suspend()
@@ -543,12 +559,9 @@ struct SdaTournamentLiveView: View {
 
     private func side(_ slot: ScheduledMatchSlot, name: String, score: Int?, isHome: Bool, enabled: Bool, height: CGFloat) -> some View {
         let button = max(tapSize, min(height, 72))
+        let team = rubricTeam(named: name)
         return HStack(spacing: 8) {
-            Text(name)
-                .font(.system(size: min(28, max(17, height * 0.32)), weight: .semibold))
-                .lineLimit(2)
-                .minimumScaleFactor(0.6)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            teamName(name, team: team, height: height)
             ScoreStepButton(kind: .minus, diameter: button) {
                 adjust(slot, name: name, isHome: isHome, by: -1)
             }
@@ -571,6 +584,9 @@ struct SdaTournamentLiveView: View {
         .accessibilityLabel(name)
         .accessibilityValue(score.map { sdaPlural($0, "punto", "puntos") } ?? "Sin empezar")
         .accessibilityHint(enabled ? "Desliza hacia arriba para sumar un punto y hacia abajo para restarlo." : "")
+        .accessibilityAction(named: "Evaluar con rúbrica") {
+            if let team { rubricTarget = SdaRubricTeamTarget(team: team) }
+        }
         .accessibilityAdjustableAction { direction in
             guard enabled else { return }
             switch direction {
@@ -580,6 +596,42 @@ struct SdaTournamentLiveView: View {
             }
         }
         .sensoryFeedback(.impact, trigger: score) { old, new in (new ?? 0) > (old ?? 0) }
+    }
+
+    /// Equipo real del plan con ese nombre y con alumnos, si se puede evaluar desde aquí.
+    /// Los huecos («Gana P5») no son equipos y no se pueden tocar.
+    private func rubricTeam(named name: String) -> TournamentPlanTeam? {
+        #if os(iOS)
+        guard bridge != nil else { return nil }
+        return plan.teams.first { $0.name == name }
+        #else
+        return nil
+        #endif
+    }
+
+    /// Nombre del equipo; si se puede evaluar, se toca para abrir la hoja de rúbrica.
+    /// Mismo marco que antes: la cuenta de `courtsGrid` no cambia.
+    @ViewBuilder
+    private func teamName(_ name: String, team: TournamentPlanTeam?, height: CGFloat) -> some View {
+        let text = Text(name)
+            .font(.system(size: min(28, max(17, height * 0.32)), weight: .semibold))
+            .lineLimit(2)
+            .minimumScaleFactor(0.6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        if let team {
+            Button {
+                rubricTarget = SdaRubricTeamTarget(team: team)
+            } label: {
+                text
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            #if os(iOS)
+            .hoverEffect(.highlight)
+            #endif
+        } else {
+            text
+        }
     }
 
     private func adjust(_ slot: ScheduledMatchSlot, name: String, isHome: Bool, by delta: Int) {

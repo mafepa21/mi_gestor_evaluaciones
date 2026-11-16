@@ -81,9 +81,22 @@ class RubricBulkEvaluationViewModel(
 
     fun load(classId: Long, evaluationId: Long, rubricId: Long, columnId: String?, tabId: String? = null) {
         isSheetClosed = false
+        // Guardados automáticos aún en espera de la evaluación anterior: se hacen ya, con el
+        // estado anterior. Si no, al vencer leerían el estado nuevo y guardarían los niveles
+        // de la rúbrica vieja en la evaluación nueva (pasa al cambiar de rúbrica sin cerrar,
+        // como en el modo directo del torneo).
+        val previousState = _uiState.value
+        val pendingStudentIds = autoSaveJobs.keys.toList()
+        autoSaveJobs.values.forEach { it.cancel() }
+        autoSaveJobs.clear()
         _uiState.update { it.copy(isLoading = true, error = null, classId = classId, evaluationId = evaluationId, columnId = columnId, tabId = tabId) }
         
         scope.launch {
+            for (studentId in pendingStudentIds) {
+                if (saveStudentEvaluation(studentId, emitRefresh = false, state = previousState)) {
+                    hasPendingNotebookRefresh = true
+                }
+            }
             try {
                 // 1. Load Students in Class
                 val classStudents = notebookRepository.listStudentsInClass(classId)
@@ -348,8 +361,11 @@ class RubricBulkEvaluationViewModel(
     }
 
     /** @return `true` si se guardó (o no había nada que guardar), `false` si falló. */
-    private suspend fun saveStudentEvaluation(studentId: Long, emitRefresh: Boolean = true): Boolean {
-        val state = _uiState.value
+    private suspend fun saveStudentEvaluation(
+        studentId: Long,
+        emitRefresh: Boolean = true,
+        state: BulkRubricEvaluationUiState = _uiState.value
+    ): Boolean {
         val studentAssessments = state.assessments[studentId] ?: return true
         val score = state.scores[studentId] ?: 0.0
         val selectionsString = studentAssessments.entries.joinToString(",") { "${it.key}:${it.value}" }

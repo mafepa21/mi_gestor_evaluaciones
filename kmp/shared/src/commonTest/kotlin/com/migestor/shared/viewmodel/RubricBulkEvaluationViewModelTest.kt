@@ -85,6 +85,54 @@ class RubricBulkEvaluationViewModelTest {
     }
 
     @Test
+    fun `changing evaluation saves pending auto-saves into the previous evaluation`() = runTest {
+        // Regresion: el modo directo del torneo cambia de rubrica sin cerrar la hoja. Un nivel
+        // tocado justo antes quedaba en un guardado automatico con espera que, al vencer, leia el
+        // estado nuevo y guardaba los niveles de la rubrica vieja en la evaluacion nueva.
+        val rubricDetail = RubricDetail(
+            rubric = Rubric(id = 1L, name = "R1"),
+            criteria = listOf(
+                RubricCriterionWithLevels(
+                    criterion = RubricCriterion(id = 1, rubricId = 1L, description = "C1", weight = 1.0, order = 0),
+                    levels = listOf(RubricLevel(id = 11, criterionId = 1, name = "L1", points = 4, order = 1))
+                )
+            )
+        )
+        val savedEvaluationIds = mutableListOf<Long?>()
+        val fakeNotebook = object : FakeRubricEvalNotebookRepository() {
+            override suspend fun listStudentsInClass(classId: Long): List<Student> =
+                listOf(Student(id = 1L, firstName = "Ana", lastName = "Lopez"))
+            override suspend fun upsertGrade(
+                classId: Long, studentId: Long, columnId: String, evaluationId: Long?,
+                numericValue: Double, rubricSelections: String?, evidence: String?,
+                createdAtEpochMs: Long, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long
+            ) {
+                savedEvaluationIds += evaluationId
+            }
+        }
+        val fakeRubrics = object : FakeRubricEvalRubricsRepository() {
+            override suspend fun listRubrics(): List<RubricDetail> = listOf(rubricDetail)
+        }
+        val viewModel = RubricBulkEvaluationViewModel(
+            rubricsRepository = fakeRubrics,
+            studentsRepository = FakeRubricEvalStudentsRepository(),
+            notebookRepository = fakeNotebook,
+            gradesRepository = FakeRubricEvalGradesRepository(),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        )
+
+        viewModel.load(classId = 100L, evaluationId = 10L, rubricId = 1L, columnId = "col_10")
+        advanceUntilIdle()
+        viewModel.selectLevel(1L, criterionId = 1L, levelId = 11L)
+        // Sin esperar los 400 ms del guardado automatico: se cambia de evaluacion.
+        viewModel.load(classId = 100L, evaluationId = 20L, rubricId = 1L, columnId = "col_20")
+        advanceUntilIdle()
+
+        assertEquals(listOf<Long?>(10L), savedEvaluationIds, "El nivel pendiente va a la evaluacion anterior, y solo una vez")
+        assertEquals(20L, viewModel.uiState.value.evaluationId)
+    }
+
+    @Test
     fun `bus events for a different notebook column sharing the same rubric are ignored`() = runTest {
         // Regresion: el colector de RubricEvaluationBus filtraba solo por rubricId. Una
         // misma rubrica vinculada a mas de una evaluacion/columna del cuaderno a la vez

@@ -4,6 +4,10 @@ import MiGestorKit
 /// Equipo tocado en el modo directo para evaluarlo con rúbrica.
 struct SdaRubricTeamTarget: Identifiable, Equatable {
     let team: TournamentPlanTeam
+    /// Partido desde el que se abrió: da contexto a las notas de alumno.
+    var roundNumber: Int?
+    var venueNumber: Int?
+    var teams: [String] = []
     var id: String { team.id }
 }
 
@@ -17,6 +21,12 @@ struct SdaTournamentRubricSheet: View {
     let classId: Int64
     let team: TournamentPlanTeam
     @Binding var selectedEvaluationId: Int64?
+    /// Para apuntar notas de alumno (torneo + ficha). Sin él no se muestra el botón.
+    var store: SdaTournamentStore?
+    var roundNumber: Int?
+    var venueNumber: Int?
+    var teams: [String] = []
+    @State private var noteTarget: SdaNoteTarget?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
@@ -66,6 +76,11 @@ struct SdaTournamentRubricSheet: View {
         .task { await loadOptions() }
         .onChange(of: selectedEvaluationId) { _, _ in loadSelectedRubric() }
         .onDisappear { bridge.finishTournamentRubric(classId: classId) }
+        .sheet(item: $noteTarget) { target in
+            if let store {
+                SdaTournamentNoteSheet(store: store, bridge: bridge, target: target)
+            }
+        }
     }
 
     // MARK: Contenido por estado
@@ -232,6 +247,21 @@ struct SdaTournamentRubricSheet: View {
                 Text(Self.displayName(student))
                     .font(.title3.weight(.semibold))
                 Spacer(minLength: 8)
+                if store != nil {
+                    Button {
+                        noteTarget = SdaNoteTarget(
+                            subject: .student(id: String(student.id), name: Self.displayName(student)),
+                            roundNumber: roundNumber,
+                            venueNumber: venueNumber,
+                            teams: teams
+                        )
+                    } label: {
+                        Label("Nota", systemImage: "square.and.pencil")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityLabel("Añadir nota de \(Self.displayName(student))")
+                }
                 Text(score.map(Self.formatScore) ?? "–")
                     .font(.title3.weight(.bold).monospacedDigit())
                     .foregroundStyle(score == nil ? Color.secondary : Color.primary)

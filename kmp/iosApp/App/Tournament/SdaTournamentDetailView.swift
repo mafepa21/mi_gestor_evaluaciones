@@ -42,6 +42,8 @@ struct SdaTournamentDetailView: View {
     @State private var contentWidth: CGFloat = 0
     @State private var showingRegistration = false
     @State private var showingMembers = false
+    @State private var noteToDelete: TournamentNote?
+    @State private var noteActionError: String?
     /// Llegaron cambios del otro dispositivo mientras había una hoja abierta: se recargan al cerrarla.
     @State private var hasPendingRemoteReload = false
     #if os(macOS)
@@ -52,7 +54,7 @@ struct SdaTournamentDetailView: View {
     private static let wideLayoutWidth: CGFloat = 820
 
     private enum Tab: String, Identifiable {
-        case calendar, standings, phases, teams
+        case calendar, standings, phases, teams, notes
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -60,6 +62,7 @@ struct SdaTournamentDetailView: View {
             case .standings: return "Clasificación"
             case .phases: return "Fases"
             case .teams: return "Equipos"
+            case .notes: return "Notas"
             }
         }
     }
@@ -111,11 +114,14 @@ struct SdaTournamentDetailView: View {
     }
 
     private var tabs: [Tab] {
+        let base: [Tab]
         switch plan.format {
         case .roundRobin, .rotation:
-            return showsStandingsBeside ? [.calendar, .teams] : [.calendar, .standings, .teams]
-        case .knockout, .groupStageKnockout, .leaguePlacement: return [.phases, .calendar, .teams]
+            base = showsStandingsBeside ? [.calendar, .teams] : [.calendar, .standings, .teams]
+        case .knockout, .groupStageKnockout, .leaguePlacement: base = [.phases, .calendar, .teams]
         }
+        // «Notas» solo aparece cuando se ha apuntado algo en el modo directo.
+        return plan.noteList.isEmpty ? base : base + [.notes]
     }
 
     /// Torneo creado desde cero para inscribirse por formulario: sin situación ni equipos todavía.
@@ -576,6 +582,53 @@ struct SdaTournamentDetailView: View {
         case .phases:
             if let timeline { phaseContent(timeline) }
         case .teams: teamsContent
+        case .notes: notesContent
+        }
+    }
+
+    /// Notas del modo directo (conflictos, partidos y alumnos), por ronda.
+    private var notesContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let noteActionError {
+                LearningSituationInlineNotice(kind: .warning, message: noteActionError)
+            }
+            ForEach(plan.notesByRound, id: \.roundNumber) { group in
+                LearningSituationCard(title: nil) {
+                    Text(group.roundNumber.map { "Ronda \($0)" } ?? "Sin ronda")
+                        .font(.headline)
+                        .accessibilityAddTraits(.isHeader)
+                    ForEach(group.notes) { note in
+                        HStack(alignment: .top, spacing: 8) {
+                            SdaTournamentNoteRow(note: note)
+                            Button(role: .destructive) {
+                                noteToDelete = note
+                            } label: {
+                                Image(systemName: "trash")
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Borrar nota")
+                        }
+                    }
+                }
+            }
+        }
+        .confirmationDialog(
+            "¿Borrar esta nota?",
+            isPresented: Binding(get: { noteToDelete != nil }, set: { if !$0 { noteToDelete = nil } }),
+            titleVisibility: .visible,
+            presenting: noteToDelete
+        ) { note in
+            Button("Borrar", role: .destructive) {
+                Task { noteActionError = await store.deleteNote(note, bridge: bridge) }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: { note in
+            Text(note.incidentIds.isEmpty
+                 ? "Se borra del torneo."
+                 : "Se borra del torneo y de la ficha de \(sdaPlural(note.incidentIds.count, "alumno", "alumnos")).")
         }
     }
 

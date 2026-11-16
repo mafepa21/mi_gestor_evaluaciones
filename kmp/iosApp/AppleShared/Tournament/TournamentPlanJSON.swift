@@ -20,6 +20,8 @@ struct TournamentPlanConfigSnapshot: Equatable, Codable, Sendable {
     var leagueClosedEarly: Bool?
     /// `true` si los integrantes se editaron a mano desde el torneo.
     var teamsEditedManually: Bool?
+    /// Notas del docente durante el torneo. Se omite si no hay.
+    var notes: [TournamentNote]?
 }
 
 /// Las cinco columnas JSON de `learning_situation_tournaments` más id y nombre.
@@ -70,7 +72,8 @@ extension TournamentPlan {
             totalTimeMinutes: totalTimeMinutes,
             placementRounds: placementRounds,
             leagueClosedEarly: leagueClosedEarly,
-            teamsEditedManually: teamsEditedManually
+            teamsEditedManually: teamsEditedManually,
+            notes: notes
         )
     }
 
@@ -135,6 +138,7 @@ extension TournamentPlan {
         self.placementRounds = config.placementRounds
         self.leagueClosedEarly = config.leagueClosedEarly
         self.teamsEditedManually = config.teamsEditedManually
+        self.notes = config.notes
         self.savedSchedule = try TournamentPlanJSON.decode([ScheduledRound].self, from: columns.scheduleJSON, fallback: [])
         self.savedResults = try TournamentPlanJSON.decode([MatchResult].self, from: columns.resultsJSON, fallback: [])
         self.savedKnockoutResults = try TournamentPlanJSON.decode(

@@ -1215,6 +1215,13 @@ extension KmpBridge {
         }
     }
 
+    /// Envía ya el snapshot de una clase concreta. `scheduleNotebookSnapshotSync` comparte una sola
+    /// tarea con espera para todas las clases: si otra clase la reprograma antes de 0,9 s, la primera
+    /// no se envía. Lo usa la evaluación con rúbrica del torneo, cuya clase no es la del Cuaderno abierto.
+    func syncNotebookSnapshotNow(forClassId classId: Int64) async {
+        try? await enqueueNotebookSnapshot(forClassId: classId)
+    }
+
     func scheduleNotebookSnapshotSync(forClassId classId: Int64) {
         notebookSnapshotDebounceTask?.cancel()
         notebookSnapshotDebounceTask = Task { @MainActor [weak self] in

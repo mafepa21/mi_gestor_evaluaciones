@@ -125,6 +125,8 @@ struct TournamentPlan: Identifiable, Equatable, Codable, Sendable {
     var leagueClosedEarly: Bool?
     /// `true` si los integrantes se editaron a mano: ya no se avisa de cambios en los grupos.
     var teamsEditedManually: Bool?
+    /// Notas del docente durante el torneo (conflictos, observaciones). `nil` si no hay.
+    var notes: [TournamentNote]?
 
     init(
         id: UUID = UUID(),

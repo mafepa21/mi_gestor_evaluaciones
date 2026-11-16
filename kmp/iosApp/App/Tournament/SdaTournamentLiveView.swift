@@ -20,6 +20,8 @@ struct SdaTournamentLiveView: View {
     /// Para evaluar con rúbrica al tocar un equipo (solo iPad/iPhone).
     private let bridge: KmpBridge?
     @State private var rubricTarget: SdaRubricTeamTarget?
+    /// Nota de partido abierta (conflicto u otra).
+    @State private var noteTarget: SdaNoteTarget?
     /// Rúbrica (evaluación) elegida: se recuerda mientras dure el modo directo.
     @State private var rubricEvaluationId: Int64?
 
@@ -151,6 +153,11 @@ struct SdaTournamentLiveView: View {
             #endif
         }
         .sensoryFeedback(.warning, trigger: timeIsUp)
+        .sheet(item: $noteTarget) { target in
+            if let bridge {
+                SdaTournamentNoteSheet(store: store, bridge: bridge, target: target)
+            }
+        }
         .task(id: timerEnd) { await watchTimer() }
         // El modo directo se usa con el torneo en marcha: un gesto sin querer no debe cerrar la hoja.
         .interactiveDismissDisabled()
@@ -176,7 +183,11 @@ struct SdaTournamentLiveView: View {
                     bridge: bridge,
                     classId: store.record.classId,
                     team: target.team,
-                    selectedEvaluationId: $rubricEvaluationId
+                    selectedEvaluationId: $rubricEvaluationId,
+                    store: store,
+                    roundNumber: target.roundNumber,
+                    venueNumber: target.venueNumber,
+                    teams: target.teams
                 )
             }
         }
@@ -520,6 +531,9 @@ struct SdaTournamentLiveView: View {
                 Text("Pista \(slot.venueNumber)")
                     .font(.headline)
                     .foregroundStyle(.secondary)
+                if bridge != nil {
+                    noteButton(slot, teams: [names.home, names.away])
+                }
                 Spacer(minLength: 8)
                 if !canScore {
                     Text(unavailableText(for: slot))
@@ -561,7 +575,7 @@ struct SdaTournamentLiveView: View {
         let button = max(tapSize, min(height, 72))
         let team = rubricTeam(named: name)
         return HStack(spacing: 8) {
-            teamName(name, team: team, height: height)
+            teamName(name, team: team, slot: slot, height: height)
             ScoreStepButton(kind: .minus, diameter: button) {
                 adjust(slot, name: name, isHome: isHome, by: -1)
             }
@@ -585,7 +599,7 @@ struct SdaTournamentLiveView: View {
         .accessibilityValue(score.map { sdaPlural($0, "punto", "puntos") } ?? "Sin empezar")
         .accessibilityHint(enabled ? "Desliza hacia arriba para sumar un punto y hacia abajo para restarlo." : "")
         .accessibilityAction(named: "Evaluar con rúbrica") {
-            if let team { rubricTarget = SdaRubricTeamTarget(team: team) }
+            if let team { rubricTarget = rubricTarget(team, slot: slot) }
         }
         .accessibilityAdjustableAction { direction in
             guard enabled else { return }
@@ -596,6 +610,41 @@ struct SdaTournamentLiveView: View {
             }
         }
         .sensoryFeedback(.impact, trigger: score) { old, new in (new ?? 0) > (old ?? 0) }
+    }
+
+    private func rubricTarget(_ team: TournamentPlanTeam, slot: ScheduledMatchSlot) -> SdaRubricTeamTarget {
+        let names = plan.displayTeams(for: slot)
+        return SdaRubricTeamTarget(
+            team: team,
+            roundNumber: slot.roundNumber,
+            venueNumber: slot.venueNumber,
+            teams: [names.home, names.away]
+        )
+    }
+
+    /// Botón «Nota» de la cabecera de la pista. Con un conflicto apuntado se vuelve naranja.
+    /// Cabe en `cardHeaderHeight`: no le pongas relleno vertical.
+    private func noteButton(_ slot: ScheduledMatchSlot, teams: [String]) -> some View {
+        let notes = plan.notes(roundNumber: slot.roundNumber, venueNumber: slot.venueNumber)
+        let hasConflict = notes.contains { $0.kind == .resultConflict }
+        let icon = hasConflict ? "exclamationmark.bubble.fill" : (notes.isEmpty ? "square.and.pencil" : "text.bubble.fill")
+        return Button {
+            noteTarget = SdaNoteTarget(
+                subject: .match,
+                roundNumber: slot.roundNumber,
+                venueNumber: slot.venueNumber,
+                teams: teams
+            )
+        } label: {
+            Image(systemName: icon)
+                .font(.headline)
+                .foregroundStyle(hasConflict ? IOSAppStyle.warning : Color.accentColor)
+                .frame(width: 44, height: cardHeaderHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(hasConflict ? "Nota de la pista \(slot.venueNumber), con conflicto" : "Añadir nota a la pista \(slot.venueNumber)")
+        .accessibilityHint(notes.isEmpty ? "" : sdaPlural(notes.count, "nota", "notas"))
     }
 
     /// Equipo real del plan con ese nombre y con alumnos, si se puede evaluar desde aquí.
@@ -612,7 +661,7 @@ struct SdaTournamentLiveView: View {
     /// Nombre del equipo; si se puede evaluar, se toca para abrir la hoja de rúbrica.
     /// Mismo marco que antes: la cuenta de `courtsGrid` no cambia.
     @ViewBuilder
-    private func teamName(_ name: String, team: TournamentPlanTeam?, height: CGFloat) -> some View {
+    private func teamName(_ name: String, team: TournamentPlanTeam?, slot: ScheduledMatchSlot, height: CGFloat) -> some View {
         let text = Text(name)
             .font(.system(size: min(28, max(17, height * 0.32)), weight: .semibold))
             .lineLimit(2)
@@ -620,7 +669,7 @@ struct SdaTournamentLiveView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         if let team {
             Button {
-                rubricTarget = SdaRubricTeamTarget(team: team)
+                rubricTarget = rubricTarget(team, slot: slot)
             } label: {
                 text
                     .contentShape(Rectangle())

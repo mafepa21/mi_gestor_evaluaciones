@@ -51,3 +51,6 @@
 - Solo iOS: en el Mac `rubricTeam(named:)` devuelve nil. El nombre tocable mantiene el mismo marco: no añadir relleno al botón o se rompe la cuenta de `courtsGrid`.
 - Cambiar de rúbrica con la hoja abierta llama a `load` otra vez: `load` guarda antes los guardados automáticos pendientes con el estado anterior. No quitar eso.
 - En Swift, `criterion.description` es el texto interno del objeto Kotlin: usar `description_` (criterio y nivel).
+- Notas del torneo (`TournamentNotes.swift`): viven en `TournamentPlanConfigSnapshot.notes` (opcional, se omite si no hay). Un dispositivo con una versión anterior de la app que vuelva a guardar el torneo las pierde. Las notas de partido se buscan por ronda y pista (`roundNumber`, `venueNumber`), no por id de partido.
+- Copiar una nota a la ficha crea una incidencia por alumno con `createIncident` y guarda sus ids en `incidentIds`. Borrar la nota en «Notas» borra también esas incidencias. La nota del torneo se guarda antes que las incidencias: si falla una ficha, la nota no se pierde.
+- El botón «Nota» de la cabecera de la pista mide `44 × cardHeaderHeight`: no añadirle relleno vertical.

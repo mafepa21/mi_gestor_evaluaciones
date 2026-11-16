@@ -50,3 +50,4 @@
 - El equipo se busca en `plan.teams` por nombre (los nombres son únicos en el plan). Los huecos («Gana P5») no son equipos y no se pueden tocar. `studentIDs` son textos: se pasan a `Int64`.
 - Solo iOS: en el Mac `rubricTeam(named:)` devuelve nil. El nombre tocable mantiene el mismo marco: no añadir relleno al botón o se rompe la cuenta de `courtsGrid`.
 - Cambiar de rúbrica con la hoja abierta llama a `load` otra vez: `load` guarda antes los guardados automáticos pendientes con el estado anterior. No quitar eso.
+- En Swift, `criterion.description` es el texto interno del objeto Kotlin: usar `description_` (criterio y nivel).

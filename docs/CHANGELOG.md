@@ -56,6 +56,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Rúbricas · evaluación masiva: al cargar otra evaluación sin cerrar la hoja, los guardados automáticos aún en espera (400 ms) leían el estado nuevo y podían guardar los niveles de la rúbrica anterior en la evaluación nueva. Ahora `RubricBulkEvaluationViewModel.load` los guarda antes, con el estado anterior. Prueba de regresión en `RubricBulkEvaluationViewModelTest`.
 - Torneos (iPad): en un iPad de 13" en horizontal, las 8 pistas del modo directo caben sin hacer scroll. Los botones «−» y «+» ahora miden justo lo calculado; antes los estilos `.bordered` añadían relleno y cortaban las pistas 7 y 8. En un iPad de 11" con 8 pistas sigue habiendo scroll, pero ya no se corta ningún botón.
 - Torneos (iPad): si el iPad se enlazó con el Mac sin guardar la huella del certificado (enlaces antiguos), el modo directo avisa «Vuelve a enlazar el iPad con el Mac para proyectar». Antes no publicaba nada y no decía por qué.
 - Torneos: el detalle del torneo y la proyección se actualizan solos cuando llegan resultados por la sincronización (`.reloadOnLanSync(.learningSituations)`). Si hay una hoja abierta, esperan a que se cierre.

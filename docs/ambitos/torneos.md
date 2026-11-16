@@ -6,6 +6,7 @@
 - F1 (`codex/torneos-cuadro-f1`): línea de fases y cuadro en árbol con «Seguir a» en el detalle (iPad y Mac).
 - F2 (`codex/torneos-proyeccion-f2`): ventana de proyección en el Mac abierta con «Proyectar» (`MacTournamentProjectionWindow`, `SdaProjectionScenes`, `TournamentProjectionModel`) y recarga con la sync.
 - F3 (`codex/torneos-directo-f3`): canal en directo iPad → helper → Mac (ADR-2026-11-14): apertura automática, reloj, escena elegida en el iPad, podio 60 s.
+- Evaluar con rúbrica desde el modo directo del iPad (`codex/torneo-evaluar-rubrica`): tocar el nombre de un equipo abre la hoja de rúbrica.
 - Pendiente: pruebas con dispositivos reales de F3 (canal en directo iPad → helper → Mac). Decisiones del docente: la proyección se abre sola, solo muestra «Equipo N · Pista P» (sin nombres) y usa fondo claro.
 
 ## Terreno de juego
@@ -45,3 +46,7 @@
 - `ProjectionTeamLabels(plan:showNames:)` solo pone nombres si `hints.showNames` está activo, y eso exige un estado reciente, del mismo torneo y no `ended`. Si dos equipos se llaman igual, `label(name:)` usa el primero.
 - Modo directo: la cuenta de `courtsGrid` necesita que la fila y la cabecera midan exactamente `rowHeight` y `cardHeaderHeight`. No volver a `.bordered` ni a `minHeight` en los botones «−» y «+» (`ScoreStepButton`). En vertical, lo que se añada a la columna de controles debe sumarse a `noticesReserve` o `projectionNamesReserve`.
 
+- Evaluar con rúbrica en el modo directo (`SdaTournamentRubricSheet`) usa el `rubricBulkEvaluationViewModel` compartido del bridge sin poner `showingBulkRubricEvaluation`: no abrir la hoja masiva a la vez. Al cerrar llama a `finishTournamentRubric` (recarga el Cuaderno una vez y sincroniza la clase).
+- El equipo se busca en `plan.teams` por nombre (los nombres son únicos en el plan). Los huecos («Gana P5») no son equipos y no se pueden tocar. `studentIDs` son textos: se pasan a `Int64`.
+- Solo iOS: en el Mac `rubricTeam(named:)` devuelve nil. El nombre tocable mantiene el mismo marco: no añadir relleno al botón o se rompe la cuenta de `courtsGrid`.
+- Cambiar de rúbrica con la hoja abierta llama a `load` otra vez: `load` guarda antes los guardados automáticos pendientes con el estado anterior. No quitar eso.

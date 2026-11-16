@@ -54,3 +54,4 @@
 - Notas del torneo (`TournamentNotes.swift`): viven en `TournamentPlanConfigSnapshot.notes` (opcional, se omite si no hay). Un dispositivo con una versión anterior de la app que vuelva a guardar el torneo las pierde. Las notas de partido se buscan por ronda y pista (`roundNumber`, `venueNumber`), no por id de partido.
 - Copiar una nota a la ficha crea una incidencia por alumno con `createIncident` y guarda sus ids en `incidentIds`. Borrar la nota en «Notas» borra también esas incidencias. La nota del torneo se guarda antes que las incidencias: si falla una ficha, la nota no se pierde.
 - El botón «Nota» de la cabecera de la pista mide `44 × cardHeaderHeight`: no añadirle relleno vertical.
+- Al cerrar la hoja de rúbrica, la clase del torneo se envía con `syncNotebookSnapshotNow`, no con `scheduleNotebookSnapshotSync`: esa espera es única para todas las clases y otra clase la cancelaba.

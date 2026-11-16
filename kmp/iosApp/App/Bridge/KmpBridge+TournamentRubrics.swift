@@ -58,10 +58,15 @@ extension KmpBridge {
         )
     }
 
-    /// Al cerrar la hoja del equipo: recarga el Cuaderno una vez y sincroniza con el Mac.
+    /// Al cerrar la hoja del equipo: recarga el Cuaderno una vez y envía la clase del torneo al Mac.
+    /// Espera a que termine el último guardado automático (400 ms) y no usa la espera compartida de
+    /// `scheduleNotebookSnapshotSync`, que otra clase podía cancelar y dejar las notas sin enviar.
     @MainActor
     func finishTournamentRubric(classId: Int64) {
         rubricBulkEvaluationViewModel.onSheetClosed(emitNotebookRefresh: true)
-        scheduleNotebookSnapshotSync(forClassId: classId)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            await self?.syncNotebookSnapshotNow(forClassId: classId)
+        }
     }
 }

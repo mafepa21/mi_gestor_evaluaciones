@@ -1,4 +1,5 @@
 import SwiftUI
+import MiGestorKit
 
 // Piezas pequeñas compartidas por las pantallas de torneos de la SdA.
 
@@ -232,5 +233,74 @@ struct SdaStandingsTable: View {
     private func spoken(_ standing: Standing, position: Int) -> String {
         "Puesto \(position), \(standing.teamName). \(standing.points) puntos. "
             + "\(standing.played) jugados, \(standing.wins) ganados, \(standing.draws) empatados, \(standing.losses) perdidos."
+    }
+}
+
+// MARK: - Gestionar grupos desde Torneos
+
+/// Abre desde Torneos el mismo tablero de grupos del Cuaderno, para el curso del torneo.
+/// Los grupos viven en el Cuaderno: se selecciona ese curso y se espera a que cargue, así
+/// crear, renombrar, borrar o mover alumnos aquí es exactamente lo mismo que hacerlo allí.
+struct SdaWorkGroupsManagerSheet: View {
+    @ObservedObject var bridge: KmpBridge
+    let classId: Int64
+    /// SdA del torneo: se propone al crear un grupo nuevo.
+    let learningSituationId: Int64?
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var toast: String?
+
+    private var isReady: Bool {
+        (bridge.notebookState as? NotebookUiStateData)?.sheet.classId == classId
+    }
+
+    var body: some View {
+        Group {
+            if isReady {
+                NotebookGroupManagementSheet(bridge: bridge, defaultSituationId: learningSituationId) { message, _ in
+                    showToast(message)
+                }
+            } else {
+                NavigationStack {
+                    ProgressView("Abriendo los grupos del curso…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cancelar") { dismiss() }
+                            }
+                        }
+                }
+            }
+        }
+        .overlay(alignment: .top) {
+            if let toast {
+                Text(toast)
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.top, 56)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .accessibilityHidden(true)
+            }
+        }
+        .animation(.snappy(duration: 0.2), value: toast)
+        .task {
+            if !isReady { bridge.selectClass(id: classId) }
+        }
+        #if os(macOS)
+        .frame(minWidth: 1100, minHeight: 760)
+        #else
+        .presentationDetents([.large])
+        #endif
+    }
+
+    private func showToast(_ message: String) {
+        toast = message
+        AccessibilityNotification.Announcement(message).post()
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            if toast == message { toast = nil }
+        }
     }
 }

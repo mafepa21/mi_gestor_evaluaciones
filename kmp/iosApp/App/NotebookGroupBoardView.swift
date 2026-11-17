@@ -1,5 +1,8 @@
 import SwiftUI
 import MiGestorKit
+#if os(macOS)
+import AppKit
+#endif
 
 final class WorkGroupBoardDraft: ObservableObject {
     struct GroupItem: Identifiable, Equatable {
@@ -259,6 +262,68 @@ final class WorkGroupBoardDraft: ObservableObject {
     }
 }
 
+/// Reparto de la rejilla del tablero de grupos: elige columnas y altura de ficha para que
+/// todos los grupos se vean a la vez sin desplazar la pantalla. Es pura para poder probarla.
+struct GroupBoardGridLayout: Equatable {
+    var columns: Int
+    var rows: Int
+    var cardWidth: CGFloat
+    var cardHeight: CGFloat
+    /// Columnas de fichas dentro de cada tarjeta (2 si la tarjeta es ancha).
+    var innerColumns: Int
+    var chipHeight: CGFloat
+    /// `false` si algún grupo no cabe ni con fichas mínimas: esa tarjeta se desplaza por dentro.
+    var fitsWithoutScroll: Bool
+
+    static let spacing: CGFloat = 8
+    /// Cabecera (nombre + menú), línea de SdA, relleno y huecos fijos de una tarjeta.
+    static let cardChrome: CGFloat = 8 * 2 + 32 + 18 + 4 * 2
+
+    static func make(
+        cardCount: Int,
+        size: CGSize,
+        largestGroup: Int,
+        chipRange: ClosedRange<CGFloat>,
+        allowTwoInnerColumns: Bool = true
+    ) -> GroupBoardGridLayout {
+        let count = max(cardCount, 1)
+        let width = max(size.width, 1)
+        let height = max(size.height, 1)
+        var bestColumns = 1
+        var bestScore = Double.greatestFiniteMagnitude
+        for columns in 1...count {
+            let rows = Int((Double(count) / Double(columns)).rounded(.up))
+            let cardW = (width - spacing * CGFloat(columns - 1)) / CGFloat(columns)
+            let cardH = (height - spacing * CGFloat(rows - 1)) / CGFloat(rows)
+            guard cardW > 0, cardH > 0 else { continue }
+            // Tarjetas algo más anchas que altas (≈1,25:1) y pocas celdas vacías.
+            let score = abs(log(Double(cardW / cardH) / 1.25)) + Double(columns * rows - count) * 0.15
+            if score < bestScore {
+                bestScore = score
+                bestColumns = columns
+            }
+        }
+        let rows = Int((Double(count) / Double(bestColumns)).rounded(.up))
+        let cardW = (width - spacing * CGFloat(bestColumns - 1)) / CGFloat(bestColumns)
+        let cardH = (height - spacing * CGFloat(rows - 1)) / CGFloat(rows)
+        let inner = allowTwoInnerColumns && cardW > 300 ? 2 : 1
+        let members = max(largestGroup, 4)
+        let lines = Int((Double(members) / Double(inner)).rounded(.up))
+        let available = cardH - cardChrome - 4 * CGFloat(lines - 1)
+        let ideal = (available / CGFloat(lines)).rounded(.down)
+        let chip = min(max(ideal, chipRange.lowerBound), chipRange.upperBound)
+        return GroupBoardGridLayout(
+            columns: bestColumns,
+            rows: rows,
+            cardWidth: cardW,
+            cardHeight: cardH,
+            innerColumns: inner,
+            chipHeight: chip,
+            fitsWithoutScroll: ideal >= chipRange.lowerBound
+        )
+    }
+}
+
 struct NotebookGroupBoardView: View {
     @ObservedObject var bridge: KmpBridge
     @ObservedObject var draft: WorkGroupBoardDraft
@@ -266,12 +331,26 @@ struct NotebookGroupBoardView: View {
     let classSituations: [LearningSituation]
     let onToast: (String, NotebookToastStyle) -> Void
     let onCreateGroup: () -> Void
+    let onEditGroup: (Int64) -> Void
+    let onDeleteGroup: (Int64) -> Void
     let onImportExcel: () -> Void
     let onGenerateCooperative: () -> Void
 
     @State private var showingAutoCompose = false
     @State private var targetedColumnKey: String?
+    @State private var isSelecting = false
+    @State private var selectedStudentIds = Set<Int64>()
+    @State private var deleteTargetId: Int64?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    #if os(macOS)
+    @ScaledMetric(relativeTo: .subheadline) private var maxChipHeight: CGFloat = 32
+    @ScaledMetric(relativeTo: .subheadline) private var minChipHeight: CGFloat = 24
+    #else
+    @ScaledMetric(relativeTo: .subheadline) private var maxChipHeight: CGFloat = 44
+    @ScaledMetric(relativeTo: .subheadline) private var minChipHeight: CGFloat = 32
+    #endif
 
     private var data: NotebookUiStateData? {
         bridge.notebookState as? NotebookUiStateData
@@ -286,7 +365,12 @@ struct NotebookGroupBoardView: View {
         }
     }
 
+    private var usesStackedLayout: Bool {
+        horizontalSizeClass == .compact || dynamicTypeSize >= .accessibility1
+    }
+
     var body: some View {
+        let grouped = draft.studentsByGroup(from: students)
         VStack(spacing: 8) {
             ViewThatFits(in: .horizontal) {
                 actionBar(compact: false)
@@ -296,43 +380,57 @@ struct NotebookGroupBoardView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
 
-            GeometryReader { geo in
-                let columnCount = max(draft.groups.count + 1, 1)
-                let spacing: CGFloat = 8
-                let available = max(geo.size.width - 32, 160)
-                let isCompact = horizontalSizeClass == .compact
-                let columnWidth = isCompact
-                    ? max(available * 0.82, 220)
-                    : max((available - spacing * CGFloat(columnCount - 1)) / CGFloat(columnCount), 160)
-                let grouped = draft.studentsByGroup(from: students)
+            unassignedStrip(grouped[nil] ?? [])
+                .padding(.horizontal, 16)
 
-                ScrollView(.horizontal, showsIndicators: true) {
-                    HStack(alignment: .top, spacing: spacing) {
-                        boardColumn(
-                            title: "Sin grupo",
-                            students: grouped[nil] ?? [],
-                            groupId: nil,
-                            height: geo.size.height
-                        )
-                        .frame(width: columnWidth)
-
+            if usesStackedLayout {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
                         ForEach(draft.groups) { group in
-                            boardColumn(
-                                title: group.name,
-                                students: grouped[group.id] ?? [],
-                                groupId: group.id,
-                                height: geo.size.height
-                            )
-                            .frame(width: columnWidth)
+                            groupCard(group, students: grouped[group.id] ?? [], chipHeight: maxChipHeight, innerColumns: 1, fixedHeight: nil)
                         }
+                        newGroupTile.frame(minHeight: 88)
                     }
-                    .scrollTargetLayout()
                     .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
                 }
-                .scrollTargetBehavior(.viewAligned)
-                .frame(width: geo.size.width, height: geo.size.height)
+            } else {
+                GeometryReader { geo in
+                    let largest = draft.groups.map { grouped[$0.id]?.count ?? 0 }.max() ?? 0
+                    let layout = GroupBoardGridLayout.make(
+                        cardCount: draft.groups.count + 1,
+                        size: CGSize(width: geo.size.width - 32, height: geo.size.height - 16),
+                        largestGroup: largest,
+                        chipRange: minChipHeight...max(minChipHeight, maxChipHeight)
+                    )
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(), spacing: GroupBoardGridLayout.spacing), count: layout.columns),
+                        spacing: GroupBoardGridLayout.spacing
+                    ) {
+                        ForEach(draft.groups) { group in
+                            groupCard(
+                                group,
+                                students: grouped[group.id] ?? [],
+                                chipHeight: layout.chipHeight,
+                                innerColumns: layout.innerColumns,
+                                fixedHeight: layout.cardHeight
+                            )
+                        }
+                        newGroupTile.frame(height: layout.cardHeight)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+                }
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            if !selectedStudentIds.isEmpty {
+                selectionBar
+                    .padding(.bottom, 16)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy(duration: 0.2), value: selectedStudentIds.isEmpty)
         .onAppear {
             seedDraft()
         }
@@ -341,6 +439,24 @@ struct NotebookGroupBoardView: View {
         }
         .appOnChange(of: memberSignature) { _ in
             seedDraft()
+            // Un alumno que ya no está en el curso no puede seguir seleccionado.
+            let valid = Set(students.map(\.id))
+            selectedStudentIds.formIntersection(valid)
+        }
+        .alert(
+            deleteTitle,
+            isPresented: Binding(
+                get: { deleteTargetId != nil },
+                set: { if !$0 { deleteTargetId = nil } }
+            )
+        ) {
+            Button("Eliminar", role: .destructive) {
+                if let id = deleteTargetId { onDeleteGroup(id) }
+                deleteTargetId = nil
+            }
+            Button("Cancelar", role: .cancel) { deleteTargetId = nil }
+        } message: {
+            Text(deleteMessage(grouped: grouped))
         }
         .sheet(isPresented: $showingAutoCompose) {
             if let data {
@@ -367,6 +483,8 @@ struct NotebookGroupBoardView: View {
             }
         }
     }
+
+    // MARK: Firmas de recarga
 
     private var groupSignature: Int {
         var hasher = Hasher()
@@ -400,8 +518,18 @@ struct NotebookGroupBoardView: View {
         }
     }
 
+    // MARK: Barras
+
     private func actionBar(compact: Bool) -> some View {
         HStack(spacing: 8) {
+            Button {
+                toggleSelecting()
+            } label: {
+                Text(isSelecting ? "Cancelar" : "Seleccionar").frame(minHeight: 32)
+            }
+            .groupGlassButton()
+            .help("Elige varios alumnos para moverlos juntos")
+
             Button(action: onCreateGroup) {
                 if compact {
                     Image(systemName: "plus").frame(minWidth: 32, minHeight: 32)
@@ -410,6 +538,7 @@ struct NotebookGroupBoardView: View {
                 }
             }
             .groupGlassButton(circular: compact)
+            .keyboardShortcut("n", modifiers: [.command, .shift])
             .accessibilityLabel("Nuevo grupo")
 
             Menu {
@@ -424,6 +553,7 @@ struct NotebookGroupBoardView: View {
             }
             .groupGlassButton(circular: true)
             .accessibilityLabel("Más acciones")
+            .help("Más acciones")
 
             Spacer(minLength: 0)
 
@@ -439,90 +569,365 @@ struct NotebookGroupBoardView: View {
             .groupGlassButton(prominent: true, circular: compact)
             .disabled(students.isEmpty)
             .accessibilityLabel("Agrupar automáticamente")
+            .help("Reparte al alumnado en grupos")
         }
     }
 
-    private func boardColumn(
-        title: String,
+    private var selectionBar: some View {
+        HStack(spacing: 8) {
+            Text(selectedStudentIds.count == 1 ? "1 seleccionado" : "\(selectedStudentIds.count) seleccionados")
+                .font(.subheadline.weight(.semibold))
+                .padding(.leading, 8)
+            moveMenu(studentIds: Array(selectedStudentIds), currentGroupId: nil) {
+                Label("Mover a…", systemImage: "arrow.right.circle").frame(minHeight: 32)
+            }
+            .groupGlassButton()
+            Button("Listo") {
+                isSelecting = false
+                selectedStudentIds.removeAll()
+            }
+            .groupGlassButton(prominent: true)
+        }
+        .padding(8)
+        .groupGlassContainer(spacing: 8)
+        .background(.regularMaterial, in: Capsule())
+        .shadow(color: .black.opacity(0.15), radius: 16, y: 6)
+        .accessibilityElement(children: .contain)
+        .accessibilitySortPriority(1)
+    }
+
+    // MARK: Zonas
+
+    private func unassignedStrip(_ students: [Student]) -> some View {
+        let isTargeted = targetedColumnKey == "none"
+        return HStack(alignment: .center, spacing: 8) {
+            Text("Sin grupo · \(students.count)")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize()
+            if students.isEmpty {
+                Text(isTargeted ? "Soltar aquí" : "Todos tienen grupo")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            } else {
+                ScrollView {
+                    LearningSituationFlowLayout(spacing: 4) {
+                        ForEach(students, id: \.id) { student in
+                            studentChip(student, currentGroupId: nil, height: minChipHeight, compactWidth: true)
+                        }
+                    }
+                }
+                .frame(maxHeight: minChipHeight * 2 + 4)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+        .groupSolidCard(highlighted: isTargeted)
+        .dropDestination(for: String.self) { items, _ in
+            handleDrop(items: items, groupId: nil)
+        } isTargeted: { setTargeted($0, key: "none") }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Sin grupo, \(students.count) alumnos")
+    }
+
+    private func groupCard(
+        _ group: WorkGroupBoardDraft.GroupItem,
         students: [Student],
-        groupId: Int64?,
-        height: CGFloat
+        chipHeight: CGFloat,
+        innerColumns: Int,
+        fixedHeight: CGFloat?
     ) -> some View {
-        let key = groupId.map(String.init) ?? "none"
+        let key = String(group.id)
         let isTargeted = targetedColumnKey == key
-        return VStack(alignment: .leading, spacing: 8) {
+        let situation = situationTitle(group.learningSituationId)
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Text(title)
+                Text(group.name)
                     .font(.headline)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                Spacer(minLength: 0)
                 Text("\(students.count)")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(NotebookStyle.primaryTint.opacity(0.14), in: Capsule())
+                    .padding(.vertical, 2)
+                    .background(Color.primary.opacity(0.08), in: Capsule())
+                if isTargeted {
+                    Text("Soltar aquí")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(NotebookStyle.primaryTint, in: Capsule())
+                }
+                Spacer(minLength: 0)
+                groupMenu(group)
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(title), \(students.count) alumnos")
+            .frame(minHeight: 32)
+
+            Group {
+                if let situation {
+                    Label("SA · \(situation)", systemImage: "link")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("Sin SA · no aparece en Torneos", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                        .fontWeight(.semibold)
+                }
+            }
+            .font(.caption)
+            .labelStyle(.titleAndIcon)
+            .lineLimit(1)
+            .frame(minHeight: 18)
 
             ScrollView {
-                studentStack(students, currentGroupId: groupId)
-            }
-            .padding(8)
-            .frame(maxWidth: .infinity, minHeight: max(height - 48, 120), maxHeight: max(height - 48, 120), alignment: .top)
-            .groupSolidCard(highlighted: isTargeted)
-            .dropDestination(for: String.self) { items, _ in
-                return handleDrop(items: items, groupId: groupId)
-            } isTargeted: { targeted in
-                if targeted {
-                    targetedColumnKey = key
-                } else if targetedColumnKey == key {
-                    targetedColumnKey = nil
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: innerColumns),
+                    spacing: 4
+                ) {
+                    ForEach(students, id: \.id) { student in
+                        studentChip(student, currentGroupId: group.id, height: chipHeight, compactWidth: false)
+                    }
                 }
             }
+            .scrollBounceBehavior(.basedOnSize)
         }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(height: fixedHeight, alignment: .top)
+        .frame(minHeight: fixedHeight == nil ? 120 : nil, alignment: .top)
+        .groupSolidCard(highlighted: isTargeted)
+        .dropDestination(for: String.self) { items, _ in
+            handleDrop(items: items, groupId: group.id)
+        } isTargeted: { setTargeted($0, key: key) }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(group.name), \(students.count) alumnos, \(situation.map { "SA \($0)" } ?? "sin SA")")
     }
 
-    private func studentStack(_ students: [Student], currentGroupId: Int64?) -> some View {
-        VStack(spacing: 8) {
-            ForEach(students, id: \.id) { student in
-                studentChip(student, currentGroupId: currentGroupId)
-                    .draggable(String(student.id))
+    private var newGroupTile: some View {
+        Button(action: onCreateGroup) {
+            Label("Nuevo grupo", systemImage: "plus")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                .foregroundStyle(NotebookStyle.softBorder)
+        )
+    }
+
+    private func groupMenu(_ group: WorkGroupBoardDraft.GroupItem) -> some View {
+        Menu {
+            Button {
+                onEditGroup(group.id)
+            } label: {
+                Label("Cambiar nombre…", systemImage: "pencil")
             }
-            Spacer(minLength: 0)
+            Menu {
+                Picker("Situación de aprendizaje", selection: Binding(
+                    get: { group.learningSituationId },
+                    set: { setSituation($0, for: group) }
+                )) {
+                    Text("Ninguna").tag(nil as Int64?)
+                    ForEach(classSituations, id: \.id) { situation in
+                        Text(situation.title).tag(situation.id as Int64?)
+                    }
+                }
+                .pickerStyle(.inline)
+            } label: {
+                Label(group.learningSituationId == nil ? "Asociar a una SA" : "Cambiar SA", systemImage: "link")
+            }
+            .disabled(classSituations.isEmpty)
+            Divider()
+            Button(role: .destructive) {
+                deleteTargetId = group.id
+            } label: {
+                Label("Eliminar grupo…", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.body.weight(.semibold))
+                #if os(macOS)
+                .frame(width: 32, height: 32)
+                #else
+                .frame(width: 44, height: 44)
+                #endif
+                .contentShape(Rectangle())
         }
-    }
-
-    private func studentChip(_ student: Student, currentGroupId: Int64?) -> some View {
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
         #if os(iOS)
-        let minHeight: CGFloat = 44
-        #else
-        let minHeight: CGFloat = 32
+        .padding(.vertical, -6)
         #endif
-        return Text("\(student.lastName), \(student.firstName)")
-            .font(.subheadline)
-            .lineLimit(1)
-            .minimumScaleFactor(0.85)
-            .padding(.horizontal, 8)
-            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
-            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .contextMenu {
-                // Alternativa accesible y de teclado al arrastre.
-                Menu("Mover a…") {
-                    if currentGroupId != nil {
-                        Button("Sin grupo") { _ = handleDrop(items: [String(student.id)], groupId: nil) }
-                    }
-                    ForEach(draft.groups.filter { $0.id != currentGroupId }) { group in
-                        Button(group.name) { _ = handleDrop(items: [String(student.id)], groupId: group.id) }
-                    }
+        .accessibilityLabel("Opciones de \(group.name)")
+        .help("Opciones del grupo")
+        .disabled(group.isTemporary)
+    }
+
+    // MARK: Fichas
+
+    private func studentChip(_ student: Student, currentGroupId: Int64?, height: CGFloat, compactWidth: Bool) -> some View {
+        let isSelected = selectedStudentIds.contains(student.id)
+        let name = "\(student.lastName), \(student.firstName)"
+        let dragIds = isSelected ? Array(selectedStudentIds) : [student.id]
+        return HStack(spacing: 6) {
+            if isSelecting || isSelected {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? NotebookStyle.primaryTint : Color.secondary)
+                    .accessibilityHidden(true)
+            }
+            Text(name)
+                .font(.subheadline)
+                .lineLimit(dynamicTypeSize >= .accessibility1 ? 2 : 1)
+        }
+        .padding(.horizontal, 8)
+        .frame(maxWidth: compactWidth ? nil : .infinity, minHeight: height, maxHeight: height, alignment: .leading)
+        .background(
+            isSelected ? NotebookStyle.primaryTint.opacity(0.14) : Color.primary.opacity(0.06),
+            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(isSelected ? NotebookStyle.primaryTint : .clear, lineWidth: 1.5)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .onTapGesture {
+            handleChipTap(student.id)
+        }
+        .draggable(dragIds.map(String.init).joined(separator: ",")) {
+            Text(dragIds.count > 1 ? "\(dragIds.count) alumnos" : name)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(NotebookStyle.primaryTint, in: Capsule())
+        }
+        .contextMenu {
+            // Alternativa sin arrastre (teclado, puntero y VoiceOver).
+            moveMenu(studentIds: dragIds, currentGroupId: currentGroupId) {
+                Text(dragIds.count > 1 ? "Mover \(dragIds.count) a…" : "Mover a…")
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityHint(isSelecting ? "Toca para elegir" : "")
+        .accessibilityActions {
+            if currentGroupId != nil {
+                Button("Mover a Sin grupo") { move(dragIds, to: nil) }
+            }
+            ForEach(draft.groups.filter { $0.id != currentGroupId }) { group in
+                Button("Mover a \(group.name)") { move(dragIds, to: group.id) }
+            }
+        }
+    }
+
+    private func moveMenu<LabelView: View>(
+        studentIds: [Int64],
+        currentGroupId: Int64?,
+        @ViewBuilder label: () -> LabelView
+    ) -> some View {
+        Menu {
+            Button("Sin grupo") { move(studentIds, to: nil) }
+            ForEach(draft.groups.filter { $0.id != currentGroupId }) { group in
+                Button(group.name) { move(studentIds, to: group.id) }
+            }
+        } label: {
+            label()
+        }
+    }
+
+    // MARK: Acciones
+
+    private func toggleSelecting() {
+        isSelecting.toggle()
+        if !isSelecting { selectedStudentIds.removeAll() }
+    }
+
+    private func handleChipTap(_ studentId: Int64) {
+        #if os(macOS)
+        let extending = NSEvent.modifierFlags.contains(.command) || NSEvent.modifierFlags.contains(.shift)
+        #else
+        let extending = false
+        #endif
+        guard isSelecting || extending || !selectedStudentIds.isEmpty else { return }
+        if selectedStudentIds.contains(studentId) {
+            selectedStudentIds.remove(studentId)
+        } else {
+            selectedStudentIds.insert(studentId)
+        }
+        announce(selectedStudentIds.count == 1 ? "1 seleccionado" : "\(selectedStudentIds.count) seleccionados")
+    }
+
+    private func setTargeted(_ targeted: Bool, key: String) {
+        if targeted {
+            targetedColumnKey = key
+        } else if targetedColumnKey == key {
+            targetedColumnKey = nil
+        }
+    }
+
+    private func setSituation(_ situationId: Int64?, for group: WorkGroupBoardDraft.GroupItem) {
+        guard situationId != group.learningSituationId, !group.isTemporary else { return }
+        let classId = data?.sheet.classId
+        Task { @MainActor in
+            var linked = situationId
+            if let situationId, let classId {
+                do {
+                    try await bridge.addLearningSituationClassLink(situationId: situationId, classId: classId)
+                } catch {
+                    linked = nil
                 }
             }
+            if situationId != nil, linked == nil {
+                onToast("No se pudo asociar la SA", .warning)
+                return
+            }
+            draft.updateGroup(id: group.id, name: group.name, learningSituationId: linked)
+            bridge.updateNotebookWorkGroup(groupId: group.id, name: group.name, learningSituationId: linked, tabId: group.tabId)
+            onToast(linked == nil ? "SA quitada. Ya no sale en Torneos." : "SA asociada", .success)
+        }
+    }
+
+    private var deleteTitle: String {
+        let name = draft.groups.first(where: { $0.id == deleteTargetId })?.name ?? "este grupo"
+        return "¿Eliminar «\(name)»?"
+    }
+
+    private func deleteMessage(grouped: [Int64?: [Student]]) -> String {
+        guard let id = deleteTargetId else { return "" }
+        let count = grouped[id]?.count ?? 0
+        var message = count == 1
+            ? "Su alumno pasará a «Sin grupo»."
+            : "Sus \(count) alumnos pasarán a «Sin grupo»."
+        message += " No se borra ningún alumno ni ninguna nota."
+        if draft.groups.first(where: { $0.id == id })?.learningSituationId != nil {
+            message += " Si es equipo de un torneo, el torneo conserva sus resultados y te avisará de que los grupos han cambiado."
+        }
+        return message
+    }
+
+    private func move(_ studentIds: [Int64], to groupId: Int64?) {
+        _ = handleDrop(items: studentIds.map(String.init), groupId: groupId)
+    }
+
+    private func announce(_ text: String) {
+        AccessibilityNotification.Announcement(text).post()
     }
 
     private func handleDrop(items: [String], groupId: Int64?) -> Bool {
-        let studentIds = items.compactMap { Int64($0) }
+        // Cada elemento puede traer varios alumnos («12,15,20») si se arrastró una selección.
+        let studentIds = Array(Set(
+            items
+                .flatMap { $0.split(separator: ",") }
+                .compactMap { Int64($0.trimmingCharacters(in: .whitespaces)) }
+        ))
         guard !studentIds.isEmpty else { return false }
 
         let resolvedGroupId: Int64?
@@ -554,7 +959,18 @@ struct NotebookGroupBoardView: View {
                 tabId: groups.first?.tabId
             )
         }
+
+        selectedStudentIds.subtract(studentIds)
+        if studentIds.count > 1 {
+            let destination = resolvedGroupId.flatMap { id in draft.groups.first(where: { $0.id == id })?.name } ?? "Sin grupo"
+            announce("\(studentIds.count) alumnos movidos a \(destination)")
+        }
         return true
+    }
+
+    private func situationTitle(_ id: Int64?) -> String? {
+        guard let id else { return nil }
+        return classSituations.first(where: { $0.id == id })?.title ?? "SA asociada"
     }
 }
 

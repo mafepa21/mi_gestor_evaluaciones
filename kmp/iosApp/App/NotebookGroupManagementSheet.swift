@@ -3,6 +3,8 @@ import MiGestorKit
 
 struct NotebookGroupManagementSheet: View {
     @ObservedObject var bridge: KmpBridge
+    /// SdA que se propone al crear un grupo (p. ej. al abrir desde un torneo).
+    var defaultSituationId: Int64? = nil
     let onToast: (String, NotebookToastStyle) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -115,6 +117,16 @@ struct NotebookGroupManagementSheet: View {
                             editGroupTarget = nil
                             showingEditSheet = true
                         },
+                        onEditGroup: { groupId in
+                            guard let target = currentGroups.first(where: { $0.id == groupId }) else { return }
+                            editGroupTarget = target
+                            showingEditSheet = true
+                        },
+                        onDeleteGroup: { groupId in
+                            boardDraft.removeGroup(id: groupId)
+                            bridge.deleteNotebookWorkGroup(groupId: groupId)
+                            onToast("Grupo eliminado", .success)
+                        },
                         onImportExcel: {
                             showingFileImporter = true
                         },
@@ -180,7 +192,8 @@ struct NotebookGroupManagementSheet: View {
                     bridge: bridge,
                     group: editGroupTarget,
                     classSituations: classSituations,
-                    isLoadingSituations: loadingSituations
+                    isLoadingSituations: loadingSituations,
+                    defaultSituationId: defaultSituationId
                 ) { name, situationId in
                     let classId = data?.sheet.classId
                     Task {
@@ -431,6 +444,7 @@ struct NotebookGroupEditSheet: View {
     let group: NotebookWorkGroup?
     let classSituations: [LearningSituation]
     var isLoadingSituations: Bool = false
+    var defaultSituationId: Int64? = nil
     let onSave: (String, Int64?) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -495,6 +509,8 @@ struct NotebookGroupEditSheet: View {
                 if let group = group {
                     name = group.name
                     selectedSituationId = group.learningSituationId?.int64Value
+                } else {
+                    selectedSituationId = defaultSituationId
                 }
             }
         }

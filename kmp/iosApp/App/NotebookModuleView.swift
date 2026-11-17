@@ -111,6 +111,8 @@ struct NotebookModuleView: View {
     /// hoja abierta no debe pasarla a «Sin datos».
     @State var closingReviewData: NotebookUiStateData? = nil
     @State var pendingClosingTarget: NotebookClosingTarget? = nil
+    /// Datos congelados al abrir «Enviar notas al alumnado», igual que en «Revisar cierre».
+    @State var gradeReportRequest: NotebookGradeReportRequest? = nil
     @State var toast: NotebookToast? = nil
     @State var isAttendanceQuickMode = false
     @State var isMarkAllPresentDialogPresented = false
@@ -1710,6 +1712,11 @@ struct NotebookModuleView: View {
                     isOrganizationMenuPresented = false
                     closingReviewData = data
                     isClosingReviewPresented = true
+                }
+                .appOnChange(of: layoutState.notebookGradeReportRequestID) { requestID in
+                    guard requestID != nil else { return }
+                    isOrganizationMenuPresented = false
+                    gradeReportRequest = NotebookGradeReportRequest(data: data)
                 }
 
                 .appOnChange(of: notebookTabsStateKey(data: data)) { _ in

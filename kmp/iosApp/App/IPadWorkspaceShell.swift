@@ -17,6 +17,7 @@ final class WorkspaceLayoutState: ObservableObject {
     @Published var notebookOrganizationMenuAvailable: Bool = false
     @Published var notebookHiddenColumnsRequestID: UUID?
     @Published var notebookClosingReviewRequestID: UUID?
+    @Published var notebookGradeReportRequestID: UUID?
     @Published var notebookSearchText: String = ""
     @Published var notebookSurfaceMode: String = "grid"
     @Published var notebookSelectedGroupId: Int64? = nil
@@ -197,6 +198,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookOrganizationMenuAvailable = false
             self.notebookHiddenColumnsRequestID = nil
             self.notebookClosingReviewRequestID = nil
+            self.notebookGradeReportRequestID = nil
             self.notebookSearchText = ""
             self.notebookSurfaceMode = "grid"
             self.notebookSelectedGroupId = nil
@@ -278,6 +280,10 @@ final class WorkspaceLayoutState: ObservableObject {
 
     func openNotebookClosingReview() {
         notebookClosingReviewRequestID = UUID()
+    }
+
+    func openNotebookGradeReports() {
+        notebookGradeReportRequestID = UUID()
     }
 
     func configureDashboardToolbar(
@@ -1895,6 +1901,13 @@ struct AppWorkspaceShell: View {
                 layoutState.openNotebookClosingReview()
             } label: {
                 Label("Revisar cierre…", systemImage: "checklist")
+            }
+            .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+            Button {
+                layoutState.openNotebookGradeReports()
+            } label: {
+                Label("Enviar notas al alumnado…", systemImage: "envelope")
             }
             .disabled(!layoutState.notebookOrganizationMenuAvailable)
 

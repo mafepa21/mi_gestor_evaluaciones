@@ -889,6 +889,13 @@ struct MacRootView: View {
             .disabled(!notebookToolbarActions.organizationMenuAvailable)
 
             Button {
+                layoutState.openNotebookGradeReports()
+            } label: {
+                Label("Enviar notas al alumnado…", systemImage: "envelope")
+            }
+            .disabled(!notebookToolbarActions.organizationMenuAvailable)
+
+            Button {
                 notebookToolbarActions.openOrganizationMenu()
             } label: {
                 Label("Organizar columnas", systemImage: "slider.horizontal.3")

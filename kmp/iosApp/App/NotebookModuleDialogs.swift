@@ -363,6 +363,9 @@ extension NotebookModuleView {
 #endif
                     }
                 }
+                .sheet(item: $gradeReportRequest) { request in
+                    gradeReportSheet(data: request.data)
+                }
                 .task {
                     if let selectedClassId,
                        bridge.notebookViewModel.currentClassId?.int64Value != selectedClassId {

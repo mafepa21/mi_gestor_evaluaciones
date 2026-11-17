@@ -71,3 +71,5 @@
 - Solo `NotebookSyncStatusLabel` observa `DashboardBridgeStore` en el Cuaderno. No volver a leer `dashboardStore` desde `NotebookModuleView`.
 - El resumen de celdas por fila (`NotebookRowCellDigestCache`) se reutiliza si `row ===` y las columnas visibles del panel son las mismas. Vale solo mientras `NotebookRow` sea inmutable.
 - Las tablas de `NotebookGridNavigationContext` (categoría y pareja física) se rehacen solo si cambia la instancia de `data.sheet`.
+- «Enviar notas al alumnado» copia la Media tal cual (`averageExplanation` de la pestaña activa): una columna oculta que cuenta sale en el informe. Si cambia qué entra en la Media, el informe lo sigue solo; no recalcular en `BuildStudentGradeReportsUseCase`.
+- El nivel de rúbrica del informe se ordena por puntos, no por `order` de edición. El correo de familias no existe en el modelo (`Student.email` es el único): la opción «Familia» de la maqueta quedó fuera.

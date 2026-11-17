@@ -567,6 +567,13 @@ struct IOSRootView: View {
                 .disabled(!layoutState.notebookOrganizationMenuAvailable)
 
                 Button {
+                    layoutState.openNotebookGradeReports()
+                } label: {
+                    Label("Enviar notas al alumnado…", systemImage: "envelope")
+                }
+                .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+                Button {
                     openModule(.courses)
                 } label: {
                     Label("Gestión de grupos", systemImage: "person.2")

@@ -216,6 +216,67 @@ extension KmpBridge {
         return teams
     }
 
+    /// Grupos de trabajo del curso que todavía no tienen SdA. Torneos los ofrece para
+    /// «Asociar a esta SA»: mientras no tengan SdA no son equipos de ningún torneo.
+    func workGroupsWithoutLearningSituation(classId: Int64) async throws -> [TournamentWorkGroupTeam] {
+        let groups = try await container.notebookConfigRepository
+            .listWorkGroups(classId: classId, tabId: nil)
+            .filter { $0.learningSituationId == nil }
+        guard !groups.isEmpty else { return [] }
+        let members = try await container.notebookConfigRepository
+            .listWorkGroupMembers(classId: classId, tabId: nil)
+        let roster = try await container.classesRepository.listStudentsInClass(classId: classId)
+        let namesById = Dictionary(roster.map { ($0.id, $0.fullName) }, uniquingKeysWith: { first, _ in first })
+        return groups
+            .sorted { ($0.order, $0.id) < ($1.order, $1.id) }
+            .map { group in
+                TournamentWorkGroupTeam(
+                    groupId: group.id,
+                    classId: classId,
+                    tabId: group.tabId,
+                    name: group.name,
+                    members: members
+                        .filter { $0.groupId == group.id }
+                        .compactMap { member in
+                            namesById[member.studentId].map { TournamentTeamMember(studentId: member.studentId, fullName: $0) }
+                        }
+                        .sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending }
+                )
+            }
+    }
+
+    /// Asocia un grupo de trabajo a una SdA (el mismo dato que edita el Cuaderno).
+    /// Enlaza también la SdA con el curso, porque Torneos solo busca equipos en cursos enlazados.
+    func linkWorkGroup(groupId: Int64, classId: Int64, toLearningSituationId learningSituationId: Int64) async throws {
+        guard let group = try await container.notebookConfigRepository
+            .listWorkGroups(classId: classId, tabId: nil)
+            .first(where: { $0.id == groupId }) else { return }
+        try await addLearningSituationClassLink(situationId: learningSituationId, classId: classId)
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let now = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
+        let updated = NotebookWorkGroup(
+            id: group.id,
+            classId: group.classId,
+            tabId: group.tabId,
+            name: group.name,
+            order: group.order,
+            learningSituationId: KotlinLong(value: learningSituationId),
+            trace: AuditTrace(
+                authorUserId: group.trace.authorUserId,
+                createdAt: group.trace.createdAt,
+                updatedAt: now,
+                associatedGroupId: group.trace.associatedGroupId,
+                deviceId: localDeviceId,
+                syncVersion: group.trace.syncVersion + 1
+            )
+        )
+        _ = try await container.notebookConfigRepository.saveWorkGroup(classId: classId, workGroup: updated)
+        if currentNotebookClassId == classId {
+            refreshCurrentNotebook()
+        }
+        scheduleNotebookSnapshotSync(forClassId: classId)
+    }
+
     private static func tournamentRecord(from row: LearningSituationTournament) -> TournamentRecord {
         TournamentRecord(
             id: row.id,

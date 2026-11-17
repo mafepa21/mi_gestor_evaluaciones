@@ -73,7 +73,10 @@ struct LearningSituationTournamentsSection: View {
             }
         }
         .task { await model.load(bridge: bridge) }
-        .sheet(isPresented: $isCreating) {
+        .sheet(isPresented: $isCreating, onDismiss: {
+            // Desde «Nuevo torneo» se pueden crear o asociar grupos: releer los equipos.
+            Task { await model.load(bridge: bridge) }
+        }) {
             SdaNewTournamentSheet(
                 learningSituationId: situationId,
                 teams: model.teams,

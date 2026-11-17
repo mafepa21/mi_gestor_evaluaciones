@@ -160,7 +160,10 @@ struct TournamentsWorkspaceView: View {
                 .kmpBridgeEnvironment(bridge)
             }
         }
-        .sheet(item: $newTournament) { target in
+        .sheet(item: $newTournament, onDismiss: {
+            // Desde «Nuevo torneo» se pueden crear o asociar grupos: releer los equipos.
+            Task { await model.load(bridge: bridge, classId: selectedClassId) }
+        }) { target in
             SdaNewTournamentSheet(
                 learningSituationId: target.choice.id,
                 teams: target.teams,
@@ -455,7 +458,10 @@ struct TournamentsWorkspaceView: View {
                         isLiveMode = live
                         navigation.setLiveModeActive(live)
                     },
-                    deleteRequest: detailDeleteRequest
+                    deleteRequest: detailDeleteRequest,
+                    onGroupsChanged: {
+                        Task { await model.load(bridge: bridge, classId: selectedClassId) }
+                    }
                 )
                 .id(record.id)
                 .kmpBridgeEnvironment(bridge)

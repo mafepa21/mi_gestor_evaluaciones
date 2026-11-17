@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tablero de grupos</title>
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--fg:#1c1c1e;--mut:#6e6e73;--line:#e5e5ea;--acc:#0a84ff;--accSoft:rgba(10,132,255,.12);--chip:rgba(0,0,0,.05);--danger:#ff3b30;--warn:#ff9f0a}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#000;--card:#1c1c1e;--fg:#f2f2f7;--mut:#98989d;--line:#38383a;--chip:rgba(255,255,255,.07);--accSoft:rgba(10,132,255,.22)}}
+:root[data-theme="dark"]{--bg:#000;--card:#1c1c1e;--fg:#f2f2f7;--mut:#98989d;--line:#38383a;--chip:rgba(255,255,255,.07);--accSoft:rgba(10,132,255,.22)}
+*{box-sizing:border-box}
+body{margin:0;font:15px -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+.ctrl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:16px;max-width:1480px;margin:0 auto}
+.ctrl label{font-size:13px;color:var(--mut)}
+.seg{display:inline-flex;background:var(--chip);border-radius:9px;padding:2px}
+.seg button{border:0;background:none;color:var(--fg);padding:6px 12px;border-radius:7px;font:inherit;font-size:13px;cursor:pointer}
+.seg button.on{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.note{font-size:13px;color:var(--mut);max-width:1480px;margin:0 auto;padding:0 16px 8px}
+.stage{display:flex;justify-content:center;padding:0 16px 32px;overflow:auto}
+.device{background:var(--bg);border:10px solid #2c2c2e;border-radius:28px;overflow:hidden;position:relative;display:flex;flex-direction:column;flex:none}
+.device.mac{border-radius:12px;border-width:1px;border-color:var(--line);box-shadow:0 20px 50px rgba(0,0,0,.18)}
+.titlebar{height:52px;display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--card)}
+.titlebar h1{font-size:17px;margin:0;font-weight:600}
+.titlebar .sub{font-size:13px;color:var(--mut)}
+.sp{flex:1}
+.btn{border:0;font:inherit;font-size:14px;height:32px;padding:0 12px;border-radius:16px;background:var(--chip);color:var(--fg);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn.pri{background:var(--acc);color:#fff}
+.btn.danger{color:var(--danger)}
+.btn:focus-visible,.chip:focus-visible,.gmenu:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.ipad .btn{height:36px}
+.ipad .gmenu{width:44px;height:44px;border-radius:22px;margin:-8px -4px -8px 0}
+.body{flex:1;display:flex;flex-direction:column;gap:8px;padding:8px 16px 16px;min-height:0}
+.selmode .body{padding-bottom:72px} /* hueco para la barra flotante: no tapa fichas */
+/* Sin grupo */
+.pool{background:var(--card);border-radius:12px;padding:8px 12px;display:flex;gap:8px;align-items:center;min-height:48px;border:2px solid transparent}
+.pool h3{margin:0;font-size:13px;font-weight:600;color:var(--mut);white-space:nowrap}
+.pool .chips{display:flex;flex-wrap:wrap;gap:4px;flex:1}
+.pool .chip{width:auto}
+.pool.empty .chips::after{content:"Todos tienen grupo";font-size:13px;color:var(--mut)}
+/* Rejilla */
+.grid{flex:1;display:grid;gap:8px;min-height:0}
+.group{background:var(--card);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:4px;min-height:0;border:2px solid transparent;transition:border-color .12s}
+.group.target,.pool.target{border-color:var(--acc);border-width:3px;background:var(--accSoft)}
+.dropTag{display:none;font-size:12px;font-weight:700;color:#fff;background:var(--acc);border-radius:10px;padding:2px 8px}
+.target .dropTag{display:inline}
+.ghead{display:flex;align-items:center;gap:4px;min-height:28px}
+.ghead .name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.count{font-size:12px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--chip);color:var(--fg)}
+.sa{font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:2px}
+.sa.none{color:var(--mut);font-weight:600}
+.gmenu{border:0;background:none;color:var(--fg);width:32px;height:32px;border-radius:16px;cursor:pointer;font-size:16px;flex:none}
+.gmenu:hover{background:var(--chip)}
+.members{display:grid;gap:4px;align-content:start;overflow:auto;flex:1} /* último recurso: si ni con fichas mínimas cabe, desplaza solo esa tarjeta */
+.chip{display:flex;align-items:center;gap:6px;background:var(--chip);border-radius:8px;padding:0 8px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:grab;user-select:none;border:0;color:var(--fg);font:inherit;text-align:left;width:100%}
+.chip .tick{width:18px;height:18px;border-radius:9px;border:1.5px solid var(--mut);flex:none;display:none;align-items:center;justify-content:center;font-size:11px;color:#fff}
+.selmode .chip .tick{display:inline-flex}
+.chip.sel{background:var(--accSoft);box-shadow:inset 0 0 0 1.5px var(--acc)}
+.chip.sel .tick{background:var(--acc);border-color:var(--acc)}
+.chip.dragging{opacity:.35}
+.chip span.t{overflow:hidden;text-overflow:ellipsis}
+.addg{border:2px dashed var(--line);background:none;border-radius:12px;color:var(--mut);font:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;min-height:0}
+/* Barra de selección */
+.selbar{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);background:var(--card);border-radius:22px;box-shadow:0 8px 30px rgba(0,0,0,.2);padding:6px 6px 6px 16px;display:none;align-items:center;gap:8px;font-size:14px}
+.selbar.show{display:flex}
+/* Estados */
+.sk{background:var(--chip);border-radius:8px;animation:p 1.2s infinite alternate}
+@keyframes p{to{opacity:.4}}
+@media(prefers-reduced-motion:reduce){.sk{animation:none}}
+.center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;color:var(--mut)}
+.center h2{color:var(--fg);margin:0;font-size:20px}
+.center .ic{font-size:40px}
+/* Menús y modales */
+.pop{position:absolute;background:var(--card);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.25);padding:6px;min-width:220px;z-index:10;display:none}
+.pop.show{display:block}
+.pop button{display:flex;width:100%;border:0;background:none;color:var(--fg);font:inherit;font-size:14px;padding:8px 10px;border-radius:8px;cursor:pointer;gap:8px;text-align:left}
+.pop button:hover{background:var(--chip)}
+.pop hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+.pop .danger{color:var(--danger)}
+.pop .lbl{font-size:12px;color:var(--mut);padding:6px 10px 2px}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.3);display:none;align-items:center;justify-content:center;z-index:20}
+.scrim.show{display:flex}
+.sheet{background:var(--card);border-radius:16px;padding:24px;width:400px;display:flex;flex-direction:column;gap:16px}
+.sheet h3{margin:0;font-size:17px}
+.sheet p{margin:0;color:var(--mut);font-size:14px}
+.sheet input,.sheet select{font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.sheet .row{display:flex;gap:8px;justify-content:flex-end}
+.toast{position:absolute;top:64px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 16px;border-radius:18px;font-size:14px;display:none;z-index:30}
+.toast.show{display:block}
+/* Torneos */
+.tour{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px;min-height:0}
+.panel{background:var(--card);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.panel h3{margin:0;font-size:15px}
+.panel .hint{font-size:13px;color:var(--mut);margin:0}
+.teams{display:flex;flex-wrap:wrap;gap:8px}
+.team{padding:8px 12px;border-radius:10px;background:var(--accSoft);font-size:14px}
+.team small{color:var(--mut)}
+.orphan{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;background:var(--chip);font-size:14px}
+</style></head><body>
+
+<div class="ctrl">
+  <label>Pantalla</label>
+  <div class="seg" data-k="device"><button data-v="ipad" class="on">iPad horizontal</button><button data-v="mac">Mac</button></div>
+  <label>Grupos</label>
+  <div class="seg" data-k="n"><button data-v="4">4</button><button data-v="6">6</button><button data-v="8" class="on">8</button><button data-v="10">10</button></div>
+  <label>Estado</label>
+  <div class="seg" data-k="state"><button data-v="data" class="on">Con datos</button><button data-v="loading">Cargando</button><button data-v="empty">Sin grupos</button><button data-v="error">Error</button></div>
+  <label>Vista</label>
+  <div class="seg" data-k="view"><button data-v="board" class="on">Tablero</button><button data-v="tour">Torneo</button></div>
+</div>
+<p class="note">Maqueta interactiva con alumnado inventado. Arrastra alumnos entre grupos, o clic derecho / pulsación larga en un alumno → «Mover a…». Pulsa «Seleccionar» (o ⌘+clic en Mac) para mover varios a la vez. El botón «⋯» de cada grupo abre su menú.</p>
+
+<div class="stage"><div class="device ipad" id="dev">
+  <div class="titlebar">
+    <h1>Grupos</h1><span class="sub">2º ESO B · Cuaderno</span>
+    <span class="sp"></span>
+    <button class="btn" id="bSel">Seleccionar</button>
+    <button class="btn" id="bAdd">＋ Nuevo grupo</button>
+    <button class="btn" title="Importar Excel, equipos cooperativos (IA)" aria-label="Más acciones">⋯</button>
+    <button class="btn pri" id="bAuto">✦ Agrupar automáticamente</button>
+  </div>
+  <div class="body" id="body"></div>
+  <div class="selbar" id="selbar"><span id="selN">0 seleccionados</span>
+    <button class="btn" id="bMoveTo">Mover a…</button><button class="btn" id="bSelDone">Listo</button></div>
+  <div class="pop" id="pop"></div>
+  <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
+  <div class="toast" id="toast"></div>
+</div></div>
+
+<script>
+const FIRST=["Lucía","Hugo","Martina","Mateo","Sofía","Leo","Valeria","Daniel","Paula","Álex","Carla","Marco","Noa","Bruno","Irene","Izan","Julia","Pablo","Alba","Adrián","Vera","Eric","Lola","Marc","Nora","Gael","Emma","Iker","Sara","Unai","Abril","Oliver","Elsa","Thiago","Mía","Nil","Ona","Pol","Aina","Jan"];
+const LAST=["Ortega","Navas","Prieto","Soler","Cano","Vidal","Rey","Marín","Gil","Lozano","Pons","Rubio","Ferrer","Vega","Molina","Santos","Duran","Romero","Iglesias","Campos","Bravo","Nieto","Peña","Calvo","Mora","Pascual","Roca","Sanz","Crespo","Vila","Aguilar","Esteve","Lara","Blanco","Rius","Mena","Costa","Paz","Font","Ibáñez"];
+const SAS=["Deportes de raqueta","Juegos cooperativos","Expresión corporal"];
+let st={device:"ipad",n:8,state:"data",view:"board",sel:new Set(),selMode:false};
+let groups=[],pool=[];
+function seed(){
+  const total=st.n*4+2; const studs=[];
+  for(let i=0;i<total;i++) studs.push({id:i+1,name:`${LAST[i%40]}, ${FIRST[i%40]}`});
+  groups=[];for(let g=0;g<st.n;g++) groups.push({id:g+1,name:`Equipo ${g+1}`,sa:g===st.n-1?null:SAS[0],members:[]});
+  studs.slice(0,st.n*4).forEach((s,i)=>groups[i%st.n].members.push(s));
+  pool=studs.slice(st.n*4); st.sel.clear();
+}
+const $=id=>document.getElementById(id);
+document.querySelectorAll('.seg').forEach(seg=>seg.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+  const k=seg.dataset.k;st[k]=k==='n'?+b.dataset.v:b.dataset.v;
+  if(k==='n')seed();render();
+}));
+function size(){return st.device==='ipad'?{w:1180,h:820}:{w:1440,h:900}}
+function bestCols(n,w,h){ // elige columnas para que las tarjetas queden lo más «cuadradas» posible
+  let best=1,score=1e9;for(let c=1;c<=n;c++){const r=Math.ceil(n/c);const cw=w/c,ch=h/r;const s=Math.abs(Math.log((cw/ch)/1.25))+(c*r-n)*.15;if(s<score){score=s;best=c}}return best}
+function render(){
+  const d=$('dev'),{w,h}=size();
+  d.className='device '+st.device+(st.selMode?' selmode':'');d.style.width=w+'px';d.style.height=h+'px';
+  fit();
+  $('bSel').textContent=st.selMode?'Cancelar':'Seleccionar';
+  $('bSel').style.display=st.view==='board'?'':'none';
+  document.querySelector('.titlebar .sub').textContent=st.view==='board'?'2º ESO B · Cuaderno':'Liguilla de bádminton · Torneos';
+  document.querySelector('.titlebar h1').textContent=st.view==='board'?'Grupos':'Torneo';
+  ['bAdd','bAuto'].forEach(i=>$(i).style.display=st.view==='board'?'':'none');
+  const body=$('body');body.innerHTML='';
+  if(st.view==='tour')return renderTour(body);
+  if(st.state==='loading'){body.innerHTML=`<div class="pool"><div class="sk" style="height:24px;width:60%"></div></div><div class="grid" style="grid-template-columns:repeat(4,1fr);grid-template-rows:1fr 1fr">${'<div class="group">'+'<div class="sk" style="height:20px;width:50%"></div><div class="sk" style="height:28px"></div><div class="sk" style="height:28px"></div><div class="sk" style="height:28px;width:80%"></div></div>'.repeat(8)}</div>`;return updSel()}
+  if(st.state==='empty'){body.innerHTML=`<div class="center"><div class="ic">👥</div><h2>Aún no hay grupos</h2><p>Crea grupos a mano o deja que la app los reparta.<br>Se verán igual en el Cuaderno y en Torneos.</p><div style="display:flex;gap:8px"><button class="btn" onclick="addGroup()">＋ Nuevo grupo</button><button class="btn pri">✦ Agrupar automáticamente</button></div></div>`;return updSel()}
+  if(st.state==='error'){body.innerHTML=`<div class="center"><div class="ic">⚠️</div><h2>No se pudieron cargar los grupos</h2><p>Tus grupos no se han perdido. Vuelve a intentarlo.</p><button class="btn pri" onclick="st.state='data';render()">Reintentar</button></div>`;return updSel()}
+  // Sin grupo
+  const p=document.createElement('div');p.className='pool'+(pool.length?'':' empty');p.dataset.gid='0';
+  p.innerHTML=`<h3>Sin grupo · ${pool.length}</h3><div class="chips"></div>`;
+  pool.forEach(s=>p.querySelector('.chips').appendChild(chip(s,28)));
+  dropZone(p,0);body.appendChild(p);
+  // Rejilla
+  const gw=w-32,gh=h-52-16-8-56-8; const n=groups.length+1;
+  const cols=bestCols(n,gw,gh),rows=Math.ceil(n/cols);
+  const cardW=(gw-8*(cols-1))/cols,cardH=(gh-8*(rows-1))/rows;
+  const maxM=Math.max(4,...groups.map(g=>g.members.length));
+  const inner=cardW>300?2:1; const lines=Math.ceil(maxM/inner);
+  // padding 16 + borde 4 + cabecera 28 + línea SA 16 + 2 huecos de 4 + huecos entre filas
+  const avail=cardH-16-4-28-16-8-4*(lines-1);let chipH=Math.max(st.device==='ipad'?32:24,Math.min(st.device==='ipad'?44:32,Math.floor(avail/lines)));
+  const grid=document.createElement('div');grid.className='grid';
+  grid.style.gridTemplateColumns=`repeat(${cols},1fr)`;grid.style.gridTemplateRows=`repeat(${rows},1fr)`;
+  groups.forEach(g=>{
+    const el=document.createElement('div');el.className='group';el.dataset.gid=g.id;
+    el.innerHTML=`<div class="ghead"><span class="name">${g.name}</span><span class="count">${g.members.length}</span><span class="dropTag">Soltar aquí</span><span class="sp"></span><button class="gmenu" aria-label="Opciones de ${g.name}">⋯</button></div><div class="sa ${g.sa?'':'none'}">${g.sa?'SA · '+g.sa:'⚠︎ Sin SA · no aparece en Torneos'}</div><div class="members" style="grid-template-columns:repeat(${inner},1fr);grid-auto-rows:${chipH}px"></div>`;
+    g.members.forEach(s=>el.querySelector('.members').appendChild(chip(s,chipH)));
+    el.querySelector('.gmenu').onclick=e=>groupMenu(g,e.currentTarget);
+    dropZone(el,g.id);grid.appendChild(el);
+  });
+  const add=document.createElement('button');add.className='addg';add.textContent='＋ Nuevo grupo';add.onclick=addGroup;grid.appendChild(add);
+  body.appendChild(grid);updSel();
+}
+function chip(s,hgt){
+  const b=document.createElement('button');b.className='chip'+(st.sel.has(s.id)?' sel':'');b.style.height=hgt+'px';b.draggable=true;
+  b.innerHTML=`<span class="tick">✓</span><span class="t">${s.name}</span>`;b.setAttribute('aria-pressed',st.sel.has(s.id));
+  b.onclick=e=>{ if(st.selMode||e.metaKey||e.shiftKey){toggle(s.id);if(!st.selMode&&!st.sel.size)return;render()} };
+  b.ondragstart=e=>{ if(!st.sel.has(s.id)){ if(!(st.selMode||e.metaKey))st.sel.clear(); st.sel.add(s.id)}
+    e.dataTransfer.setData('text/plain',[...st.sel].join(','));
+    const n=st.sel.size; const g=document.createElement('div');g.textContent=n>1?`${n} alumnos`:s.name;
+    g.style.cssText='position:absolute;top:-100px;padding:6px 12px;border-radius:14px;background:#0a84ff;color:#fff;font:600 13px system-ui';document.body.appendChild(g);e.dataTransfer.setDragImage(g,10,10);setTimeout(()=>g.remove());
+    requestAnimationFrame(()=>document.querySelectorAll('.chip').forEach(c=>{}));
+    b.classList.add('dragging')};
+  b.ondragend=()=>b.classList.remove('dragging');
+  b.oncontextmenu=e=>{e.preventDefault();if(!st.sel.has(s.id)){st.sel.clear();st.sel.add(s.id)}moveMenu(b)};
+  return b;
+}
+function toggle(id){st.sel.has(id)?st.sel.delete(id):st.sel.add(id);updSel()}
+function dropZone(el,gid){
+  el.ondragover=e=>{e.preventDefault();el.classList.add('target')};
+  el.ondragleave=e=>{if(!el.contains(e.relatedTarget))el.classList.remove('target')};
+  el.ondrop=e=>{e.preventDefault();el.classList.remove('target');const ids=e.dataTransfer.getData('text/plain').split(',').map(Number);move(ids,gid)};
+}
+function find(id){for(const g of groups){const s=g.members.find(m=>m.id===id);if(s)return[s,g.members]}const s=pool.find(m=>m.id===id);return s?[s,pool]:[null,null]}
+function move(ids,gid){
+  const dest=gid===0?pool:groups.find(g=>g.id===gid).members;
+  ids.forEach(id=>{const[s,src]=find(id);if(!s||src===dest)return;src.splice(src.indexOf(s),1);dest.push(s)});
+  dest.sort((a,b)=>a.name.localeCompare(b.name,'es'));
+  const name=gid===0?'Sin grupo':groups.find(g=>g.id===gid).name;
+  toast(ids.length>1?`${ids.length} alumnos movidos a ${name}`:`Movido a ${name}`);
+  st.sel.clear();render();
+}
+function updSel(){const n=st.sel.size;$('selbar').classList.toggle('show',n>0&&st.view==='board');$('selN').textContent=n===1?'1 seleccionado':`${n} seleccionados`}
+$('bSel').onclick=()=>{st.selMode=!st.selMode;if(!st.selMode)st.sel.clear();render()};
+$('bSelDone').onclick=()=>{st.selMode=false;st.sel.clear();render()};
+$('bAdd').onclick=()=>addGroup();
+$('bMoveTo').onclick=e=>moveMenu(e.currentTarget,true);
+function moveMenu(anchor,up){
+  const pop=$('pop');pop.innerHTML='<div class="lbl">Mover a</div>';
+  [{id:0,name:'Sin grupo'},...groups].forEach(g=>{const b=document.createElement('button');b.textContent=g.name;b.onclick=()=>{hide();move([...st.sel],g.id)};pop.appendChild(b)});
+  place(pop,anchor,up);
+}
+function groupMenu(g,anchor){
+  const pop=$('pop');pop.innerHTML='';
+  const items=[['✎  Cambiar nombre',()=>renameSheet(g)],['🔗  '+(g.sa?'Cambiar SA':'Asociar a una SA'),()=>saSheet(g)]];
+  if(g.sa)items.push(['⊘  Quitar SA',()=>{g.sa=null;render();toast('SA quitada. Ya no sale en Torneos.')}]);
+  items.forEach(([t,f])=>{const b=document.createElement('button');b.textContent=t;b.onclick=()=>{hide();f()};pop.appendChild(b)});
+  pop.appendChild(document.createElement('hr'));
+  const del=document.createElement('button');del.className='danger';del.textContent='🗑  Eliminar grupo';del.onclick=()=>{hide();deleteSheet(g)};pop.appendChild(del);
+  place(pop,anchor);
+}
+function place(pop,anchor,up){const k=+$('dev').style.zoom||1;const R=anchor.getBoundingClientRect(),D=$('dev').getBoundingClientRect();pop.classList.add('show');
+  const r={top:(R.top-D.top)/k,bottom:(R.bottom-D.top)/k,right:(R.right-D.left)/k},H=D.height/k;
+  let x=Math.max(8,r.right-pop.offsetWidth);let y=up?r.top-pop.offsetHeight-8:r.bottom+4;
+  if(y+pop.offsetHeight>H-8)y=r.top-pop.offsetHeight-4;pop.style.left=x+'px';pop.style.top=y+'px'}
+function hide(){$('pop').classList.remove('show')}
+document.addEventListener('click',e=>{if(!e.target.closest('.pop,.gmenu,#bMoveTo'))hide()});
+document.addEventListener('contextmenu',e=>{if(!e.target.closest('.chip'))hide()});
+function sheet(html){$('sheet').innerHTML=html;$('scrim').classList.add('show');const i=$('sheet').querySelector('input,select');i&&i.focus()}
+function closeSheet(){$('scrim').classList.remove('show')}
+$('scrim').onclick=e=>{if(e.target.id==='scrim')closeSheet()};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSheet();hide()}});
+function renameSheet(g){sheet(`<h3>Cambiar nombre</h3><input id="nm" value="${g.name}"><div class="row"><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" id="ok">Guardar</button></div>`);
+  $('ok').onclick=()=>{g.name=$('nm').value.trim()||g.name;closeSheet();render()}}
+function saSheet(g){sheet(`<h3>Situación de aprendizaje</h3><p>Los grupos con SA aparecen como equipos en los torneos de esa SA.</p><select id="sa"><option value="">Ninguna</option>${SAS.map(s=>`<option ${s===g.sa?'selected':''}>${s}</option>`).join('')}</select><div class="row"><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" id="ok">Guardar</button></div>`);
+  $('ok').onclick=()=>{g.sa=$('sa').value||null;closeSheet();render()}}
+function deleteSheet(g){const inT=g.sa===SAS[0];
+  sheet(`<h3>¿Eliminar «${g.name}»?</h3><p>Sus ${g.members.length} alumnos pasarán a «Sin grupo». No se borra ningún alumno ni ninguna nota.</p>${inT?'<p style="color:var(--warn)">Este grupo es un equipo de «Liguilla de bádminton». El torneo conservará sus resultados, pero el equipo quedará marcado como eliminado.</p>':''}<div class="row"><button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn pri" style="background:var(--danger)" id="ok">Eliminar</button></div>`);
+  $('ok').onclick=()=>{pool.push(...g.members);pool.sort((a,b)=>a.name.localeCompare(b.name,'es'));groups=groups.filter(x=>x!==g);closeSheet();render();toast('Grupo eliminado')}}
+function addGroup(){if(st.state!=='data'){st.state='data';seed();document.querySelectorAll('[data-k=state] button').forEach(b=>b.classList.toggle('on',b.dataset.v==='data'))}
+  const id=Math.max(0,...groups.map(g=>g.id))+1;groups.push({id,name:`Equipo ${id}`,sa:null,members:[]});render();renameSheet(groups[groups.length-1])}
+function toast(t){const el=$('toast');el.textContent=t;el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),4000)}
+function renderTour(body){
+  const linked=groups.filter(g=>g.sa===SAS[0]),orphan=groups.filter(g=>!g.sa);
+  body.innerHTML=`<div class="tour"><div class="panel"><h3>Equipos · ${linked.length}</h3><p class="hint">Son los grupos del Cuaderno asociados a «${SAS[0]}». Cualquier cambio se ve en los dos sitios.</p><div class="teams">${linked.map(g=>`<div class="team">${g.name} <small>· ${g.members.length}</small></div>`).join('')}</div><div><button class="btn pri" id="goBoard">👥 Gestionar grupos</button></div></div>
+  <div class="panel"><h3>Grupos del curso sin SA</h3><p class="hint">No entran en este torneo hasta que los asocies.</p>${orphan.length?orphan.map(g=>`<div class="orphan"><span>${g.name} <small style="color:var(--mut)">· ${g.members.length}</small></span><span class="sp"></span><button class="btn" data-g="${g.id}">Asociar a esta SA</button></div>`).join(''):'<p class="hint">Todos los grupos del curso están en este torneo.</p>'}</div></div>`;
+  $('goBoard').onclick=()=>{st.view='board';document.querySelectorAll('[data-k=view] button').forEach(b=>b.classList.toggle('on',b.dataset.v==='board'));render()};
+  body.querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{groups.find(g=>g.id==b.dataset.g).sa=SAS[0];toast('Añadido al torneo');render()});
+  updSel();
+}
+// Escala el dispositivo para que quepa entero en la ventana (la maqueta se mide en puntos reales).
+function fit(){const d=$('dev'),{w,h}=size();const k=Math.min(1,(window.innerWidth-32)/(w+20));
+  d.style.zoom=k;}
+window.addEventListener('resize',fit);
+seed();render();
+</script></body></html>

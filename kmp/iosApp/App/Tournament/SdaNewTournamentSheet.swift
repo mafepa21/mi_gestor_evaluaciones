@@ -5,7 +5,6 @@ import MiGestorKit
 /// Al crear genera el calendario y guarda el torneo.
 struct SdaNewTournamentSheet: View {
     let learningSituationId: Int64
-    let teams: [TournamentWorkGroupTeam]
     let suggestedName: String
     let preferredClassId: Int64?
     let onCreated: (TournamentRecord) -> Void
@@ -19,6 +18,12 @@ struct SdaNewTournamentSheet: View {
     }
     @Environment(\.dismiss) private var dismiss
 
+    /// Equipos = grupos del Cuaderno con esta SdA. Se releen al volver de «Gestionar grupos».
+    @State private var teams: [TournamentWorkGroupTeam]
+    /// Grupos del curso todavía sin SdA: se pueden sumar al torneo con «Asociar a esta SA».
+    @State private var unlinkedTeams: [TournamentWorkGroupTeam] = []
+    @State private var isManagingGroups = false
+    @State private var linkingGroupId: Int64?
     @State private var name: String
     @State private var format: TournamentFormat = .roundRobin
     @State private var classId: Int64
@@ -43,12 +48,13 @@ struct SdaNewTournamentSheet: View {
         onCreated: @escaping (TournamentRecord) -> Void
     ) {
         self.learningSituationId = learningSituationId
-        self.teams = teams
         self.suggestedName = suggestedName
         self.preferredClassId = preferredClassId
         self.onCreated = onCreated
+        _teams = State(initialValue: teams)
         let classIds = Array(Set(teams.map(\.classId))).sorted()
-        let initialClass = preferredClassId.flatMap { classIds.contains($0) ? $0 : nil } ?? classIds.first ?? 0
+        // Sin equipos todavía, el curso elegido es el de partida: así se pueden crear sus grupos aquí.
+        let initialClass = preferredClassId.flatMap { classIds.isEmpty || classIds.contains($0) ? $0 : nil } ?? classIds.first ?? 0
         _name = State(initialValue: suggestedName)
         _classId = State(initialValue: initialClass)
     }
@@ -56,7 +62,9 @@ struct SdaNewTournamentSheet: View {
     // MARK: Datos derivados
 
     private var classIds: [Int64] {
-        Array(Set(teams.map(\.classId))).sorted()
+        var ids = Set(teams.map(\.classId))
+        if classId > 0 { ids.insert(classId) }
+        return ids.sorted()
     }
 
     private var classTeams: [TournamentWorkGroupTeam] {
@@ -128,6 +136,7 @@ struct SdaNewTournamentSheet: View {
                 formatSection
                 if format == .groupStageKnockout, selectedTeams.count >= 2 { groupStageSection }
                 teamsSection
+                if !unlinkedTeams.isEmpty { unlinkedTeamsSection }
                 if format == .leaguePlacement {
                     SdaPlacementPlanSections(
                         fixedTeamCount: selectedTeams.count,
@@ -159,7 +168,19 @@ struct SdaNewTournamentSheet: View {
                         .disabled(!canCreate)
                 }
             }
-            .task(id: classId) { await loadSessionMinutes() }
+            .task(id: classId) {
+                await loadSessionMinutes()
+                await reloadTeams()
+            }
+            .sheet(isPresented: $isManagingGroups, onDismiss: {
+                Task { await reloadTeams() }
+            }) {
+                SdaWorkGroupsManagerSheet(
+                    bridge: bridge,
+                    classId: classId,
+                    learningSituationId: learningSituationId
+                )
+            }
         }
         #if os(macOS)
         .frame(minWidth: 520, minHeight: 640)
@@ -271,6 +292,13 @@ struct SdaNewTournamentSheet: View {
                 }
                 .padding(.vertical, 4)
             }
+            Button {
+                isManagingGroups = true
+            } label: {
+                Label(classTeams.isEmpty ? "Crear grupos" : "Gestionar grupos", systemImage: "person.2")
+                    .frame(minHeight: 44)
+            }
+            .disabled(classId <= 0)
         } header: {
             Text("Equipos")
         } footer: {
@@ -279,6 +307,37 @@ struct SdaNewTournamentSheet: View {
             #else
             Text("Toca un grupo para dejarlo fuera de este torneo. Mantén pulsado para ver quién está.")
             #endif
+        }
+    }
+
+    private var unlinkedTeamsSection: some View {
+        Section {
+            ForEach(unlinkedTeams) { team in
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(team.name)
+                        Text(sdaPlural(team.members.count, "alumno", "alumnos"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    if linkingGroupId == team.groupId {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button("Asociar a esta SA") {
+                            Task { await link(team) }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(linkingGroupId != nil)
+                        .accessibilityLabel("Asociar \(team.name) a esta SA")
+                    }
+                }
+                .frame(minHeight: 44)
+            }
+        } header: {
+            Text("Grupos del curso sin SA")
+        } footer: {
+            Text("No entran en el torneo hasta que los asocies. El cambio también se ve en el Cuaderno.")
         }
     }
 
@@ -417,6 +476,29 @@ struct SdaNewTournamentSheet: View {
                 .filter { $0.schoolClassId == targetClass }
                 .map { (start: $0.startTime, end: $0.endTime) }
         )
+    }
+
+    /// Relee los equipos de la SdA y los grupos sin SdA del curso (mismo dato que el Cuaderno).
+    private func reloadTeams() async {
+        let targetClass = classId
+        if let fresh = try? await bridge.workGroupsLinkedToLearningSituation(learningSituationId: learningSituationId) {
+            teams = fresh
+            excludedGroupIds.formIntersection(Set(fresh.map(\.groupId)))
+        }
+        guard targetClass > 0 else { return }
+        let unlinked = (try? await bridge.workGroupsWithoutLearningSituation(classId: targetClass)) ?? []
+        if targetClass == classId { unlinkedTeams = unlinked }
+    }
+
+    private func link(_ team: TournamentWorkGroupTeam) async {
+        linkingGroupId = team.groupId
+        defer { linkingGroupId = nil }
+        do {
+            try await bridge.linkWorkGroup(groupId: team.groupId, classId: team.classId, toLearningSituationId: learningSituationId)
+            await reloadTeams()
+        } catch {
+            errorMessage = "No se pudo asociar «\(team.name)». Inténtalo de nuevo."
+        }
     }
 
     private func create() async {

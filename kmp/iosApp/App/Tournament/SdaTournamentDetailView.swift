@@ -22,11 +22,14 @@ struct SdaTournamentDetailView: View {
     /// Avisa de que el modo directo se abre o se cierra (la pantalla «Torneos» oculta su lista).
     let onLiveModeChange: (Bool) -> Void
     let deleteRequest: SdaTournamentDeleteRequest?
+    /// Avisa de que se han tocado los grupos del Cuaderno (para releer los equipos actuales).
+    let onGroupsChanged: () -> Void
 
     /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
     @Environment(\.kmpBridgeReference) private var bridgeReference
     private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) private var dismiss
+    @State private var isManagingGroups = false
     @State private var rosterPhase: RosterPhase = .loading
     @State private var students: [(id: String, name: String)] = []
     @State private var firstNames: [String: String] = [:]
@@ -86,11 +89,13 @@ struct SdaTournamentDetailView: View {
         presentation: Presentation = .sheet,
         onSaveFailedAtClose: @escaping (String) -> Void = { _ in },
         onLiveModeChange: @escaping (Bool) -> Void = { _ in },
-        deleteRequest: SdaTournamentDeleteRequest? = nil
+        deleteRequest: SdaTournamentDeleteRequest? = nil,
+        onGroupsChanged: @escaping () -> Void = {}
     ) {
         self.presentation = presentation
         self.onLiveModeChange = onLiveModeChange
         self.deleteRequest = deleteRequest
+        self.onGroupsChanged = onGroupsChanged
         let store = SdaTournamentStore(record: record, plan: plan, bridge: bridge)
         store.onSaved = onSaved
         _store = StateObject(wrappedValue: store)
@@ -157,6 +162,13 @@ struct SdaTournamentDetailView: View {
         }
         .sheet(item: $scoreTarget) { target in
             scoreSheet(for: target)
+        }
+        .sheet(isPresented: $isManagingGroups, onDismiss: onGroupsChanged) {
+            SdaWorkGroupsManagerSheet(
+                bridge: bridge,
+                classId: store.record.classId,
+                learningSituationId: store.record.learningSituationId
+            )
         }
         .sheet(isPresented: $showingMembers) {
             SdaTournamentMembersSheet(
@@ -925,6 +937,16 @@ struct SdaTournamentDetailView: View {
                     }
                     .buttonStyle(.bordered)
                 }
+                if store.record.learningSituationId != nil {
+                    // Los grupos de la SdA son los del Cuaderno: se gestionan en el mismo tablero.
+                    Button {
+                        isManagingGroups = true
+                    } label: {
+                        Label("Gestionar grupos del curso", systemImage: "rectangle.3.group")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                }
                 printButton(prominent: true, fillsWidth: true)
             }
         }
@@ -1053,6 +1075,7 @@ struct SdaTournamentSheetHost: View {
     let onSaveFailedAtClose: (String) -> Void
     let onLiveModeChange: (Bool) -> Void
     let deleteRequest: SdaTournamentDeleteRequest?
+    let onGroupsChanged: () -> Void
     private let recordId: String?
     private let recordName: String
     /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
@@ -1077,11 +1100,13 @@ struct SdaTournamentSheetHost: View {
         presentation: SdaTournamentDetailView.Presentation = .sheet,
         onSaveFailedAtClose: @escaping (String) -> Void,
         onLiveModeChange: @escaping (Bool) -> Void = { _ in },
-        deleteRequest: SdaTournamentDeleteRequest? = nil
+        deleteRequest: SdaTournamentDeleteRequest? = nil,
+        onGroupsChanged: @escaping () -> Void = {}
     ) {
         self.presentation = presentation
         self.onLiveModeChange = onLiveModeChange
         self.deleteRequest = deleteRequest
+        self.onGroupsChanged = onGroupsChanged
         self.recordId = record?.id
         self.recordName = record?.name ?? "este torneo"
         self.currentTeams = currentTeams
@@ -1108,7 +1133,8 @@ struct SdaTournamentSheetHost: View {
                 presentation: presentation,
                 onSaveFailedAtClose: onSaveFailedAtClose,
                 onLiveModeChange: onLiveModeChange,
-                deleteRequest: deleteRequest
+                deleteRequest: deleteRequest,
+                onGroupsChanged: onGroupsChanged
             )
         } else if presentation == .embedded {
             VStack(spacing: 16) {

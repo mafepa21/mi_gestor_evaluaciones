@@ -566,6 +566,8 @@ extension KmpBridge {
         }
 
         let carpeta = try Self.writePublishedFiles(publicado, title: detalle.template_.title)
+        // Portal del alumnado: el formulario nuevo entra en el tablón de quien tenga cuenta.
+        schedulePortalRepublish(formInstanceIds: [publicado.formInstanceId])
 
         return WebPublishResult(
             formInstanceId: publicado.formInstanceId,
@@ -913,6 +915,8 @@ extension KmpBridge {
 
         if resultado.imported > 0 {
             refreshCurrentNotebook()
+            // Portal del alumnado: lo importado pasa a «Hecho» en el tablón.
+            schedulePortalRepublish(formInstanceIds: Set(decisions.map(\.draft.formInstanceId)))
         }
 
         return resultado

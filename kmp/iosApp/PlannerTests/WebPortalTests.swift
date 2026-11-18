@@ -135,11 +135,13 @@ final class WebPortalStoreTests: XCTestCase {
         let entry = WebPortalEntry(portalId: "A", estadoConocido: "pendiente", invitadoEl: nil, ultimaVersion: nil)
         XCTAssertEqual(WebPortalAccountStatus.resolve(hasEmail: false, entry: nil, server: nil), .sinCorreo)
         XCTAssertEqual(WebPortalAccountStatus.resolve(hasEmail: true, entry: nil, server: nil), .sinInvitar)
-        XCTAssertEqual(WebPortalAccountStatus.resolve(hasEmail: false, entry: entry, server: .cuenta(conInvitacionPendiente: false)), .activada)
+        XCTAssertEqual(WebPortalAccountStatus.resolve(hasEmail: false, entry: entry, server: .cuenta(invitacion: .ninguna)), .activada)
         XCTAssertEqual(WebPortalAccountStatus.resolve(hasEmail: true, entry: entry, server: .invitacionCaducada), .caducado)
         XCTAssertEqual(WebPortalAccountStatus.resolve(hasEmail: true, entry: entry, server: .invitacionPendiente), .pendiente)
         XCTAssertEqual(WebPortalAccountStatus.resolve(hasEmail: true, entry: entry, server: .ninguna), .sinCuenta)
-        XCTAssertEqual(WebPortalAccountStatus.resolve(hasEmail: false, entry: entry, server: .invitacionPendiente), .sinCorreo)
+        XCTAssertEqual(WebPortalAccountStatus.resolve(hasEmail: false, entry: entry, server: .invitacionPendiente), .pendiente)
+        XCTAssertEqual(WebPortalAccountStatus.resolve(hasEmail: false, entry: entry, server: .invitacionCaducada), .caducado)
+        XCTAssertEqual(WebPortalAccountStatus.resolve(hasEmail: false, entry: entry, server: .ninguna), .sinCorreo)
         // Sin red se usa el último estado conocido.
         XCTAssertEqual(WebPortalAccountStatus.resolve(hasEmail: true, entry: entry, server: nil), .pendiente)
     }
@@ -161,13 +163,13 @@ final class WebPortalPublisherTests: XCTestCase {
         let json = try board([
             form("Autoevaluación"),
             form("Inscripción", done: true),
-            form("Pasaporte", mode: "passport", done: true),
+            form("Pasaporte", mode: "passport", days: 5, done: true),
             form("Caducada", days: -1),
             form("Sin https", url: "http://ejemplo.test/#f=1"),
         ])
         XCTAssertEqual(json["schemaVersion"] as? Int, 1)
         let pendientes = try XCTUnwrap(json["pendientes"] as? [[String: Any]])
-        XCTAssertEqual(pendientes.map { $0["titulo"] as? String }, ["Autoevaluación"])
+        XCTAssertEqual(pendientes.map { $0["titulo"] as? String }, ["Autoevaluación", "Pasaporte"], "el pasaporte sigue pendiente aunque tenga envíos")
         XCTAssertEqual(pendientes.first?["tipo"] as? String, "autoevaluacion")
         XCTAssertEqual(pendientes.first?["contexto"] as? String, "2º ESO B")
         XCTAssertEqual(pendientes.first?["plazo"] as? String, "2025-11-21T18:40:00Z")
@@ -338,11 +340,11 @@ final class WebPortalFlowTests: XCTestCase {
             """.utf8))
         }
         let states = try await client.state(portalIds: ["a", "b", "c", "d", "e"], accountKey: "k")
-        XCTAssertEqual(states["a"], .cuenta(conInvitacionPendiente: false))
+        XCTAssertEqual(states["a"], .cuenta(invitacion: .ninguna))
         XCTAssertEqual(states["b"], .invitacionPendiente)
         XCTAssertEqual(states["c"], .invitacionCaducada)
         XCTAssertEqual(states["d"], .ninguna)
-        XCTAssertEqual(states["e"], .cuenta(conInvitacionPendiente: true))
+        XCTAssertEqual(states["e"], .cuenta(invitacion: .pendiente))
     }
 
     func testPublicarCifraElTablonYGuardaLaVersion() async throws {
@@ -375,5 +377,107 @@ final class WebPortalFlowTests: XCTestCase {
         XCTAssertTrue(String(decoding: abierto, as: UTF8.self).contains("Autoevaluación"))
         XCTAssertFalse(String(decoding: body, as: UTF8.self).contains("Autoevaluación"), "el título no viaja en claro")
         XCTAssertEqual(WebPortalStore(fileURL: storeURL, keychainService: service)[1]?.ultimaVersion, version)
+    }
+
+    // MARK: Rotación diferida de K_tablon
+
+    private func markActive(_ studentId: Int64) throws {
+        try WebPortalStore.mutate(fileURL: storeURL, keychainService: service) {
+            guard var e = $0[studentId] else { return }
+            e.estadoConocido = "activada"
+            $0.set(e, for: studentId)
+        }
+    }
+
+    func testReinvitarConCuentaActivaDejaLaLlaveEnPendiente() async throws {
+        WebPortalFakeServer.handler = { _, _ in (200, Data("{}".utf8)) }
+        let first = try await WebPortalInviter.invite(
+            studentIds: [1], storeURL: storeURL, keychainService: service, client: client, accountKey: "k", iterations: iterations
+        )
+        let id = first[0].portalId
+        let store = WebPortalStore(fileURL: storeURL, keychainService: service)
+        guard let current = store.tablonKey(portalId: id) else { throw XCTSkip("Sin llavero en este entorno.") }
+        try markActive(1)
+        _ = try await WebPortalInviter.invite(
+            studentIds: [1], storeURL: storeURL, keychainService: service, client: client, accountKey: "k", iterations: iterations
+        )
+        XCTAssertEqual(store.tablonKey(portalId: id), current, "se sigue publicando con la llave actual")
+        let pending = try XCTUnwrap(store.pendingKey(portalId: id))
+        XCTAssertNotEqual(pending, current)
+        XCTAssertEqual(WebPortalStore(fileURL: storeURL, keychainService: service)[1]?.estadoConocido, "activada")
+
+        // Aún sin canjear: no se toca nada.
+        XCTAssertTrue(WebPortalInviter.resolvePending(states: [id: .cuenta(invitacion: .pendiente)], storeURL: storeURL, keychainService: service).isEmpty)
+        XCTAssertEqual(store.tablonKey(portalId: id), current)
+        // Canjeó: la pendiente es la llave.
+        XCTAssertEqual(WebPortalInviter.resolvePending(states: [id: .cuenta(invitacion: .ninguna)], storeURL: storeURL, keychainService: service), [1])
+        XCTAssertEqual(store.tablonKey(portalId: id), pending)
+        XCTAssertNil(store.pendingKey(portalId: id))
+    }
+
+    func testPendienteSeDescartaSiCaducaYSiElServidorFalla() async throws {
+        WebPortalFakeServer.handler = { _, _ in (200, Data("{}".utf8)) }
+        let first = try await WebPortalInviter.invite(
+            studentIds: [1], storeURL: storeURL, keychainService: service, client: client, accountKey: "k", iterations: iterations
+        )
+        let id = first[0].portalId
+        let store = WebPortalStore(fileURL: storeURL, keychainService: service)
+        guard let current = store.tablonKey(portalId: id) else { throw XCTSkip("Sin llavero en este entorno.") }
+        try markActive(1)
+
+        // Servidor falla: no queda pendiente.
+        WebPortalFakeServer.handler = { _, _ in (500, Data()) }
+        do {
+            _ = try await WebPortalInviter.invite(studentIds: [1], storeURL: storeURL, keychainService: service, client: client, accountKey: "k", iterations: iterations)
+            XCTFail("tenía que fallar")
+        } catch {}
+        XCTAssertNil(store.pendingKey(portalId: id))
+        XCTAssertEqual(store.tablonKey(portalId: id), current)
+
+        // Caduca: se descarta.
+        WebPortalFakeServer.handler = { _, _ in (200, Data("{}".utf8)) }
+        _ = try await WebPortalInviter.invite(studentIds: [1], storeURL: storeURL, keychainService: service, client: client, accountKey: "k", iterations: iterations)
+        XCTAssertNotNil(store.pendingKey(portalId: id))
+        WebPortalInviter.resolvePending(states: [id: .cuenta(invitacion: .caducada)], storeURL: storeURL, keychainService: service)
+        XCTAssertNil(store.pendingKey(portalId: id))
+        XCTAssertEqual(store.tablonKey(portalId: id), current)
+    }
+
+    func testElPublicadorPromueveLaPendienteSiYaCanjeo() async throws {
+        WebPortalFakeServer.handler = { _, _ in (200, Data("{}".utf8)) }
+        let first = try await WebPortalInviter.invite(
+            studentIds: [1], storeURL: storeURL, keychainService: service, client: client, accountKey: "k", iterations: iterations
+        )
+        let id = first[0].portalId
+        let store = WebPortalStore(fileURL: storeURL, keychainService: service)
+        guard store.tablonKey(portalId: id) != nil else { throw XCTSkip("Sin llavero en este entorno.") }
+        try markActive(1)
+        _ = try await WebPortalInviter.invite(studentIds: [1], storeURL: storeURL, keychainService: service, client: client, accountKey: "k", iterations: iterations)
+        let pending = try XCTUnwrap(store.pendingKey(portalId: id))
+
+        WebPortalFakeServer.handler = { request, body in
+            if request.url?.query == "accion=estado" {
+                return (200, Data("{\"estados\":{\"\(id)\":{\"cuenta\":true,\"invitacion\":\"ninguna\"}}}".utf8))
+            }
+            return (200, Data("{\"resultados\":[{\"portalId\":\"\(id)\",\"ok\":true}]}".utf8))
+        }
+        let now = Date(timeIntervalSince1970: 1_763_491_200)
+        _ = await WebPortalPublisher.publish(inputs: [.init(studentId: 1, forms: [])], storeURL: storeURL, keychainService: service, client: client, accountKey: "k", now: now)
+        XCTAssertEqual(store.tablonKey(portalId: id), pending)
+        let (_, body) = try XCTUnwrap(WebPortalFakeServer.requests.last)
+        let item = try XCTUnwrap((json(body)["tablones"] as? [[String: Any]])?.first)
+        let sobre = try WebPortalCrypto.Envelope(jsonObject: try XCTUnwrap(item["sobre"] as? [String: Any]))
+        XCTAssertNoThrow(try WebPortalCrypto.open(sobre, key: pending, context: .tablon(portalId: id, version: try XCTUnwrap(item["version"] as? Int64))))
+    }
+
+    func testRechazaServidorSinHttps() async {
+        let inseguro = WebPortalClient(url: "http://ejemplo.test/buzon/portal.php", session: client.session)
+        do {
+            _ = try await inseguro.state(portalIds: ["a"], accountKey: "k")
+            XCTFail("tenía que rechazar http")
+        } catch {
+            XCTAssertEqual(error as? WebSubmissionInbox.InboxError, .network)
+        }
+        XCTAssertTrue(WebPortalFakeServer.requests.isEmpty)
     }
 }

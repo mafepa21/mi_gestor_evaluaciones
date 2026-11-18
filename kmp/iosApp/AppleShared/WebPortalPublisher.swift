@@ -8,7 +8,8 @@ import MiGestorKit
 /// y cuándo cambia. Aquí se decide qué entra:
 ///  - **pendientes**: formularios activos del alumno que aún no se han importado.
 ///  - **hechos**: los ya importados. Lo decide la app; el móvil no marca nada.
-///  - El pasaporte (varias paradas) nunca pasa a «hecho»: queda pendiente hasta que caduca.
+///  - El pasaporte (varias paradas) nunca pasa a «hecho»: queda pendiente hasta que caduca,
+///    aunque ya tenga envíos.
 
 /// Un formulario visto desde un alumno.
 struct WebPortalFormEntry: Equatable {
@@ -59,7 +60,7 @@ enum WebPortalPublisher {
     /// JSON del tablón v1. Las claves desconocidas las ignora la web.
     static func buildBoard(portalId: String, forms: [WebPortalFormEntry], now: Date = Date()) throws -> Data {
         let pending = forms
-            .filter { !$0.done && $0.expiresAt > now }
+            .filter { ($0.mode == "passport" || !$0.done) && $0.expiresAt > now }
             .compactMap { form -> [String: Any]? in
                 guard let url = form.url, url.hasPrefix("https://") else { return nil }
                 return [
@@ -116,6 +117,14 @@ enum WebPortalPublisher {
     ) async -> Outcome {
         var outcome = Outcome()
         let store = WebPortalStore(fileURL: storeURL, keychainService: keychainService)
+
+        // Quien tiene una llave pendiente (reinvitado con cuenta activa) pregunta antes al
+        // servidor: si ya canjeó, la pendiente pasa a ser la llave; si caducó, se descarta.
+        let pendingPortalIds = store.entries.values.map(\.portalId).filter { store.pendingKey(portalId: $0) != nil }
+        if !pendingPortalIds.isEmpty,
+           let states = try? await client.state(portalIds: pendingPortalIds, accountKey: accountKey) {
+            WebPortalInviter.resolvePending(states: states, storeURL: storeURL, keychainService: keychainService)
+        }
 
         var boards: [(studentId: Int64, board: WebPortalClient.Board)] = []
         for input in inputs {

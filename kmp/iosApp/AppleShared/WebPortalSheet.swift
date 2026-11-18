@@ -76,7 +76,7 @@ final class WebPortalViewModel: ObservableObject {
 
     func status(of student: WebPortalStudent) -> WebPortalAccountStatus {
         let entry = entries[student.id]
-        if phase == .loading, entry != nil, serverStates[entry!.portalId] == nil { return .desconocido }
+        if phase == .loading, let entry, serverStates[entry.portalId] == nil { return .desconocido }
         return WebPortalAccountStatus.resolve(
             hasEmail: student.hasUsableEmail,
             entry: entry,
@@ -86,8 +86,8 @@ final class WebPortalViewModel: ObservableObject {
 
     /// Hay una invitación nueva esperando además de una cuenta activa.
     func hasPendingCodeOnTopOfAccount(_ student: WebPortalStudent) -> Bool {
-        guard let entry = entries[student.id], case .cuenta(let pending)? = serverStates[entry.portalId] else { return false }
-        return pending
+        guard let entry = entries[student.id], case .cuenta(let invitacion)? = serverStates[entry.portalId] else { return false }
+        return invitacion == .pendiente
     }
 
     var hasAnyInvitation: Bool { students.contains { entries[$0.id] != nil } }
@@ -130,6 +130,8 @@ final class WebPortalViewModel: ObservableObject {
             let states = try await client.state(portalIds: ids, accountKey: accountKey)
             serverStates = states
             WebPortalInviter.recordStates(states, storeURL: storeURL)
+            // Quien canjeó un código nuevo estrena llave: hay que republicar su tablón.
+            if !WebPortalInviter.resolvePending(states: states, storeURL: storeURL).isEmpty { republish() }
             entries = WebPortalStore(fileURL: storeURL).entries
             UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.checkedKey)
             phase = .loaded
@@ -268,7 +270,16 @@ struct WebPortalSheet: View {
     @State private var selection = Set<Int64>()
     @State private var closing: WebPortalStudent?
     @State private var showingPreview = false
+    @State private var reinvite: PendingReinvite?
     @State private var previewTargets: [WebPortalStudent] = []
+
+    /// Mandar un código nuevo a una cuenta activa pide confirmación.
+    struct PendingReinvite: Identifiable {
+        enum Kind { case email, card }
+        let student: WebPortalStudent
+        let kind: Kind
+        var id: Int64 { student.id }
+    }
 
     init(
         groups: [PortalGroup],
@@ -314,6 +325,16 @@ struct WebPortalSheet: View {
             }
         } message: { _ in
             Text("Ya no podrá entrar con su usuario. Sus entregas ya recibidas no se tocan. Podrás mandarle un código nuevo.")
+        }
+        .alert(
+            "¿Mandar un código nuevo a \(reinvite?.student.fullName ?? "")?",
+            isPresented: Binding(get: { reinvite != nil }, set: { if !$0 { reinvite = nil } }),
+            presenting: reinvite
+        ) { pending in
+            Button("Cancelar", role: .cancel) {}
+            Button("Continuar") { performReinvite(pending) }
+        } message: { _ in
+            Text("Su cuenta seguirá funcionando hasta que use el código nuevo.")
         }
         .sheet(item: $model.card) { card in
             WebPortalCodeCardView(card: card)
@@ -371,45 +392,52 @@ struct WebPortalSheet: View {
     private var content: some View {
         if model.students.isEmpty && model.phase != .idle {
             ContentUnavailableView("Este grupo no tiene alumnado", systemImage: "person.2")
-        } else if !model.hasAnyInvitation && model.phase != .loading && model.phase != .idle {
-            emptyInvite
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                if model.phase == .loaded { summary }
+                if !model.hasAnyInvitation && model.phase != .loading && model.phase != .idle {
+                    emptyInvite
+                } else if model.phase == .loaded {
+                    summary
+                }
                 table
                 footer
             }
         }
     }
 
-    // L · Grupo sin invitar
+    // L · Grupo sin invitar. La tabla sigue debajo: también se puede invitar a un
+    // alumno suelto (código con QR), en iPad y sin correo.
     private var emptyInvite: some View {
-        VStack(spacing: 14) {
+        HStack(alignment: .top, spacing: 14) {
             Image(systemName: "envelope.badge")
-                .font(.system(size: 40))
+                .font(.title)
                 .foregroundStyle(.secondary)
-            Text("Aún no has invitado a este grupo").font(.title3.weight(.semibold))
-            Text("Cada alumno recibe un correo con un código para crear su cuenta. Después verá en un solo sitio todo lo que publiques.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
-            #if os(macOS)
-            Button("Invitar al grupo…") { askToSend() }
-                .buttonStyle(.borderedProminent)
-                .disabled(model.sendTargets.isEmpty || model.working)
-            if model.noEmailCount > 0 {
-                Text("\(model.noEmailCount) sin correo: no recibirán invitación.")
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Aún no has invitado a este grupo").font(.headline)
+                Text("Cada alumno recibe un correo con un código para crear su cuenta. Después verá en un solo sitio todo lo que publiques.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                #if os(macOS)
+                HStack {
+                    Button("Invitar al grupo…") { askToSend() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(model.sendTargets.isEmpty || !canSend)
+                    if model.noEmailCount > 0 {
+                        Text("\(model.noEmailCount) sin correo: usa «Mostrar su código…» en su fila.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                #else
+                Text("Los correos se preparan desde el Mac. Aquí, mantén pulsado un alumno y elige «Mostrar su código…».")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                #endif
             }
-            #else
-            Text("Las invitaciones se preparan desde el Mac.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            #endif
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(14)
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
     }
 
     // M · Con datos
@@ -494,13 +522,10 @@ struct WebPortalSheet: View {
         let people = model.students.filter { ids.contains($0.id) }
         if let one = people.first, people.count == 1 {
             #if os(macOS)
-            Button("Enviar código nuevo…") {
-                previewTargets = [one]
-                showingPreview = true
-            }
+            Button("Enviar código nuevo…") { requestReinvite(one, kind: .email) }
             .disabled(!one.hasUsableEmail || !canSend)
             #endif
-            Button("Mostrar su código…") { Task { await model.showCode(for: one) } }
+            Button("Mostrar su código…") { requestReinvite(one, kind: .card) }
                 .disabled(!canSend)
             Divider()
             Button("Cerrar su cuenta…", role: .destructive) { closing = one }
@@ -546,6 +571,21 @@ struct WebPortalSheet: View {
                 Text("Comprobado \(last.formatted(.relative(presentation: .named)))")
                     .font(.footnote).foregroundStyle(.secondary)
             }
+        }
+    }
+
+    private func requestReinvite(_ student: WebPortalStudent, kind: PendingReinvite.Kind) {
+        let pending = PendingReinvite(student: student, kind: kind)
+        if model.status(of: student) == .activada { reinvite = pending } else { performReinvite(pending) }
+    }
+
+    private func performReinvite(_ pending: PendingReinvite) {
+        switch pending.kind {
+        case .email:
+            previewTargets = [pending.student]
+            showingPreview = true
+        case .card:
+            Task { await model.showCode(for: pending.student) }
         }
     }
 

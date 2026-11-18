@@ -54,19 +54,20 @@ enum WebPortalAccountStatus: String, Equatable {
     }
 
     /// Cruza lo local (entrada y correo) con lo que dijo el servidor.
-    /// «Sin correo» solo se muestra si tampoco hay cuenta activada.
+    /// Activada, Pendiente y Caducado mandan sobre «Sin correo» si hay entrada local.
     static func resolve(hasEmail: Bool, entry: WebPortalEntry?, server: WebPortalServerState?) -> WebPortalAccountStatus {
+        let status: WebPortalAccountStatus
         if let server {
-            let status = from(server: server)
-            if status == .activada { return .activada }
-            if !hasEmail { return .sinCorreo }
-            return status
+            status = from(server: server)
+        } else if let entry {
+            status = WebPortalAccountStatus(rawValue: entry.estadoConocido) ?? .desconocido
+        } else {
+            return hasEmail ? .sinInvitar : .sinCorreo
         }
-        guard let entry else { return hasEmail ? .sinInvitar : .sinCorreo }
-        let known = WebPortalAccountStatus(rawValue: entry.estadoConocido) ?? .desconocido
-        if known == .activada { return .activada }
-        if !hasEmail { return .sinCorreo }
-        return known
+        switch status {
+        case .activada, .pendiente, .caducado: return status
+        default: return hasEmail ? status : .sinCorreo
+        }
     }
 }
 
@@ -169,5 +170,49 @@ struct WebPortalStore {
     @discardableResult
     func deleteTablonKey(portalId: String) -> Bool {
         SecItemDelete(keychainBase(portalId: portalId) as CFDictionary) == errSecSuccess
+    }
+
+    // MARK: Llave pendiente
+    // Al reinvitar a quien ya tiene cuenta, la llave nueva espera aquí hasta que
+    // canjee el código. Mientras, se sigue publicando con la actual.
+
+    private func pendingBase(portalId: String) -> [String: Any] {
+        var base = keychainBase(portalId: portalId)
+        base[kSecAttrAccount as String] = "tablon-pend-\(portalId)"
+        return base
+    }
+
+    @discardableResult
+    func savePendingKey(_ key: Data, portalId: String) -> Bool {
+        guard key.count == 32 else { return false }
+        let base = pendingBase(portalId: portalId)
+        SecItemDelete(base as CFDictionary)
+        var nuevo = base
+        nuevo[kSecValueData as String] = key
+        nuevo[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        return SecItemAdd(nuevo as CFDictionary, nil) == errSecSuccess
+    }
+
+    func pendingKey(portalId: String) -> Data? {
+        var consulta = pendingBase(portalId: portalId)
+        consulta[kSecReturnData as String] = true
+        consulta[kSecMatchLimit as String] = kSecMatchLimitOne
+        var resultado: CFTypeRef?
+        guard SecItemCopyMatching(consulta as CFDictionary, &resultado) == errSecSuccess,
+              let datos = resultado as? Data, datos.count == 32 else { return nil }
+        return datos
+    }
+
+    @discardableResult
+    func deletePendingKey(portalId: String) -> Bool {
+        SecItemDelete(pendingBase(portalId: portalId) as CFDictionary) == errSecSuccess
+    }
+
+    /// La pendiente pasa a ser la llave con la que se publica.
+    @discardableResult
+    func promotePendingKey(portalId: String) -> Bool {
+        guard let key = pendingKey(portalId: portalId), saveTablonKey(key, portalId: portalId) else { return false }
+        deletePendingKey(portalId: portalId)
+        return true
     }
 }

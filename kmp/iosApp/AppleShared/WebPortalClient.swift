@@ -2,8 +2,10 @@ import Foundation
 
 /// Lo que el servidor dice de un portal (acción `estado`, contrato sección 2).
 enum WebPortalServerState: Equatable {
-    /// Hay cuenta. `true` si además hay un código nuevo sin canjear.
-    case cuenta(conInvitacionPendiente: Bool)
+    enum Invitacion: Equatable { case pendiente, caducada, ninguna }
+
+    /// Hay cuenta, y la invitación nueva está sin canjear, caducada o no hay.
+    case cuenta(invitacion: Invitacion)
     case invitacionPendiente
     case invitacionCaducada
     case ninguna
@@ -108,7 +110,8 @@ struct WebPortalClient {
                 let hasAccount = (raw["cuenta"] as? Bool) ?? false
                 let invitation = raw["invitacion"] as? String ?? "ninguna"
                 switch (hasAccount, invitation) {
-                case (true, _): result[id] = .cuenta(conInvitacionPendiente: invitation == "pendiente")
+                case (true, _):
+                    result[id] = .cuenta(invitacion: invitation == "pendiente" ? .pendiente : invitation == "caducada" ? .caducada : .ninguna)
                 case (false, "pendiente"): result[id] = .invitacionPendiente
                 case (false, "caducada"): result[id] = .invitacionCaducada
                 default: result[id] = .ninguna
@@ -137,7 +140,8 @@ struct WebPortalClient {
     }
 
     private func post(action: String, accountKey: String, body: [String: Any]) async throws -> Data {
-        guard let endpoint = URL(string: "\(url)?accion=\(action)") else { throw WebSubmissionInbox.InboxError.network }
+        guard let endpoint = URL(string: "\(url)?accion=\(action)"),
+              endpoint.scheme?.lowercased() == "https" else { throw WebSubmissionInbox.InboxError.network }
         var request = URLRequest(url: endpoint, timeoutInterval: 20)
         request.httpMethod = "POST"
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -187,6 +191,8 @@ enum WebPortalInviter {
             let invitation: WebPortalInvitation
             let invite: WebPortalClient.Invite
             let tablonKey: Data
+            /// Tiene cuenta activa: la llave nueva espera a que canjee el código.
+            let keepsPending: Bool
         }
         var prepared: [Prepared] = []
         for studentId in studentIds {
@@ -199,27 +205,41 @@ enum WebPortalInviter {
             prepared.append(Prepared(
                 invitation: WebPortalInvitation(studentId: studentId, portalId: portalId, code: code, expires: nil, wasReinvite: existing != nil),
                 invite: WebPortalClient.Invite(portalId: portalId, inviteIdHash: keys.inviteIdHash, pruebaHash: keys.pruebaHash, sobreAlta: sobre),
-                tablonKey: tablonKey
+                tablonKey: tablonKey,
+                keepsPending: existing?.estadoConocido == WebPortalAccountStatus.activada.rawValue
             ))
         }
 
-        let expires = try await client.invite(prepared.map(\.invite), accountKey: accountKey)
+        // Llaves nuevas al llavero ANTES de llamar al servidor. Si falla, no se llama.
+        var written: [String] = []
+        for item in prepared {
+            guard store.savePendingKey(item.tablonKey, portalId: item.invitation.portalId) else {
+                for id in written { store.deletePendingKey(portalId: id) }
+                throw InviteError.keychain
+            }
+            written.append(item.invitation.portalId)
+        }
 
-        for item in prepared where !store.saveTablonKey(item.tablonKey, portalId: item.invitation.portalId) {
-            throw InviteError.keychain
+        let expires: Date?
+        do {
+            expires = try await client.invite(prepared.map(\.invite), accountKey: accountKey)
+        } catch {
+            for id in written { store.deletePendingKey(portalId: id) }
+            throw error
+        }
+
+        // Sin cuenta activa se rota ya. Con cuenta activa la llave espera a que canjee.
+        for item in prepared where !item.keepsPending {
+            if !store.promotePendingKey(portalId: item.invitation.portalId) { throw InviteError.keychain }
         }
         let nowMs = Int64(now.timeIntervalSince1970 * 1000)
         try WebPortalStore.mutate(fileURL: storeURL, keychainService: keychainService) { store in
             for item in prepared {
                 let previous = store[item.invitation.studentId]
-                // Una cuenta activa sigue activa hasta que canjee el código nuevo.
-                let known = previous?.estadoConocido == WebPortalAccountStatus.activada.rawValue
-                    ? WebPortalAccountStatus.activada.rawValue
-                    : WebPortalAccountStatus.pendiente.rawValue
                 store.set(
                     WebPortalEntry(
                         portalId: item.invitation.portalId,
-                        estadoConocido: known,
+                        estadoConocido: item.keepsPending ? WebPortalAccountStatus.activada.rawValue : WebPortalAccountStatus.pendiente.rawValue,
                         invitadoEl: nowMs,
                         ultimaVersion: previous?.ultimaVersion
                     ),
@@ -236,6 +256,29 @@ enum WebPortalInviter {
                 wasReinvite: $0.invitation.wasReinvite
             )
         }
+    }
+
+    /// Resuelve las llaves pendientes con lo que dice el servidor: si canjeó (cuenta
+    /// y sin invitación) la pendiente pasa a ser la llave; si caducó, se descarta.
+    /// Devuelve los alumnos cuya llave cambió: hay que republicar su tablón.
+    @discardableResult
+    static func resolvePending(
+        states: [String: WebPortalServerState],
+        storeURL: URL,
+        keychainService: String = WebPortalStore.defaultKeychainService
+    ) -> [Int64] {
+        let store = WebPortalStore(fileURL: storeURL, keychainService: keychainService)
+        var promoted: [Int64] = []
+        for (studentId, entry) in store.entries where store.pendingKey(portalId: entry.portalId) != nil {
+            switch states[entry.portalId] {
+            case .cuenta(invitacion: .ninguna)?:
+                if store.promotePendingKey(portalId: entry.portalId) { promoted.append(studentId) }
+            case .cuenta(invitacion: .caducada)?, .invitacionCaducada?, WebPortalServerState.ninguna?:
+                store.deletePendingKey(portalId: entry.portalId)
+            default: break
+            }
+        }
+        return promoted
     }
 
     /// Cierra la cuenta: el servidor borra todo y la app descarta `K_tablon`.

@@ -218,7 +218,7 @@ extension KmpBridge {
                 students: alumnado
             )
             let ledger = (try? await container.webSubmissionsRepository.listLedgerForForm(formInstanceId: instancia.formInstanceId)) ?? []
-            let doneStudents = Set(ledger.filter { $0.status == "IMPORTED" }.compactMap { snapshot.studentIdByAlias[$0.alias] })
+            let doneStudents = Set(ledger.filter { $0.status == "IMPORTED" }.compactMap { entry in entry.alias.flatMap { snapshot.studentIdByAlias[$0] } })
             let groupName = classes.first(where: { $0.id == instancia.classId })?.name ?? ""
             for link in links {
                 formsByStudent[link.studentId, default: []].append(WebPortalFormEntry(

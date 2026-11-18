@@ -549,6 +549,7 @@
 		907990BFEA6664485F458693 /* SdaTournamentsOverview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BCAEEFF1AB489082ECFC406 /* SdaTournamentsOverview.swift */; };
 		9148CE60DF95AAE5D950221A /* SchoolCalendarPresetSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AD7E95B759E25696F69EE87 /* SchoolCalendarPresetSheet.swift */; };
 		9168258922F5A352EEE39F23 /* WebPeerResultsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CF7D6D4C4F35A3A3088348F /* WebPeerResultsSheet.swift */; };
+		917F71AF8C096D88CB57C65C /* portal-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 2A0D2019475B58CB7AAFEBCD /* portal-v1.json */; };
 		9235E133FE9104842E5C69F7 /* SdaTournamentComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17F26C351FECC360A2DAF1E /* SdaTournamentComponents.swift */; };
 		928E20A763449E7538247603 /* IOSSelectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A593BC56B52D68974ADE4DAE /* IOSSelectionStore.swift */; };
 		92F738EBFD7858DFB104C047 /* ScheduleExcelImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6A13EB373B0EE87E425E97C /* ScheduleExcelImportService.swift */; };
@@ -1141,6 +1142,7 @@
 		28F8916B5C4C8F6DBC133D2B /* AppleAISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAISettingsView.swift; sourceTree = "<group>"; };
 		2960F7D65E3A8DF5997306CD /* EvaluationHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationHubView.swift; sourceTree = "<group>"; };
 		29E6857BE81CDFB35AD62862 /* PlannerSessionDetailProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSessionDetailProjectionTests.swift; sourceTree = "<group>"; };
+		2A0D2019475B58CB7AAFEBCD /* portal-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "portal-v1.json"; sourceTree = "<group>"; };
 		2A343317645E11CF3CEE53BA /* SdaTournamentNoteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SdaTournamentNoteSheet.swift; sourceTree = "<group>"; };
 		2A63C3DA4B9E97ACDAA83D53 /* NotebookGroupManagementSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookGroupManagementSheet.swift; sourceTree = "<group>"; };
 		2AF237B13A7306DC8C6367BA /* OnboardingWelcomeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWelcomeSheet.swift; sourceTree = "<group>"; };
@@ -1970,6 +1972,7 @@
 			isa = PBXGroup;
 			children = (
 				869F343174526D586B2D3893 /* interop-v1.json */,
+				2A0D2019475B58CB7AAFEBCD /* portal-v1.json */,
 			);
 			path = Recursos;
 			sourceTree = "<group>";
@@ -2465,6 +2468,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F0A9D243D38E8DB467FD7399 /* interop-v1.json in Resources */,
+				917F71AF8C096D88CB57C65C /* portal-v1.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

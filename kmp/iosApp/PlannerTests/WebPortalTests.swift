@@ -481,3 +481,126 @@ final class WebPortalFlowTests: XCTestCase {
         XCTAssertTrue(WebPortalFakeServer.requests.isEmpty)
     }
 }
+
+#if os(macOS)
+import AppKit
+import SwiftUI
+
+/// Regresión: abrir «Portal del alumnado» cerraba la app en macOS. La hoja pedía
+/// más alto que la ventana principal (900x450) y AppKit entraba en un bucle de
+/// Update Constraints que acababa en NSGenericException.
+@MainActor
+final class WebPortalSheetLayoutTests: XCTestCase {
+    private var directory: URL!
+
+    override func setUp() {
+        super.setUp()
+        directory = FileManager.default.temporaryDirectory.appendingPathComponent("portal-\(UUID().uuidString)")
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: directory)
+        super.tearDown()
+    }
+
+    private let students = [
+        WebPortalStudent(id: 1, firstName: "Aitana", lastName: "Prueba Ruiz", email: "aitana.prueba@centro.example"),
+        WebPortalStudent(id: 2, firstName: "Bruno", lastName: "Ficticio Gil", email: "bruno.ficticio@centro.example"),
+        WebPortalStudent(id: 3, firstName: "Dani", lastName: "Ejemplo Mora", email: nil),
+    ]
+
+    private func makeModel(failing: Bool) throws -> WebPortalViewModel {
+        let url = directory.appendingPathComponent("portal/alumnos.json")
+        if failing {
+            // Con una entrada local y un servidor que falla la hoja muestra el banner de error.
+            try WebPortalStore.mutate(fileURL: url) {
+                $0.set(WebPortalEntry(portalId: "AAECAwQFBgcICQoLDA0ODw", estadoConocido: "pendiente", invitadoEl: nil, ultimaVersion: nil), for: 1)
+            }
+        }
+        let model = WebPortalViewModel(baseURL: "https://ejemplo.test", storeURL: url, republish: {})
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [WebPortalFakeServer.self]
+        WebPortalFakeServer.handler = { _, _ in (500, Data()) }
+        model.session = URLSession(configuration: config)
+        return model
+    }
+
+    private func spin(_ seconds: TimeInterval) {
+        RunLoop.main.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    /// Mete la hoja en una ventana de 900x450 y fuerza varias pasadas de layout.
+    private func present(failing: Bool, asSheet: Bool) async throws -> NSWindow {
+        let model = try makeModel(failing: failing)
+        let students = self.students
+        let sheet = WebPortalSheet(
+            groups: [.init(id: 1, name: "3 ESO A")],
+            classId: 1,
+            model: model,
+            loadStudents: { _ in students }
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 450),
+            styleMask: [.titled, .resizable], backing: .buffered, defer: false
+        )
+        if asSheet {
+            struct Host: View {
+                let sheet: WebPortalSheet
+                @State private var shown = true
+                var body: some View {
+                    Color.clear.frame(width: 900, height: 450).sheet(isPresented: $shown) { sheet }
+                }
+            }
+            window.contentViewController = NSHostingController(rootView: Host(sheet: sheet))
+        } else {
+            window.contentViewController = NSHostingController(rootView: sheet)
+        }
+        window.setContentSize(NSSize(width: 900, height: 450))
+        window.makeKeyAndOrderFront(nil)
+        for _ in 0..<8 {
+            window.layoutIfNeeded()
+            spin(0.15)
+        }
+        return window
+    }
+
+    func testHojaConErrorNoDesestabilizaLaVentana() async throws {
+        let window = try await present(failing: true, asSheet: true)
+        XCTAssertEqual(window.contentLayoutRect.height, 450, accuracy: 1, "la ventana principal no debe crecer")
+        for sheet in window.sheets {
+            XCTAssertLessThanOrEqual(sheet.frame.height, 450, "la hoja no puede ser más alta que su ventana")
+        }
+        window.orderOut(nil)
+    }
+
+    func testHojaCargadaNoDesestabilizaLaVentana() async throws {
+        let window = try await present(failing: false, asSheet: true)
+        XCTAssertEqual(window.contentLayoutRect.height, 450, accuracy: 1)
+        for sheet in window.sheets {
+            XCTAssertLessThanOrEqual(sheet.frame.height, 450, "la hoja no puede ser más alta que su ventana")
+        }
+        window.orderOut(nil)
+    }
+
+    func testHojaComoContenidoDeUnaVentanaPequena() async throws {
+        let window = try await present(failing: true, asSheet: false)
+        window.layoutIfNeeded()
+        XCTAssertLessThanOrEqual(window.contentLayoutRect.height, 450.5, "la hoja no debe agrandar una ventana de 450")
+        window.orderOut(nil)
+    }
+
+    func testTarjetaDeCodigoYVistaPreviaSeMidenSinBucle() throws {
+        let card = WebPortalCodeCard(studentName: "Aitana Prueba Ruiz", code: "K7M2X-Q9PAB", link: "https://ejemplo.test/#portal/alta=K7M2XQ9PAB")
+        let preview = WebPortalMailPreview(targets: students, baseURL: "https://ejemplo.test", onCancel: {}, onConfirm: {})
+        for view in [AnyView(WebPortalCodeCardView(card: card)), AnyView(preview)] {
+            let host = NSHostingController(rootView: view)
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 450), styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentViewController = host
+            window.makeKeyAndOrderFront(nil)
+            for _ in 0..<4 { window.layoutIfNeeded(); spin(0.1) }
+            XCTAssertGreaterThan(host.view.fittingSize.height, 100)
+            window.orderOut(nil)
+        }
+    }
+}
+#endif

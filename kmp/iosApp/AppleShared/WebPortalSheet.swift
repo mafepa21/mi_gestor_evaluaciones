@@ -307,7 +307,13 @@ struct WebPortalSheet: View {
             content
         }
         .padding(24)
-        .frame(minWidth: 620, idealWidth: 760, minHeight: 460)
+        // Tamaño acotado: la hoja nunca pide más alto que una ventana principal pequeña
+        // (900x450). Con un mínimo mayor, macOS agrandaba la ventana en bucle y la app se cerraba.
+        #if os(macOS)
+        .frame(minWidth: 560, idealWidth: 700, maxWidth: 820, minHeight: 340, idealHeight: 400, maxHeight: 560)
+        #else
+        .frame(minWidth: 520, minHeight: 400)
+        #endif
         .task(id: classId) {
             selection = []
             await model.load(students: await loadStudents(classId))
@@ -378,7 +384,7 @@ struct WebPortalSheet: View {
     private func errorBanner(_ text: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-            Text(text).font(.callout)
+            Text(text).font(.callout).fixedSize(horizontal: false, vertical: true)
             Spacer()
             if model.phase == .failed {
                 Button("Reintentar") { Task { await model.refresh() } }
@@ -417,6 +423,7 @@ struct WebPortalSheet: View {
                 Text("Cada alumno recibe un correo con un código para crear su cuenta. Después verá en un solo sitio todo lo que publiques.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 #if os(macOS)
                 HStack {
                     Button("Invitar al grupo…") { askToSend() }
@@ -469,7 +476,7 @@ struct WebPortalSheet: View {
                         Image(systemName: "ellipsis.circle")
                     }
                     .menuStyle(.borderlessButton)
-                    .fixedSize()
+                    .frame(width: 32)
                     .accessibilityLabel("Acciones de \(student.fullName)")
                 }
             }
@@ -477,7 +484,9 @@ struct WebPortalSheet: View {
         .contextMenu(forSelectionType: Int64.self) { ids in
             rowMenu(for: Array(ids))
         }
-        .frame(minHeight: 220)
+        // Ocupa lo que sobra; sin altura mínima propia, para no pelear con la ventana.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .layoutPriority(1)
     }
 
     @ViewBuilder
@@ -626,7 +635,10 @@ struct WebPortalMailPreview: View {
                 }
                 Text("Asunto: \(WebPortalViewModel.mailSubject)")
                 Divider()
-                Text(sample).textSelection(.enabled)
+                ScrollView {
+                    Text(sample).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 200)
             }
             .font(.callout)
             .padding(14)
@@ -678,7 +690,8 @@ struct WebPortalCodeCardView: View {
             }
         }
         .padding(28)
-        .frame(minWidth: 360)
+        .frame(width: 380)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 

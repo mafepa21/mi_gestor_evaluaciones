@@ -298,12 +298,6 @@ struct WebPortalSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
-            if let error = model.errorText { errorBanner(error) }
-            if let result = model.resultText {
-                Label(result, systemImage: "checkmark.circle.fill")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.green)
-            }
             content
         }
         .padding(24)
@@ -405,15 +399,34 @@ struct WebPortalSheet: View {
             ContentUnavailableView("Este grupo no tiene alumnado", systemImage: "person.2")
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                if showsEmptyInvite {
-                    emptyInvite
-                } else if model.phase == .loaded {
-                    summary
+                // Avisos, resumen y tabla se desplazan juntos: en una ventana baja la
+                // tabla no se queda en una sola fila. El pie queda fijo debajo.
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if let error = model.errorText { errorBanner(error) }
+                        if let result = model.resultText {
+                            Label(result, systemImage: "checkmark.circle.fill")
+                                .font(.callout.weight(.semibold))
+                                .foregroundStyle(.green)
+                        }
+                        if showsEmptyInvite {
+                            emptyInvite
+                        } else if model.phase == .loaded {
+                            summary
+                        }
+                        table
+                    }
                 }
-                table
                 footer
             }
         }
+    }
+
+    /// Alto de la tabla con todas sus filas: así no se desplaza por dentro, solo la hoja.
+    private var tableHeight: CGFloat {
+        let header: CGFloat = 28
+        let row: CGFloat = 30
+        return header + row * CGFloat(max(model.students.count, 1)) + 8
     }
 
     // L · Grupo sin invitar. La tabla sigue debajo: también se puede invitar a un
@@ -489,9 +502,11 @@ struct WebPortalSheet: View {
         .contextMenu(forSelectionType: Int64.self) { ids in
             rowMenu(for: Array(ids))
         }
-        // Ocupa lo que sobra; sin altura mínima propia, para no pelear con la ventana.
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .layoutPriority(1)
+        // Alto fijo según las filas, dentro del ScrollView de la hoja: no pide más
+        // alto a la ventana (eso provocaba el bucle) y enseña a todo el grupo.
+        .frame(maxWidth: .infinity)
+        .frame(height: tableHeight)
+        .scrollDisabled(true)
     }
 
     @ViewBuilder

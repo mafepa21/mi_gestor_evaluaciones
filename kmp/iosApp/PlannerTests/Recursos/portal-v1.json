@@ -1,0 +1,50 @@
+{
+  "aviso": "Fixture de PRUEBA del portal. Todo es de un solo uso y no protege ningún dato real. No usar con alumnado.",
+  "contrato": "docs/planes/contrato_portal_v1_2026-11-18.md",
+  "entradas": {
+    "codigo": "K7M2XQ9PAB",
+    "portalId": "AAECAwQFBgcICQoLDA0ODw",
+    "kTablonHex": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+    "nonceHex": "0102030405060708090a0b0c",
+    "version": "1763491200000",
+    "tablonJson": "{\"schemaVersion\":1,\"alias\":\"tigre_azul\",\"actualizado\":\"2026-11-18T18:40:00Z\",\"pendientes\":[{\"titulo\":\"Autoevaluación · Bádminton\",\"contexto\":\"Educación Física · 2º ESO B\",\"tipo\":\"autoevaluacion\",\"plazo\":\"2026-11-19T23:59:59Z\",\"url\":\"https://projectosef.alwaysdata.net/#f=11111111-1111-4111-8111-111111111111&a=AAAAAAAAAAAAAAAAAAAAAA&b=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\"}],\"hechos\":[{\"titulo\":\"Inscripción torneo de bádminton\"}]}",
+    "usuario": "tigre_azul",
+    "contrasena": "contraseña-de-prueba",
+    "salContrasenaHex": "07070707070707070707070707070707"
+  },
+  "esperados": {
+    "raizHex": "5341cfb433a99250df6fe0dca7ac8909fadb5fb7ee014315cac2bbebf75d8f23",
+    "inviteId": "YTOXSxGhb28QvWd_4KCZrQ",
+    "pruebaAlta": "3SGev2wOvjQby57XgPETsvYLhhuzkyr65NwuHRR_AWk",
+    "kAltaHex": "f995fde3d9ba93d812beba36a7e8e18788a0f18941d1e4fa6fd61b4a766aa893",
+    "inviteIdHash": "204a49a9267da650694b392a413c5fd3af0b554001e164c465498b90861b4265",
+    "pruebaHash": "037475ec2331fed2da45e77aa1a60d5743472f6c27deb78f604e0d8f2a67ed18",
+    "usuarioHash": "89f290546eda0b5309c3de7f49a595a9f44d7e46de871847cf5cae7c705d7593",
+    "aadAlta": "portal-v1|alta|AAECAwQFBgcICQoLDA0ODw",
+    "aadCuenta": "portal-v1|cuenta|AAECAwQFBgcICQoLDA0ODw",
+    "aadTablon": "portal-v1|tablon|AAECAwQFBgcICQoLDA0ODw|1763491200000",
+    "tablonSha256": "5158a5b5fe68b1557ccb38d0f4a4605bcc2216d5c0ca29ea1a3ce888f593a664"
+  },
+  "sobres": {
+    "sobreAlta": {
+      "v": 1,
+      "nonce": "AQIDBAUGBwgJCgsM",
+      "ct": "StfIMErkS2iq7XX7Cw42cmXvVdmtsArMYtvupKsV6_MB5F-QQfhIWHGi_iVWQ7Ne"
+    },
+    "sobreCuenta": {
+      "v": 1,
+      "nonce": "AQIDBAUGBwgJCgsM",
+      "ct": "qERYnGieIqE94c6S9JMihrYIVp252e1Y1S998CuJcVEy8_QGE-fbT_PkZkGBK5m8"
+    },
+    "tablon": {
+      "v": 1,
+      "nonce": "AQIDBAUGBwgJCgsM",
+      "ct": "B6X4bAHEdTyxJoemiNCVKdRvdF_R1tScI_8CPqbL8PUewN6CWDn9myJOUpAhP9tX7PDDiYIIX4Cf2Qt3qdIKflsl3AcRjNzzr74WN233E8V0W9ggDqLWpghpo2k99jeDNy4eqne8BV0fXNJJvQtKFolryeftU1YoDkd0cZMgOdGV5QhdUvHYwZ7hAviy3CPCPH-qUAodS43I01iZG9HKTrET3z9Fz_r9diWYiXYztxQWkVr24zkAjSNvJwpziPFOL42wtsSdm5xekskj2A09UteYeAqn5yikMPPvU_62VbEK1iv3fPN0Oa1nIYSfUB01oKkBsmZInXqwv4uVesANTfp-a_5KCEnlJtoxzX3uZNz4H4RNHw8ioEMSCKmqQ1zrW-BfI3h9vgibkBJn6xqOIzC-EXtVCSICTqTlrSz9QMLQKl-Z_5ioLTQk5Ng5MhhuvYjPrMUFvJqr-NQM7AcTx7R34VBC3DJBlbhBcUnkKAWkOSDkHWAJPY_S6feVC_qNWiIA1vs-003WQVpEr2qUQ9OnC56be4I7tZM22_L3jnDn0XEmniDNbsEiQIm2m4zaQaJMimoT7qo0WFQFpxXtZGGy5LEPUy2lAr2aVhNi0Q"
+    }
+  },
+  "soloWeb": {
+    "rawHex": "ec9174a1c333b266687a170708077aade69c84ac65a56c45d5ed4643ec196d20",
+    "claveAuth": "l-PqduVd4Eqp9vXLg4usWSEkLwGip8ORLTBCZkKMy9Y",
+    "claveEnvolturaHex": "115303a3e8c4fd4dfcf19302a4bd1a012c5b35a1832a8fc56e9c9f085fecffa2"
+  }
+}

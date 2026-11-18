@@ -11,6 +11,7 @@
 // web y produce el mismo `ct` con nonce fijo. Al final escribe `salida.json` con
 // un sobreAlta y un tablón cifrados por Swift para que la web los abra después.
 import Foundation
+import CryptoKit
 
 var fallos = 0
 func comprobar(_ ok: Bool, _ texto: String) {
@@ -52,7 +53,12 @@ do {
     let otroNonce = try WebPortalCrypto.seal(kTablon, key: claves.kAlta, context: .alta(portalId: portalId))
     comprobar(otroNonce.nonce != sobreAlta.nonce, "sin nonce fijo se usa uno al azar")
 
-    let tablonJSON = Data("{\"schemaVersion\":1,\"alias\":\"tigre_azul\",\"actualizado\":\"2026-11-18T18:40:00Z\",\"pendientes\":[],\"hechos\":[]}".utf8)
+    // Fixture de la web: el tablón son los bytes literales de `entradas.tablonJson`.
+    let fixture = FileManager.default.contents(atPath: rutaFixture)
+        .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+    let tablonTexto = (fixture?["entradas"] as? [String: Any])?["tablonJson"] as? String
+        ?? "{\"schemaVersion\":1,\"alias\":\"tigre_azul\",\"actualizado\":\"2026-11-18T18:40:00Z\",\"pendientes\":[],\"hechos\":[]}"
+    let tablonJSON = Data(tablonTexto.utf8)
     let sobreTablon = try WebPortalCrypto.seal(tablonJSON, key: kTablon, context: .tablon(portalId: portalId, version: version), nonce: nonce)
     comprobar(try WebPortalCrypto.open(sobreTablon, key: kTablon, context: .tablon(portalId: portalId, version: version)) == tablonJSON, "tablón: ida y vuelta")
 
@@ -66,45 +72,43 @@ do {
     let rotoSobre = WebPortalCrypto.Envelope(nonce: sobreAlta.nonce, ct: WebPortalCrypto.base64URL(Data(roto)))
     comprobar(falla { try WebPortalCrypto.open(rotoSobre, key: claves.kAlta, context: .alta(portalId: portalId)) }, "un bit cambiado en ct se detecta")
 
-    // Fixture de la web (opcional hasta que exista `npm run fixture`).
     print("Fixture de la web")
-    if let datos = FileManager.default.contents(atPath: rutaFixture),
-       let raiz = try JSONSerialization.jsonObject(with: datos) as? [String: Any] {
+    if let fixture {
+        let esperados = fixture["esperados"] as? [String: Any] ?? [:]
+        let sobres = fixture["sobres"] as? [String: Any] ?? [:]
         comprobar(true, "fixture leído: \(rutaFixture)")
-        func sobre(_ clave: String) -> WebPortalCrypto.Envelope? {
-            if let obj = raiz[clave] as? [String: Any] { return try? WebPortalCrypto.Envelope(jsonObject: obj) }
-            if let t = raiz[clave] as? String, let d = t.data(using: .utf8),
-               let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] { return try? WebPortalCrypto.Envelope(jsonObject: obj) }
-            return nil
-        }
-        if let webAlta = sobre("sobreAlta") {
-            comprobar(webAlta == sobreAlta, "mismo sobreAlta (nonce fijo) que la web")
-            comprobar((try? WebPortalCrypto.open(webAlta, key: claves.kAlta, context: .alta(portalId: portalId))) == kTablon, "Swift abre el sobreAlta de la web")
-        } else { comprobar(false, "el fixture no trae `sobreAlta`") }
-        if let webTablon = sobre("sobreTablon") ?? sobre("tablon") {
-            let abierto = try? WebPortalCrypto.open(webTablon, key: kTablon, context: .tablon(portalId: portalId, version: version))
-            comprobar(abierto != nil, "Swift abre el tablón de la web")
-            if let abierto {
-                let propio = try WebPortalCrypto.seal(abierto, key: kTablon, context: .tablon(portalId: portalId, version: version), nonce: nonce)
-                comprobar(propio == webTablon, "mismo tablón cifrado (nonce fijo) que la web")
+        comprobar(claves.inviteIdHash == esperados["inviteIdHash"] as? String, "inviteIdHash coincide con la web")
+        comprobar(claves.pruebaHash == esperados["pruebaHash"] as? String, "pruebaHash coincide con la web")
+        comprobar(WebPortalCrypto.hex(Data(SHA256.hash(data: tablonJSON))) == esperados["tablonSha256"] as? String, "SHA-256 del tablón literal coincide")
+        for (nombre, propio, contexto, llave) in [
+            ("sobreAlta", sobreAlta, WebPortalCrypto.Context.alta(portalId: portalId), claves.kAlta),
+            ("tablon", sobreTablon, WebPortalCrypto.Context.tablon(portalId: portalId, version: version), kTablon),
+        ] {
+            guard let obj = sobres[nombre] as? [String: Any], let web = try? WebPortalCrypto.Envelope(jsonObject: obj) else {
+                comprobar(false, "el fixture no trae `sobres.\(nombre)`"); continue
             }
-        } else { comprobar(false, "el fixture no trae el tablón cifrado") }
+            comprobar(propio == web, "\(nombre): mismo ct con nonce fijo que la web")
+            comprobar((try? WebPortalCrypto.open(web, key: llave, context: contexto)) != nil, "Swift abre el \(nombre) de la web")
+        }
+        if let obj = sobres["sobreCuenta"] as? [String: Any], let web = try? WebPortalCrypto.Envelope(jsonObject: obj) {
+            comprobar((try? WebPortalCrypto.open(web, key: Data(hexString: "115303a3e8c4fd4dfcf19302a4bd1a012c5b35a1832a8fc56e9c9f085fecffa2"), context: .cuenta(portalId: portalId))) == kTablon, "Swift abre el sobreCuenta de la web")
+        }
     } else {
-        print("  OMITIDO: no hay fixture en \(rutaFixture) (genera `npm run fixture` en entregas-alumnado y cópialo)")
+        print("  OMITIDO: no hay fixture en \(rutaFixture)")
     }
 
     // Salida para que la web abra lo cifrado por Swift.
     let salida: [String: Any] = [
         "codigo": codigo,
         "portalId": portalId,
-        "version": version,
+        "version": String(version),
         "kTablonHex": WebPortalCrypto.hex(kTablon),
         "nonceHex": WebPortalCrypto.hex(nonce),
         "inviteId": claves.inviteId,
         "pruebaAlta": claves.pruebaAlta,
         "sobreAlta": sobreAlta.jsonObject,
         "tablonJson": String(decoding: tablonJSON, as: UTF8.self),
-        "sobreTablon": sobreTablon.jsonObject,
+        "tablon": sobreTablon.jsonObject,
     ]
     try JSONSerialization.data(withJSONObject: salida, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: rutaSalida))
     print("Escrito \(rutaSalida)")
@@ -114,3 +118,16 @@ do {
 
 print(fallos == 0 ? "\nTodo en verde." : "\n\(fallos) comprobaciones fallan.")
 exit(fallos == 0 ? 0 : 1)
+
+extension Data {
+    init(hexString: String) {
+        var bytes = [UInt8]()
+        var index = hexString.startIndex
+        while index < hexString.endIndex {
+            let next = hexString.index(index, offsetBy: 2)
+            bytes.append(UInt8(hexString[index..<next], radix: 16) ?? 0)
+            index = next
+        }
+        self.init(bytes)
+    }
+}

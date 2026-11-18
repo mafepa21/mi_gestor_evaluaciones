@@ -18,6 +18,20 @@ final class WebPortalCryptoTests: XCTestCase {
         XCTAssertEqual(claves.pruebaHash.count, 64)
     }
 
+    func testSobresDeLaWebSeAbrenYSeReproducen() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Recursos/portal-v1.json")
+        let raiz = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let entradas = try XCTUnwrap(raiz["entradas"] as? [String: Any])
+        let sobres = try XCTUnwrap(raiz["sobres"] as? [String: Any])
+        let tablon = Data(try XCTUnwrap(entradas["tablonJson"] as? String).utf8)
+        let claves = try WebPortalCrypto.deriveInvite(code: "K7M2XQ9PAB")
+        let alta = try WebPortalCrypto.Envelope(jsonObject: try XCTUnwrap(sobres["sobreAlta"] as? [String: Any]))
+        let web = try WebPortalCrypto.Envelope(jsonObject: try XCTUnwrap(sobres["tablon"] as? [String: Any]))
+        XCTAssertEqual(try WebPortalCrypto.seal(kTablon, key: claves.kAlta, context: .alta(portalId: portalId), nonce: nonce), alta)
+        XCTAssertEqual(try WebPortalCrypto.seal(tablon, key: kTablon, context: .tablon(portalId: portalId, version: 1_763_491_200_000), nonce: nonce), web)
+        XCTAssertEqual(try WebPortalCrypto.open(web, key: kTablon, context: .tablon(portalId: portalId, version: 1_763_491_200_000)), tablon)
+    }
+
     func testCodigoGeneradoUsaSoloElAlfabetoSinAmbiguos() throws {
         for _ in 0..<50 {
             let code = try WebPortalCrypto.generateCode()

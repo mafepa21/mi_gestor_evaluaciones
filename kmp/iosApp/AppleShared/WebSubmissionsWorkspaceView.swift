@@ -44,6 +44,7 @@ struct WebSubmissionsWorkspaceView: View {
     @State private var creationClassId: Int64?
     @State private var creationInstruments: [WebPublishableInstrument] = []
     @State private var showingPublish = false
+    @State private var showingPortal = false
     @State private var publishing = false
     @State private var publishResult: WebPublishResult?
     @State private var emailTask: WebSubmissionTaskInfo?
@@ -113,6 +114,9 @@ struct WebSubmissionsWorkspaceView: View {
                 },
                 result: publishResult
             )
+        }
+        .sheet(isPresented: $showingPortal) {
+            portalSheet
         }
         .sheet(item: $emailTask) { task in
             WebSubmissionLinkEmailSheet(
@@ -222,6 +226,28 @@ struct WebSubmissionsWorkspaceView: View {
         }
     }
 
+    /// Hoja del portal del alumnado. La lógica vive en `WebPortal*`; aquí solo se enchufa.
+    @ViewBuilder
+    private var portalSheet: some View {
+        if let storeURL = WebPortalStore.standard()?.fileURL {
+            WebPortalSheet(
+                groups: bridge.classes.map { .init(id: $0.id, name: $0.name) },
+                classId: creationClassId ?? bridge.classes.first?.id ?? 0,
+                model: WebPortalViewModel(
+                    baseURL: baseURL,
+                    storeURL: storeURL,
+                    republish: { bridge.schedulePortalRepublish(formInstanceIds: nil) }
+                ),
+                loadStudents: { classId in
+                    let alumnado = (try? await bridge.container.classesRepository.listStudentsInClass(classId: classId)) ?? []
+                    return alumnado.map {
+                        WebPortalStudent(id: $0.id, firstName: $0.firstName, lastName: $0.lastName, email: $0.email)
+                    }
+                }
+            )
+        }
+    }
+
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Entregas web")
@@ -278,6 +304,14 @@ struct WebSubmissionsWorkspaceView: View {
                 .buttonStyle(.bordered)
                 .disabled(collecting || importing || detailsLoading)
             }
+
+            Button {
+                showingPortal = true
+            } label: {
+                Label("Portal del alumnado", systemImage: "person.crop.rectangle.stack")
+            }
+            .buttonStyle(.bordered)
+            .disabled(creationClassId == nil || loading)
 
             Button {
                 publishResult = nil

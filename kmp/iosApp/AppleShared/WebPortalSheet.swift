@@ -394,13 +394,18 @@ struct WebPortalSheet: View {
         .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
     }
 
+    /// Estado L: el aviso «sin invitar» ya trae el botón principal.
+    private var showsEmptyInvite: Bool {
+        !model.hasAnyInvitation && model.phase != .loading && model.phase != .idle
+    }
+
     @ViewBuilder
     private var content: some View {
         if model.students.isEmpty && model.phase != .idle {
             ContentUnavailableView("Este grupo no tiene alumnado", systemImage: "person.2")
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                if !model.hasAnyInvitation && model.phase != .loading && model.phase != .idle {
+                if showsEmptyInvite {
                     emptyInvite
                 } else if model.phase == .loaded {
                     summary
@@ -550,10 +555,13 @@ struct WebPortalSheet: View {
             footerStatus
             Spacer()
             #if os(macOS)
-            let targets = model.sendTargets
-            Button("Enviar \(targets.count) \(targets.count == 1 ? "correo" : "correos")…") { askToSend() }
-                .buttonStyle(.borderedProminent)
-                .disabled(targets.isEmpty || !canSend)
+            // Un solo botón principal por pantalla: en el estado L lo pone el aviso.
+            if !showsEmptyInvite {
+                let targets = model.sendTargets
+                Button("Enviar \(targets.count) \(targets.count == 1 ? "correo" : "correos")…") { askToSend() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(targets.isEmpty || !canSend)
+            }
             #else
             Text("Los correos se preparan desde el Mac.").font(.footnote).foregroundStyle(.secondary)
             #endif

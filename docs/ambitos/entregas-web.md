@@ -23,3 +23,4 @@
 - `portal.php` no hace `password_verify` ni `password_hash` dentro del cerrojo global. No volver a meterlos.
 - Los correos de invitación solo se preparan en Mac (`WebSubmissionBulkMailer` es solo macOS). En iPad: «Mostrar su código…» con QR.
 - El Bash del sandbox no escribe en los worktrees de fuera del checkout principal.
+- En macOS, una hoja no puede pedir más alto que la ventana principal (por defecto 900x450): AppKit entra en bucle de Update Constraints y cierra la app. En `WebPortalSheet` el alto está acotado y la tabla va dentro de un ScrollView con alto fijo por filas; lo vigila `WebPortalSheetLayoutTests`.

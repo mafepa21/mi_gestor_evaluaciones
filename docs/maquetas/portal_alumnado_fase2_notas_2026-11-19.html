@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Portal · Mis notas</title>
+<!-- Maqueta viva · Portal del alumnado, fase 2 «Mis notas» (2026-11-19). Datos inventados. -->
+<style>
+:root {
+  --papel: #f2eee1; --papel-alto: #fbf9f2; --papel-hueco: #e7e2d1;
+  --tinta: #10231a; --tinta-suave: #3d5348; --tinta-tenue: #4a5d52;
+  --lanza-texto: #a82b14; --lanza: #c9341a;
+  --pista: #0f3d2e; --pista-viva: #1a6349; --pista-clara: #dfeae3;
+  --oro: #b8860f; --oro-claro: #e6c46a;
+  --u: 0.5rem; --radio: 6px; --borde: 2px solid var(--tinta); --tap: 3rem;
+  --display: "Futura", "Avenir Next Condensed", "Oswald", "Roboto Condensed", "Helvetica Neue", sans-serif;
+  --lectura: "Charter", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+
+  /* App (macOS) */
+  --mac-fondo: #ececec; --mac-hoja: #ffffff; --mac-texto: #1d1d1f; --mac-suave: #5f5f64;
+  --mac-linea: #d9d9de; --mac-acento: #0a64d6; --mac-verde: #1c7c3c; --mac-ambar: #8a5a00; --mac-rojo: #b3261e;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #d7d3c6; color: var(--tinta); font-family: var(--lectura); font-size: 1.0625rem; line-height: 1.5; }
+.lienzo { max-width: 1480px; margin: 0 auto; padding: calc(var(--u)*6) calc(var(--u)*2); }
+.lienzo > header h1 { font-family: var(--display); font-size: 2rem; letter-spacing: .02em; margin: 0 0 var(--u); }
+.lienzo > header p { margin: 0; max-width: 60ch; color: var(--tinta-suave); }
+.parte { margin-top: calc(var(--u)*8); }
+.parte > h2 { font-family: var(--display); text-transform: uppercase; letter-spacing: .08em; font-size: 1rem; margin: 0 0 calc(var(--u)*3); color: var(--pista); }
+.rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: calc(var(--u)*5) calc(var(--u)*4); }
+.estado > h3 { font-family: var(--display); font-size: .8125rem; text-transform: uppercase; letter-spacing: .08em; margin: 0 0 var(--u); color: var(--tinta-suave); }
+.nota { font-size: .875rem; color: var(--tinta-suave); margin: var(--u) 0 0; max-width: 46ch; }
+
+/* ---------- Teléfono (web del alumnado) ---------- */
+.tel { width: 360px; height: 720px; border: 10px solid #1b1b1b; border-radius: 40px; overflow: hidden; position: relative;
+  background-color: var(--papel);
+  background-image: repeating-linear-gradient(to bottom, transparent 0 2.9375rem, rgba(16,35,26,.045) 2.9375rem 3rem);
+  display: flex; flex-direction: column; }
+.tel .pantalla { flex: 1; overflow-y: auto; padding: calc(var(--u)*4) calc(var(--u)*3) calc(var(--u)*3); display: flex; flex-direction: column; }
+.marca { font-family: var(--display); text-transform: uppercase; letter-spacing: .12em; font-size: .75rem; color: var(--pista); font-weight: 700; display: flex; align-items: center; gap: var(--u); }
+.marca::before { content: ""; width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--lanza); }
+.tel h1 { font-family: var(--display); font-size: 1.75rem; line-height: 1.15; margin: calc(var(--u)*3) 0 var(--u); }
+.tel .sub { margin: 0 0 calc(var(--u)*4); color: var(--tinta-suave); }
+.campo { display: block; margin-bottom: calc(var(--u)*3); }
+.campo span { display: block; font-family: var(--display); font-size: 1rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; margin-bottom: var(--u); }
+.campo input { width: 100%; height: 56px; padding: 0 calc(var(--u)*2); font: inherit; font-size: 1.0625rem; color: var(--tinta);
+  background: var(--papel-alto); border: var(--borde); border-radius: var(--radio); }
+.campo small { display: block; margin-top: var(--u); font-size: .875rem; color: var(--tinta-tenue); }
+.pw { position: relative; display: block; } .pw input { padding-right: 104px; }
+.pw button { position: absolute; right: 4px; top: 4px; height: 48px; min-width: 88px; border: 0; border-radius: 4px; background: var(--papel-hueco); font-family: var(--display); font-weight: 700; font-size: .9375rem; color: var(--tinta); cursor: pointer; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.velo-claro { position: absolute; inset: 64px 0 0; background: rgba(242,238,225,.7); }
+.campo.mal input { border-color: var(--lanza); }
+.campo.mal small { color: var(--lanza-texto); font-weight: 600; }
+.codigo-ok { display: flex; align-items: center; gap: calc(var(--u)*1.5); padding: calc(var(--u)*1.5) calc(var(--u)*2); margin-bottom: calc(var(--u)*3);
+  background: var(--pista-clara); border: 2px solid var(--pista-viva); border-radius: var(--radio); font-size: .9375rem; }
+.codigo-ok b { font-family: ui-monospace, Menlo, monospace; letter-spacing: .08em; }
+.check { width: 24px; height: 24px; border-radius: 50%; background: var(--pista-viva); color: #fff; display: grid; place-items: center; font-size: .875rem; flex: none; }
+.fuerza { display: flex; gap: 4px; margin-top: var(--u); }
+.fuerza i { flex: 1; height: 6px; border-radius: 3px; background: var(--papel-hueco); }
+.fuerza i.on { background: var(--pista-viva); }
+.casilla { display: flex; align-items: flex-start; gap: calc(var(--u)*1.5); min-height: var(--tap); margin-bottom: calc(var(--u)*3); font-size: .9375rem; }
+.casilla input { width: 24px; height: 24px; margin: 2px 0 0; accent-color: var(--pista); flex: none; }
+.btn { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 56px; border-radius: var(--radio); font-family: var(--display);
+  font-size: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; cursor: pointer; border: var(--borde); }
+.btn.pri { background: var(--pista); color: #fff; border-color: var(--pista); }
+.btn.sec { background: transparent; color: var(--tinta); }
+.btn.peligro { background: var(--lanza); border-color: var(--lanza); color: #fff; }
+.btn[disabled] { background: var(--papel-hueco); border-color: var(--papel-hueco); color: var(--tinta-tenue); cursor: not-allowed; }
+.enlace { display: inline-flex; align-items: center; min-height: var(--tap); color: var(--pista-viva); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.pie-tel { margin-top: auto; padding-top: calc(var(--u)*3); font-size: .875rem; color: var(--tinta-tenue); text-align: center; }
+.aviso { border: 2px solid var(--lanza); border-radius: var(--radio); background: var(--papel-alto); padding: calc(var(--u)*2); margin-bottom: calc(var(--u)*3); }
+.aviso h2 { font-family: var(--display); font-size: 1.0625rem; margin: 0 0 var(--u); color: var(--lanza-texto); }
+.aviso ol { margin: 0; padding-left: calc(var(--u)*2.5); font-size: .9375rem; }
+.aviso ol li + li { margin-top: var(--u); }
+.aviso.suave { border-color: var(--oro); }
+.aviso.suave h2 { color: var(--tinta); }
+details.tec { font-size: .8125rem; color: var(--tinta-tenue); margin-top: calc(var(--u)*2); }
+details.tec summary { min-height: var(--tap); display: flex; align-items: center; cursor: pointer; }
+
+/* Tablón */
+.barra { display: flex; align-items: center; justify-content: space-between; padding: calc(var(--u)*2) calc(var(--u)*3); border-bottom: var(--borde); background: var(--papel-alto); }
+.barra .yo { font-size: 1rem; color: var(--tinta); cursor: pointer; width: var(--tap); height: var(--tap); border-radius: 50%; border: var(--borde); display: grid; place-items: center; font-family: var(--display); font-weight: 700; background: var(--papel); }
+.saludo { font-family: var(--display); font-size: 1.5rem; margin: 0 0 calc(var(--u)*0.5); }
+.saludo-sub { margin: 0 0 calc(var(--u)*4); color: var(--tinta-suave); font-size: .9375rem; }
+.grupo-t { font-family: var(--display); text-transform: uppercase; letter-spacing: .08em; font-size: 1rem; font-weight: 700; margin: 0 0 calc(var(--u)*1.5); display: flex; justify-content: space-between; }
+.tarea { display: flex; gap: calc(var(--u)*2); align-items: center; padding: calc(var(--u)*2); background: var(--papel-alto); border: var(--borde); border-radius: var(--radio); margin-bottom: var(--u); text-decoration: none; color: inherit; }
+.tarea .tipo { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--pista); display: grid; place-items: center; font-family: var(--display); font-weight: 700; color: var(--pista); font-size: .875rem; flex: none; }
+.tarea .cuerpo { flex: 1; min-width: 0; }
+.tarea .cuerpo b { display: block; font-size: 1rem; line-height: 1.3; }
+.tarea .cuerpo span { display: block; font-size: .875rem; color: var(--tinta-tenue); margin-top: 2px; }
+.tarea .cuerpo .plazo { margin-top: 4px; font-family: var(--display); font-size: .9375rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; color: var(--tinta-suave); text-align: left; }
+.tarea.urgente { border-color: var(--lanza); }
+.tarea.urgente .cuerpo .plazo { color: var(--lanza-texto); }
+.tarea .flecha { font-size: 1.25rem; color: var(--tinta-suave); flex: none; }
+.hecho { margin-top: calc(var(--u)*4); }
+.hecho summary { list-style: none; cursor: pointer; min-height: var(--tap); display: flex; align-items: center; justify-content: space-between; font-family: var(--display); text-transform: uppercase; letter-spacing: .08em; font-size: .8125rem; font-weight: 700; }
+.hecho summary::-webkit-details-marker { display: none; }
+.fila-hecha { display: flex; gap: calc(var(--u)*1.5); align-items: center; min-height: var(--tap); font-size: .9375rem; color: var(--tinta-suave); }
+.sk { background: var(--papel-hueco); border-radius: var(--radio); animation: latido 1.2s infinite alternate; }
+@keyframes latido { to { background: #ddd7c3; } }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+.vacio { margin: auto 0; text-align: center; padding: calc(var(--u)*4) 0; }
+.sello { width: 112px; height: 112px; margin: 0 auto calc(var(--u)*3); border-radius: 50%; border: 4px solid var(--pista-viva); display: grid; place-items: center; transform: rotate(-8deg);
+  font-family: var(--display); text-transform: uppercase; font-weight: 700; color: var(--pista-viva); letter-spacing: .06em; font-size: .9375rem; }
+.cinta { display: flex; gap: var(--u); align-items: center; padding: calc(var(--u)*1.5) calc(var(--u)*3); background: var(--oro-claro); font-size: .875rem; border-bottom: var(--borde); }
+.velo { position: absolute; inset: 0; background: rgba(16,35,26,.45); display: flex; align-items: flex-end; }
+.hoja { width: 100%; background: var(--papel); border-top: var(--borde); border-radius: 16px 16px 0 0; padding: calc(var(--u)*3); }
+.hoja h2 { font-family: var(--display); font-size: 1.25rem; margin: 0 0 var(--u); }
+.hoja p { margin: 0 0 calc(var(--u)*3); font-size: .9375rem; color: var(--tinta-suave); }
+.hoja .btn + .btn { margin-top: var(--u); }
+.menu-yo { position: absolute; top: 72px; right: 16px; width: 240px; background: var(--papel-alto); border: var(--borde); border-radius: var(--radio); box-shadow: 0 8px 24px rgba(16,35,26,.2); }
+.menu-yo div { padding: calc(var(--u)*1.5) calc(var(--u)*2); border-bottom: 1px solid var(--papel-hueco); font-size: .875rem; color: var(--tinta-tenue); }
+.menu-yo button { display: flex; align-items: center; width: 100%; min-height: var(--tap); padding: 0 calc(var(--u)*2); background: none; border: 0; font: inherit; font-size: .9375rem; color: var(--tinta); text-align: left; cursor: pointer; }
+.menu-yo button.rojo { color: var(--lanza-texto); font-weight: 600; }
+
+/* ---------- App (macOS) ---------- */
+.mac { width: 100%; max-width: 680px; background: var(--mac-hoja); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.08);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; color: var(--mac-texto); font-size: 13px; line-height: 1.4; overflow: hidden; position: relative; }
+.mac .cab { padding: 20px 24px 16px; }
+.mac .cab h4 { margin: 0; font-size: 17px; font-weight: 600; }
+.mac .cab p { margin: 4px 0 0; color: var(--mac-suave); }
+.resumen { display: flex; gap: 24px; padding: 0 24px 16px; }
+.resumen div b { display: block; font-size: 22px; font-weight: 600; }
+.resumen div span { color: var(--mac-suave); }
+.tabla { border-top: 1px solid var(--mac-linea); max-height: 320px; overflow: hidden; }
+.tabla .f { display: grid; grid-template-columns: 1fr 1fr 120px 28px; align-items: center; gap: 16px; padding: 0 24px; min-height: 40px; border-bottom: 1px solid #efeff2; }
+.tabla .f.cab-t { min-height: 32px; color: var(--mac-suave); font-size: 11px; font-weight: 600; background: #fafafa; }
+.tabla .f .correo { color: var(--mac-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.chip.act { color: var(--mac-verde); } .chip.pen { color: var(--mac-ambar); } .chip.sin { color: var(--mac-suave); } .chip.cad { color: var(--mac-rojo); }
+.mas { width: 28px; height: 28px; border: 0; background: none; font: inherit; cursor: pointer; border-radius: 6px; display: grid; place-items: center; color: var(--mac-suave); }
+.mac .pie { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--mac-linea); background: #fafafa; }
+.mac .pie .izq { color: var(--mac-suave); }
+.mb { height: 28px; padding: 0 14px; border-radius: 6px; font: inherit; font-size: 13px; border: 1px solid #c8c8cd; background: #fff; color: var(--mac-texto); cursor: pointer; }
+.mb.pri { background: var(--mac-acento); border-color: var(--mac-acento); color: #fff; font-weight: 500; }
+.mb[disabled] { color: #8e8e93; background: #f2f2f5; border-color: #dcdce0; cursor: default; }
+.mb.rojo { background: var(--mac-rojo); border-color: var(--mac-rojo); color: #fff; font-weight: 500; }
+.mac .vacio-mac { padding: 56px 24px; text-align: center; }
+.mac .vacio-mac .icono { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 14px; background: #eef3fb; color: var(--mac-acento); display: grid; place-items: center; font-size: 26px; }
+.mac .vacio-mac h5 { font-size: 15px; margin: 0 0 6px; font-weight: 600; }
+.mac .vacio-mac p { margin: 0 auto 16px; max-width: 42ch; color: var(--mac-suave); }
+.correo-prev { margin: 0 24px 16px; border: 1px solid var(--mac-linea); border-radius: 8px; padding: 16px; font-size: 13px; }
+.correo-prev .meta { color: var(--mac-suave); border-bottom: 1px solid #efeff2; padding-bottom: 8px; margin-bottom: 12px; }
+.correo-prev .meta b { color: var(--mac-texto); font-weight: 500; }
+.correo-prev .boton-correo { display: inline-block; margin: 8px 0; padding: 10px 16px; border-radius: 6px; background: var(--pista); color: #fff; font-weight: 600; }
+.correo-prev code { font-family: ui-monospace, Menlo, monospace; font-size: 15px; letter-spacing: .08em; background: #f4f4f6; padding: 2px 6px; border-radius: 4px; }
+.alerta-mac { position: absolute; inset: 0; background: rgba(0,0,0,.25); display: grid; place-items: center; }
+.alerta-mac .caja { width: 280px; background: #f6f6f6; border-radius: 12px; padding: 20px 16px 16px; text-align: center; box-shadow: 0 16px 48px rgba(0,0,0,.3); }
+.alerta-mac h5 { margin: 8px 0 6px; font-size: 13px; font-weight: 600; }
+.alerta-mac p { margin: 0 0 16px; font-size: 13px; color: var(--mac-suave); }
+.alerta-mac .mb { width: 100%; margin-top: 6px; }
+.error-mac { margin: 16px 24px; padding: 12px 16px; border-radius: 8px; background: #fdf1f0; color: var(--mac-rojo); display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.menu-mac { position: absolute; right: 30px; top: 214px; width: 200px; background: rgba(246,246,246,.98); border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.2), 0 0 0 1px rgba(0,0,0,.08); padding: 4px; }
+.menu-mac div { padding: 4px 10px; border-radius: 4px; }
+.menu-mac div:first-child { background: var(--mac-acento); color: #fff; }
+.menu-mac hr { border: 0; border-top: 1px solid var(--mac-linea); margin: 4px 0; }
+.menu-mac .r { color: var(--mac-rojo); }
+:focus-visible { outline: 3px solid var(--oro); outline-offset: 2px; }
+/* ---- Fase 2 ---- */
+.pestanas { display: flex; gap: 4px; padding: 4px; margin: 0 0 calc(var(--u)*3); background: var(--papel-hueco); border-radius: 10px; }
+.pestanas button { flex: 1; min-height: 48px; border: 0; border-radius: 8px; background: transparent; font-family: var(--display); font-weight: 700; font-size: 1rem; color: var(--tinta-suave); text-transform: uppercase; letter-spacing: .05em; }
+.pestanas button[aria-selected="true"] { background: var(--papel-alto); color: var(--tinta); box-shadow: inset 0 -4px 0 var(--pista); }
+.provisional { display: inline-flex; align-items: center; gap: var(--u); padding: 4px calc(var(--u)*1.5); border: 2px solid var(--oro); border-radius: 999px; font-family: var(--display); font-size: .875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: calc(var(--u)*2); }
+.materia { background: var(--papel-alto); border: var(--borde); border-radius: var(--radio); padding: calc(var(--u)*2); margin-bottom: calc(var(--u)*2); }
+.materia-cab { display: flex; justify-content: space-between; align-items: baseline; gap: var(--u); margin-bottom: calc(var(--u)*1.5); }
+.materia-cab b { font-family: var(--display); font-size: 1.125rem; }
+.materia-cab span { font-size: .9375rem; color: var(--tinta-tenue); }
+.media { display: flex; align-items: center; gap: calc(var(--u)*2); padding: calc(var(--u)*1.5); background: var(--pista-clara); border-radius: var(--radio); margin-bottom: calc(var(--u)*1.5); }
+.media .num { font-family: var(--display); font-size: 2.25rem; font-weight: 700; line-height: 1; color: var(--pista); }
+.media .txt { font-size: .9375rem; }
+.media .txt b { display: block; font-family: var(--display); font-size: 1rem; }
+.fila-nota { display: flex; align-items: center; gap: calc(var(--u)*1.5); min-height: 56px; padding: var(--u) 0; border-top: 1px solid var(--papel-hueco); text-decoration: none; color: inherit; }
+.fila-nota .tt { flex: 1; min-width: 0; }
+.fila-nota .tt b { display: block; font-size: 1rem; font-weight: 600; line-height: 1.3; }
+.fila-nota .tt span { font-size: .875rem; color: var(--tinta-tenue); }
+.fila-nota .val { font-family: var(--display); font-size: 1.375rem; font-weight: 700; min-width: 3ch; text-align: right; }
+.fila-nota .nivel { font-family: var(--display); font-size: .875rem; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; border: 2px solid currentColor; }
+.n-alto { color: var(--pista-viva); } .n-medio { color: var(--tinta-suave); } .n-bajo { color: var(--tinta-suave); }
+.fila-nota { flex-wrap: wrap; }
+.aviso-prov { margin: 0 0 calc(var(--u)*2); font-size: .9375rem; color: var(--tinta-suave); }
+.dudas { margin: var(--u) 0 0; font-size: .875rem; color: var(--tinta-tenue); }
+.nivel-txt { font-size: .875rem; font-weight: 600; color: var(--tinta-suave); }
+.criterio { padding: calc(var(--u)*1.5) 0; border-top: 1px solid var(--papel-hueco); }
+.criterio b { display: block; font-size: 1rem; }
+.criterio .pasos { display: flex; gap: 4px; margin: var(--u) 0; }
+.criterio .pasos i { flex: 1; height: 12px; border-radius: 4px; background: var(--papel-hueco); }
+.criterio .pasos i.on { background: var(--pista-viva); }
+.criterio p { margin: 0; font-size: .9375rem; color: var(--tinta-suave); }
+.atras { display: inline-flex; align-items: center; min-height: var(--tap); font-family: var(--display); font-weight: 700; color: var(--pista-viva); text-decoration: none; }
+/* App */
+.seg-mac { display: inline-flex; margin: 0 24px 16px; padding: 2px; background: #e8e8ed; border-radius: 7px; }
+.seg-mac span { padding: 3px 14px; border-radius: 5px; font-weight: 500; }
+.seg-mac span.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.toggle { width: 38px; height: 22px; border-radius: 11px; border: 0; padding: 0; cursor: pointer; background: #d1d1d6; position: relative; display: inline-block; flex: none; }
+.toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.toggle.on { background: var(--mac-verde); } .toggle.on::after { left: 18px; }
+.toggle[disabled] { opacity: .45; cursor: default; }
+.ver { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--mac-suave); }
+.fila-col { display: grid; grid-template-columns: 1fr 110px 60px 70px; gap: 12px; align-items: center; padding: 0 24px; min-height: 40px; border-bottom: 1px solid #efeff2; }
+.fila-col.cab-t { min-height: 30px; color: var(--mac-suave); font-size: 11px; font-weight: 600; background: #fafafa; }
+.fila-col .sub { color: var(--mac-suave); font-size: 11px; display: block; }
+.media-mac { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin: 0 24px 12px; padding: 12px 14px; border-radius: 8px; background: #f4f4f6; }
+.media-mac b { font-weight: 600; }
+.media-mac span { color: var(--mac-suave); display: block; font-size: 12px; }
+.aviso-mac { margin: 0 24px 12px; padding: 10px 14px; border-radius: 8px; background: #eef3fb; color: #0b4aa8; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="lienzo">
+<header>
+  <h1>Portal del alumnado · Fase 2 · Mis notas</h1>
+  <p>El alumno ve sus notas en el mismo portal. Tú eliges qué columnas se ven y si se ve la media. Datos inventados.</p>
+</header>
+
+<section class="parte">
+<h2>1 · Web del alumnado (móvil)</h2>
+<div class="rejilla">
+
+  <div class="estado">
+    <h3>N1 · Mis notas · con media visible</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><button class="yo" aria-label="Mi cuenta">T</button></div>
+      <div class="pantalla">
+        <div class="pestanas" role="tablist" aria-label="Secciones"><button role="tab" id="t-hacer" aria-selected="false" aria-controls="p-notas" tabindex="-1">Para hacer</button><button role="tab" id="t-notas" aria-selected="true" aria-controls="p-notas" tabindex="0">Mis notas</button></div><h1 class="sr">Mis notas</h1>
+        <span class="provisional">Notas provisionales</span><p class="aviso-prov">Pueden cambiar hasta la evaluación.</p>
+        <div class="materia">
+          <div class="materia-cab"><b>Educación Física</b><span>2º ESO B</span></div>
+          <div class="media"><span class="num">7,4</span><span class="txt"><b>Notable</b>Media de las notas de esta pantalla</span></div>
+          <a class="fila-nota" href="#"><span class="tt"><b>Bádminton · Rúbrica de juego</b><span>12 nov · Rúbrica</span></span><span class="val">8,0</span><span class="nivel n-alto">Notable</span></a>
+          <a class="fila-nota" href="#"><span class="tt"><b>Test de Cooper</b><span>5 nov · Prueba física</span></span><span class="val">6,5</span><span class="nivel n-medio">Bien</span></a>
+          <a class="fila-nota" href="#"><span class="tt"><b>Autoevaluación · Bádminton</b><span>3 nov</span></span><span class="val">4,5</span><span class="nivel n-bajo">Para mejorar</span></a>
+        </div>
+        <p class="dudas">¿Dudas con alguna nota? Habla con tu docente.</p><p class="pie-tel">Actualizado hoy a las 18:40</p>
+      </div>
+    </div>
+    <p class="nota">Solo salen las columnas que el docente marcó. Nivel siempre en texto; el número va en tinta normal, también si es bajo («Para mejorar», sin rojo ni abreviaturas). Toque en una nota con rúbrica: detalle N3.</p>
+  </div>
+
+  <div class="estado">
+    <h3>N2 · Mis notas · media oculta</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><button class="yo" aria-label="Mi cuenta">T</button></div>
+      <div class="pantalla">
+        <div class="pestanas" role="tablist" aria-label="Secciones"><button role="tab" id="t-hacer" aria-selected="false" aria-controls="p-notas" tabindex="-1">Para hacer</button><button role="tab" id="t-notas" aria-selected="true" aria-controls="p-notas" tabindex="0">Mis notas</button></div><h1 class="sr">Mis notas</h1>
+        <span class="provisional">Notas provisionales</span><p class="aviso-prov">Pueden cambiar hasta la evaluación.</p>
+        <div class="materia">
+          <div class="materia-cab"><b>Educación Física</b><span>2º ESO B</span></div>
+          <a class="fila-nota" href="#"><span class="tt"><b>Bádminton · Rúbrica de juego</b><span>12 nov · Rúbrica</span></span><span class="val">8,0</span><span class="nivel n-alto">Notable</span></a>
+          <a class="fila-nota" href="#"><span class="tt"><b>Test de Cooper</b><span>5 nov · Prueba física</span></span><span class="val">6,5</span><span class="nivel n-medio">Bien</span></a>
+        </div>
+        
+      </div>
+    </div>
+  </div>
+
+  <div class="estado">
+    <h3>N3 · Detalle de una rúbrica</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><button class="yo" aria-label="Mi cuenta">T</button></div>
+      <div class="pantalla">
+        <a class="atras" href="#">‹ Mis notas</a>
+        <h1 style="font-size:1.5rem;margin-top:8px">Bádminton · Rúbrica de juego</h1>
+        <p class="sub">12 nov · 8,0 · Notable</p><span class="provisional">Nota provisional</span><p class="aviso-prov">Puede cambiar hasta la evaluación.</p>
+        <div class="criterio"><b>Golpeo de fondo</b><div class="pasos" role="img" aria-label="Nivel 3 de 4"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div><span class="nivel-txt">Nivel 3 de 4</span><p><b style="display:inline">Bueno.</b> Llega al fondo casi siempre y con buena altura.</p></div>
+        <div class="criterio"><b>Saque</b><div class="pasos" role="img" aria-label="Nivel 4 de 4"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div><span class="nivel-txt">Nivel 4 de 4</span><p><b style="display:inline">Excelente.</b> Saque corto y largo según la situación.</p></div>
+        <div class="criterio"><b>Juego limpio</b><div class="pasos" role="img" aria-label="Nivel 2 de 4"><i class="on"></i><i class="on"></i><i></i><i></i></div><span class="nivel-txt">Nivel 2 de 4</span><p><b style="display:inline">En proceso.</b> Puedes mejorar aceptando los puntos dudosos.</p></div>
+      </div>
+    </div>
+    <p class="nota">Mismo descriptor que el PDF de «Enviar notas al alumnado». Nivel visible en número, no solo en la barra. Sin comentarios privados del docente. El descriptor lo escribe el docente en la rúbrica: conviene redactarlo en positivo.</p>
+  </div>
+
+  <div class="estado">
+    <h3>N4 · Aún no hay notas</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><button class="yo" aria-label="Mi cuenta">T</button></div>
+      <div class="pantalla">
+        <div class="pestanas" role="tablist" aria-label="Secciones"><button role="tab" id="t-hacer" aria-selected="false" aria-controls="p-notas" tabindex="-1">Para hacer</button><button role="tab" id="t-notas" aria-selected="true" aria-controls="p-notas" tabindex="0">Mis notas</button></div><h1 class="sr">Mis notas</h1>
+        <div class="vacio"><div class="sello" aria-hidden="true">Pronto</div><p class="saludo">Aún no hay notas</p><p class="saludo-sub">Aquí verás las notas que tu docente comparta contigo.</p></div>
+      </div>
+    </div>
+    <p class="nota">Mismo texto haya o no columnas sin mostrar. Ninguna pantalla habla de notas «publicadas» o «todavía no».</p>
+  </div>
+
+  <div class="estado">
+    <h3>N5 · Cargando</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><button class="yo" aria-label="Mi cuenta">T</button></div>
+      <div class="pantalla" aria-busy="true"><p class="sr" role="status">Cargando tus notas</p>
+        <div class="pestanas" role="tablist" aria-label="Secciones"><button role="tab" id="t-hacer" aria-selected="false" aria-controls="p-notas" tabindex="-1">Para hacer</button><button role="tab" id="t-notas" aria-selected="true" aria-controls="p-notas" tabindex="0">Mis notas</button></div><h1 class="sr">Mis notas</h1>
+        <div class="sk" style="height:28px;width:45%;margin-bottom:16px"></div>
+        <div class="sk" style="height:72px;margin-bottom:12px"></div>
+        <div class="sk" style="height:56px;margin-bottom:8px"></div>
+        <div class="sk" style="height:56px;margin-bottom:8px"></div>
+        <div class="sk" style="height:56px"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="estado">
+    <h3>N6 · Sin conexión</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><button class="yo" aria-label="Mi cuenta">T</button></div>
+      <div class="pantalla">
+        <div class="pestanas" role="tablist" aria-label="Secciones"><button role="tab" id="t-hacer" aria-selected="false" aria-controls="p-notas" tabindex="-1">Para hacer</button><button role="tab" id="t-notas" aria-selected="true" aria-controls="p-notas" tabindex="0">Mis notas</button></div><h1 class="sr">Mis notas</h1>
+        <h1>Necesitas conexión</h1>
+        <p class="sub">Tus notas no se guardan en el móvil, para que nadie las vea sin tu contraseña.</p>
+        <button class="btn pri">Reintentar</button>
+      </div>
+    </div>
+    <p class="nota">Las tareas pendientes sí se ven sin red (fase 1). Las notas nunca se copian al móvil. Error del servidor y sesión terminada reutilizan H2 y K de la fase 1.</p>
+  </div>
+
+</div>
+</section>
+
+<section class="parte">
+<h2>2 · App · Portal del alumnado › Notas visibles (Mac / iPad)</h2>
+<div class="rejilla" style="grid-template-columns:repeat(auto-fill,minmax(560px,1fr))">
+
+  <div class="estado">
+    <h3>P1 · Notas visibles · con datos</h3>
+    <div class="mac">
+      <div class="cab"><h4>Portal del alumnado</h4><p>2º ESO B · Educación Física</p></div>
+      <div class="seg-mac" role="tablist" aria-label="Portal"><span role="tab" aria-selected="false">Cuentas</span><span role="tab" aria-selected="true" class="on">Notas visibles</span></div>
+      <div class="media-mac"><div><b>Mostrar la media</b><span>La misma media del Cuaderno, solo con lo que cuenta.</span></div><span class="ver"><button class="toggle" role="switch" aria-checked="false" aria-label="Mostrar la media al alumnado"></button>No</span></div>
+      <div class="fila-col cab-t"><span>Notas que cuentan en la media</span><span>Tipo</span><span>Peso</span><span>Mostrar</span></div>
+      <div class="fila-col"><span>Bádminton · Rúbrica de juego<span class="sub">Rúbrica · 24 de 24 con nota</span></span><span>Rúbrica</span><span>40 %</span><span class="ver"><button class="toggle on" role="switch" aria-checked="true" aria-label="Mostrar Bádminton · Rúbrica de juego"></button>Sí</span></div>
+      <div class="fila-col"><span>Test de Cooper<span class="sub">Prueba física · 22 de 24</span></span><span>Prueba física</span><span>30 %</span><span class="ver"><button class="toggle on" role="switch" aria-checked="true" aria-label="Mostrar Test de Cooper"></button>Sí</span></div>
+      <div class="fila-col"><span>Autoevaluación · Bádminton<span class="sub">Entrega web · 20 de 24</span></span><span>Autoevaluación</span><span>30 %</span><span class="ver"><button class="toggle" role="switch" aria-checked="false" aria-label="Mostrar Autoevaluación · Bádminton"></button>No</span></div>
+      <div class="pie"><span class="izq">Los cambios se publican solos 10 minutos después · próxima publicación hacia las 18:42</span><span></span></div>
+    </div>
+    <p class="nota" style="color:#3d3d40">Solo columnas que cuentan en la media. Nunca salen observación, comentarios, Inclusión, datos brutos ni ocultas. Todo apagado de entrada. Sin botón «Publicar ahora»: un solo modelo, publicación automática con 10 min de margen para corregir. SwiftUI: Toggle con etiqueta real (.labelsHidden), Picker .segmented, fuentes .body/.caption.</p>
+  </div>
+
+  <div class="estado">
+    <h3>P2 · Al encender cada columna por primera vez</h3>
+    <div class="mac" style="height:340px">
+      <div class="cab"><h4>Portal del alumnado</h4><p>2º ESO B · Educación Física</p></div>
+      <div class="alerta-mac"><div class="caja" role="alertdialog" aria-labelledby="t-p2" aria-describedby="d-p2">
+        <h5 id="t-p2">¿Mostrar esta nota al alumnado?</h5>
+        <p id="d-p2">24 alumnos verán «Bádminton · Rúbrica de juego» en su móvil unos 10 minutos después. Avisa antes a las familias.</p>
+        <button class="mb pri" autofocus>Cancelar</button>
+        <button class="mb">Mostrar notas</button>
+      </div></div>
+    </div>
+    <p class="nota" style="color:#3d3d40">Una vez por columna (no por grupo). Cancelar es la acción por defecto y responde a Escape.</p>
+  </div>
+
+  <div class="estado">
+    <h3>P3 · Sin columnas que cuenten</h3>
+    <div class="mac">
+      <div class="cab"><h4>Portal del alumnado</h4><p>2º ESO B · Educación Física</p></div>
+      <div class="seg-mac" role="tablist" aria-label="Portal"><span role="tab" aria-selected="false">Cuentas</span><span role="tab" aria-selected="true" class="on">Notas visibles</span></div>
+      <div class="vacio-mac"><div class="icono" aria-hidden="true">▦</div><h5>Este grupo no tiene notas que contar</h5><p>Aquí salen las columnas del Cuaderno que cuentan en la media. Cuando tengas alguna, podrás elegir si se ven.</p></div>
+    </div>
+  </div>
+
+  <div class="estado">
+    <h3>P4 · Pendiente de publicar sin conexión</h3>
+    <div class="mac">
+      <div class="cab"><h4>Portal del alumnado</h4><p>2º ESO B · Educación Física</p></div>
+      <div class="seg-mac" role="tablist" aria-label="Portal"><span role="tab" aria-selected="false">Cuentas</span><span role="tab" aria-selected="true" class="on">Notas visibles</span></div>
+      <div class="error-mac" role="alert"><span>⚠︎ No se pudo publicar. Se reintentará solo cuando vuelva la conexión.</span><button class="mb pri">Reintentar</button></div>
+      <div class="fila-col cab-t"><span>Notas que cuentan en la media</span><span>Tipo</span><span>Peso</span><span>Mostrar</span></div>
+      <div class="fila-col"><span>Bádminton · Rúbrica de juego<span class="sub">Rúbrica · 24 de 24 con nota</span></span><span>Rúbrica</span><span>40 %</span><span class="ver"><button class="toggle on" role="switch" aria-checked="true" aria-label="Mostrar Bádminton · Rúbrica de juego"></button>Sí</span></div>
+      <div class="pie"><span class="izq">Último publicado: ayer 12:10</span><span></span></div>
+    </div>
+  </div>
+
+  <div class="estado">
+    <h3>P5 · Desde el iPad</h3>
+    <div class="mac">
+      <div class="cab"><h4>Portal del alumnado</h4><p>2º ESO B · Educación Física</p></div>
+      <div class="seg-mac" role="tablist" aria-label="Portal"><span role="tab" aria-selected="false">Cuentas</span><span role="tab" aria-selected="true" class="on">Notas visibles</span></div>
+      <div class="aviso-mac">Las notas se publican desde el Mac. Lo que evalúes aquí sube cuando llegue al Mac por la sincronización.</div>
+      <div class="fila-col cab-t"><span>Notas que cuentan en la media</span><span>Tipo</span><span>Peso</span><span>Mostrar</span></div>
+      <div class="fila-col"><span>Bádminton · Rúbrica de juego<span class="sub">Rúbrica</span></span><span>Rúbrica</span><span>40 %</span><span class="ver"><button class="toggle on" role="switch" aria-checked="true" aria-label="Mostrar Bádminton · Rúbrica de juego" disabled></button>Sí</span></div>
+    </div>
+    <p class="nota" style="color:#3d3d40">En el iPad los interruptores se ven desactivados: solo los cambia el Mac (ver ticket, decisión 4.3). SF Symbol del vacío P3: tablecells.</p>
+  </div>
+
+</div>
+</section>
+</div>
+</body>
+</html>

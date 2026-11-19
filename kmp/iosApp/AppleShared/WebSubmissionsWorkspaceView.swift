@@ -243,7 +243,9 @@ struct WebSubmissionsWorkspaceView: View {
                     return alumnado.map {
                         WebPortalStudent(id: $0.id, firstName: $0.firstName, lastName: $0.lastName, email: $0.email)
                     }
-                }
+                },
+                loadGrades: { classId in await bridge.portalGradeOverview(classId: classId) },
+                gradesChanged: { classId in bridge.schedulePortalGradesRepublish(classId: classId) }
             )
         }
     }

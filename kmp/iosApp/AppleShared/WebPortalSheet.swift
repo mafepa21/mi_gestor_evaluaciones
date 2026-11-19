@@ -265,8 +265,18 @@ struct WebPortalSheet: View {
     @State var classId: Int64
     let loadStudents: (Int64) async -> [WebPortalStudent]
     @StateObject private var model: WebPortalViewModel
+    @StateObject private var grades: WebPortalGradesViewModel
+    @ObservedObject private var gradesWatcher = WebPortalGradesWatcher.shared
     @Environment(\.dismiss) private var dismiss
 
+    /// Dos secciones: las cuentas (fase 1) y las notas que se enseñan (fase 2).
+    enum PortalSection: String, CaseIterable, Identifiable {
+        case cuentas = "Cuentas"
+        case notas = "Notas visibles"
+        var id: String { rawValue }
+    }
+
+    @State private var section: PortalSection = .cuentas
     @State private var selection = Set<Int64>()
     @State private var closing: WebPortalStudent?
     @State private var showingPreview = false
@@ -285,11 +295,23 @@ struct WebPortalSheet: View {
         groups: [PortalGroup],
         classId: Int64,
         model: @autoclosure @escaping () -> WebPortalViewModel,
-        loadStudents: @escaping (Int64) async -> [WebPortalStudent]
+        loadStudents: @escaping (Int64) async -> [WebPortalStudent],
+        gradesSettingsURL: URL? = nil,
+        loadGrades: @escaping (Int64) async -> WebPortalGradeOverview? = { _ in nil },
+        gradesChanged: @escaping (Int64) -> Void = { _ in },
+        initialSection: PortalSection = .cuentas
     ) {
+        self._section = State(initialValue: initialSection)
         self.groups = groups
         self._classId = State(initialValue: classId)
         self._model = StateObject(wrappedValue: model())
+        self._grades = StateObject(wrappedValue: WebPortalGradesViewModel(
+            settingsURL: gradesSettingsURL
+                ?? WebPortalGradeSettings.standardURL()
+                ?? FileManager.default.temporaryDirectory.appendingPathComponent("notas-visibles.json"),
+            loadOverview: loadGrades,
+            changed: gradesChanged
+        ))
         self.loadStudents = loadStudents
     }
 
@@ -298,7 +320,17 @@ struct WebPortalSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
-            content
+            Picker("Sección del portal", selection: $section) {
+                ForEach(PortalSection.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 360)
+            .accessibilityLabel("Sección del portal")
+            switch section {
+            case .cuentas: content
+            case .notas: gradesContent
+            }
         }
         .padding(24)
         // Tamaño acotado: la hoja nunca pide más alto que una ventana principal pequeña
@@ -311,6 +343,21 @@ struct WebPortalSheet: View {
         .task(id: classId) {
             selection = []
             await model.load(students: await loadStudents(classId))
+        }
+        .task(id: classId) {
+            await grades.load(classId: classId)
+        }
+        // P2 · la primera vez que se enciende una columna. Cancelar es lo que responde a Intro y a Escape.
+        .alert(
+            "¿Mostrar esta nota al alumnado?",
+            isPresented: Binding(get: { grades.pendingConfirmation != nil }, set: { if !$0 { grades.cancelPending() } }),
+            presenting: grades.pendingConfirmation
+        ) { _ in
+            Button("Cancelar", role: .cancel) { grades.cancelPending() }
+                .keyboardShortcut(.defaultAction)
+            Button("Mostrar notas") { grades.confirmPending() }
+        } message: { column in
+            Text("\(grades.overview?.studentCount ?? 0) alumnos verán «\(column.title)» en su móvil unos 10 minutos después. Avisa antes a las familias.")
         }
         .alert(
             "¿Cerrar la cuenta de \(closing?.fullName ?? "")?",
@@ -386,6 +433,16 @@ struct WebPortalSheet: View {
         }
         .padding(12)
         .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// Notas visibles (P1 a P5). Se desplaza dentro de la hoja, igual que las cuentas: no pide más alto.
+    private var gradesContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollView(.vertical) {
+                WebPortalGradesPane(model: grades, watcher: gradesWatcher, classId: classId)
+            }
+            WebPortalGradesFooter(watcher: gradesWatcher, classId: classId)
+        }
     }
 
     /// Estado L: el aviso «sin invitar» ya trae el botón principal.

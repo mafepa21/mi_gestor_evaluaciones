@@ -297,8 +297,8 @@ struct WebPortalSheet: View {
         model: @autoclosure @escaping () -> WebPortalViewModel,
         loadStudents: @escaping (Int64) async -> [WebPortalStudent],
         gradesSettingsURL: URL? = nil,
-        loadGrades: @escaping (Int64) async -> WebPortalGradeOverview? = { _ in nil },
-        gradesChanged: @escaping (Int64) -> Void = { _ in },
+        loadGrades: @escaping (Int64, String?) async -> WebPortalGradeOverview? = { _, _ in nil },
+        gradesChanged: @escaping (Int64, Bool) -> Void = { _, _ in },
         initialSection: PortalSection = .cuentas
     ) {
         self._section = State(initialValue: initialSection)

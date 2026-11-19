@@ -14,6 +14,9 @@ struct WebPortalGroupGradeSettings: Codable, Equatable {
     var columnas: [String: Bool] = [:]
     /// Columnas que ya pasaron el aviso «¿Mostrar esta nota al alumnado?».
     var confirmadas: [String] = []
+    /// Pestaña del Cuaderno cuya media y columnas se publican. Se fija al encender la primera
+    /// columna: así la publicación no depende de la pestaña que el docente tenga abierta.
+    var pestana: String?
 
     func isVisible(columnId: String) -> Bool { columnas[columnId] == true }
 
@@ -23,6 +26,35 @@ struct WebPortalGroupGradeSettings: Codable, Equatable {
     var hasActiveColumns: Bool { columnas.values.contains(true) }
 
     var visibleColumnIds: Set<String> { Set(columnas.filter { $0.value }.map(\.key)) }
+}
+
+/// Qué grupos han publicado notas y qué grupos esperan su publicación
+/// (`Documentos/EntregasWeb/portal/notas-publicadas.json`). Sirve para que, tras reiniciar,
+/// un grupo que ya está apagado retire de verdad lo que el alumnado aún veía.
+struct WebPortalGradesPublishedState: Codable, Equatable {
+    /// Grupos que han llegado a publicar notas y todavía no se han retirado.
+    var conNotas: [Int64] = []
+    /// Grupos con cambios en la cola de 10 minutos.
+    var pendientes: [Int64] = []
+
+    static func url(besides settingsURL: URL) -> URL {
+        settingsURL.deletingLastPathComponent().appendingPathComponent("notas-publicadas.json")
+    }
+
+    static func load(fileURL: URL) -> WebPortalGradesPublishedState {
+        guard let data = try? Data(contentsOf: fileURL),
+              let state = try? JSONDecoder().decode(WebPortalGradesPublishedState.self, from: data) else {
+            return WebPortalGradesPublishedState()
+        }
+        return state
+    }
+
+    func save(fileURL: URL) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let data = try? encoder.encode(self) { try? data.write(to: fileURL, options: [.atomic]) }
+    }
 }
 
 struct WebPortalGradeSettings: Equatable {

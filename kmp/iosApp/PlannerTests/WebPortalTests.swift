@@ -553,7 +553,7 @@ final class WebPortalSheetLayoutTests: XCTestCase {
             model: model,
             loadStudents: { _ in students },
             gradesSettingsURL: directory.appendingPathComponent("portal/notas-visibles.json"),
-            loadGrades: { _ in overview },
+            loadGrades: { _, _ in overview },
             initialSection: section
         )
         let window = NSWindow(

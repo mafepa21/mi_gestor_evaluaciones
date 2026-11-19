@@ -7,7 +7,8 @@ import MiGestorKit
 ///
 /// Cada aviso de cambio reinicia la espera de su grupo. Cuando pasan 10 minutos sin
 /// cambios, el grupo se publica. No hay «Publicar ahora»: así el docente tiene margen
-/// para corregir una nota antes de que la vea el alumnado.
+/// para corregir una nota antes de que la vea el alumnado. Lo contrario, apagar un
+/// interruptor, retira las notas al momento: nunca se espera para dejar de enseñar.
 ///
 /// Hilo principal: solo contabilidad (un `Task` que duerme por grupo). El informe, el JSON
 /// y el cifrado van en segundo plano (`WebPortalGrades.loadGroup` y `WebPortalPublisher`).
@@ -27,7 +28,7 @@ final class WebPortalGradesDebouncer {
     private var timers: [Int64: (token: UUID, task: Task<Void, Never>)] = [:]
     /// Cuándo toca publicar cada grupo pendiente.
     private(set) var dueDates: [Int64: Date] = [:]
-    /// Avisa cuando cambia `dueDates` (para la hoja).
+    /// Avisa cuando cambia `dueDates` (para la hoja y para guardar la cola).
     var onChange: (() -> Void)?
 
     init(
@@ -66,7 +67,7 @@ final class WebPortalGradesDebouncer {
         for classId in classIds { schedule(classId: classId) }
     }
 
-    /// Publica ya el grupo (solo para reintentar un fallo, no hay botón para el resto).
+    /// Publica ya el grupo: retirar notas o reintentar un fallo.
     func fireNow(classId: Int64) {
         timers[classId]?.task.cancel()
         timers[classId] = nil
@@ -82,28 +83,45 @@ final class WebPortalGradesDebouncer {
 final class WebPortalGradesWatcher: ObservableObject {
     static let shared = WebPortalGradesWatcher()
     static let log = Logger(subsystem: "com.migestor.entregas-web", category: "portal-notas")
-    /// Espera antes de reintentar un fallo que no es de red.
+    /// Espera tras el primer fallo que no es de red. Se duplica en cada fallo seguido.
     static let retryDelay: TimeInterval = 5 * 60
+    static let maxRetryDelay: TimeInterval = 60 * 60
     private static let lastPublishedKey = "webPortal.notas.ultimaPublicacion"
+
+    /// Espera antes del reintento número `attempt` (0 es el primero): crece y tiene tope.
+    static func backoff(attempt: Int) -> TimeInterval {
+        min(retryDelay * pow(2, Double(min(attempt, 10))), maxRetryDelay)
+    }
 
     @Published private(set) var dueDates: [Int64: Date] = [:]
     @Published private(set) var failedClassIds: Set<Int64> = []
+    /// Grupos con algún tablón por encima de 256 KB: no se reintentan.
+    @Published private(set) var tooLargeClassIds: Set<Int64> = []
     @Published private(set) var lastPublished: [Int64: Date] = [:]
 
     /// Lo último publicado por alumno, para no subir dos veces lo mismo.
     var summary = WebPortalGradesSummary()
+    /// Grupos que publicaron notas y grupos en cola, guardados en disco.
+    private(set) var publishedState = WebPortalGradesPublishedState()
 
     private(set) var debouncer: WebPortalGradesDebouncer!
-    /// Publica un grupo. `true` si salió bien (o no había nada que hacer).
-    var publish: ((Int64) async -> Bool)?
+    /// Publica un grupo y dice cómo fue.
+    var publish: ((Int64) async -> WebPortalGradesPublishStatus)?
     /// Grupos con alguna columna encendida (copia de `notas-visibles.json`).
     private(set) var activeClassIds: Set<Int64> = []
+    private let stateURL: URL?
+    private var inFlight = Set<Int64>()
+    private var attempts: [Int64: Int] = [:]
     private var watched = Set<Int64>()
     private var tasks: [Task<Void, Never>] = []
     private var globalObserversInstalled = false
+    private var startupDone = false
     private var pathMonitor: NWPathMonitor?
+    private var wasOnline: Bool?
 
-    init(debouncer: WebPortalGradesDebouncer? = nil) {
+    init(debouncer: WebPortalGradesDebouncer? = nil, stateURL: URL? = WebPortalGradeSettings.standardURL().map(WebPortalGradesPublishedState.url(besides:))) {
+        self.stateURL = stateURL
+        if let stateURL { publishedState = WebPortalGradesPublishedState.load(fileURL: stateURL) }
         let stored = UserDefaults.standard.dictionary(forKey: Self.lastPublishedKey) as? [String: Double] ?? [:]
         for (key, value) in stored { if let id = Int64(key) { lastPublished[id] = Date(timeIntervalSince1970: value) } }
         self.debouncer = debouncer ?? WebPortalGradesDebouncer(fire: { [weak self] classId in
@@ -112,12 +130,13 @@ final class WebPortalGradesWatcher: ObservableObject {
         self.debouncer.onChange = { [weak self] in
             guard let self else { return }
             self.dueDates = self.debouncer.dueDates
+            self.persistPending()
         }
     }
 
     // MARK: Avisos de cambio
 
-    /// Una nota, un interruptor o la estructura de un grupo cambió.
+    /// Una nota cambió: espera de 10 minutos desde el último cambio.
     func noteChange(classId: Int64) {
         guard activeClassIds.contains(classId) else { return }
         debouncer.schedule(classId: classId)
@@ -128,11 +147,11 @@ final class WebPortalGradesWatcher: ObservableObject {
         for classId in activeClassIds { debouncer.schedule(classId: classId) }
     }
 
-    /// El docente cambió un interruptor: la cola del grupo empieza de nuevo aunque ahora
-    /// no quede ninguna columna encendida (hay que retirar lo que ya se vio).
-    func noteSettingsChange(classId: Int64) {
+    /// El docente cambió un interruptor. Encender espera 10 minutos (margen para corregir);
+    /// apagar (`immediately`) retira las notas al momento.
+    func noteSettingsChange(classId: Int64, immediately: Bool) {
         reloadSettings()
-        debouncer.schedule(classId: classId)
+        if immediately { debouncer.fireNow(classId: classId) } else { debouncer.schedule(classId: classId) }
     }
 
     func reloadSettings() {
@@ -142,24 +161,68 @@ final class WebPortalGradesWatcher: ObservableObject {
 
     /// Para la hoja: «Reintentar» tras un fallo.
     func retryNow(classId: Int64) {
+        attempts[classId] = nil
         debouncer.fireNow(classId: classId)
+    }
+
+    // MARK: Estado en disco
+
+    /// Cola pendiente = esperando + publicándose + con reintento. Solo se escribe si cambia.
+    private func persistPending() {
+        let pending = Array(debouncer.pendingClassIds.union(inFlight).union(failedClassIds)).sorted()
+        guard pending != publishedState.pendientes else { return }
+        publishedState.pendientes = pending
+        savePublishedState()
+    }
+
+    private func savePublishedState() {
+        if let stateURL { publishedState.save(fileURL: stateURL) }
+    }
+
+    /// Tras publicar: qué grupos tienen notas visibles. Un grupo solo se da por retirado
+    /// si la publicación completa salió bien.
+    func updatePublishedState(withNotes: Set<Int64>, readClassIds: Set<Int64>, complete: Bool) {
+        var withNotesNow = Set(publishedState.conNotas).union(withNotes)
+        if complete { withNotesNow.subtract(readClassIds.subtracting(withNotes)) }
+        let sorted = withNotesNow.sorted()
+        guard sorted != publishedState.conNotas else { return }
+        publishedState.conNotas = sorted
+        savePublishedState()
+    }
+
+    /// Una vez por arranque: publica los grupos que tuvieron notas o esperaban publicación
+    /// y ahora puede que estén apagados. Sin esto, apagar y cerrar la app dejaba las notas visibles.
+    func runStartupPassOnce() {
+        guard !startupDone, publish != nil else { return }
+        startupDone = true
+        for classId in Set(publishedState.conNotas).union(publishedState.pendientes) {
+            debouncer.fireNow(classId: classId)
+        }
     }
 
     // MARK: Publicar
 
     private func fire(_ classId: Int64) async {
         guard let publish else { return }
+        inFlight.insert(classId)
+        persistPending()
         WebPortalPublishQueue.shared.enqueue { [weak self] in
-            let ok = await publish(classId)
+            let status = await publish(classId)
             guard let self else { return }
-            if ok {
-                self.failedClassIds.remove(classId)
-                self.recordPublished(classId: classId)
-            } else {
+            self.inFlight.remove(classId)
+            if status.tooLarge { self.tooLargeClassIds.insert(classId) } else { self.tooLargeClassIds.remove(classId) }
+            if status.retry {
                 self.failedClassIds.insert(classId)
-                // Sin red lo reintenta `NWPathMonitor`; con otro fallo, pasado un rato.
-                self.debouncer.schedule(classId: classId, after: Self.retryDelay)
+                // Sin red lo reintenta `NWPathMonitor`; con otro fallo, pasado un rato cada vez mayor.
+                let attempt = self.attempts[classId, default: 0]
+                self.attempts[classId] = attempt + 1
+                self.debouncer.schedule(classId: classId, after: Self.backoff(attempt: attempt))
+            } else {
+                self.failedClassIds.remove(classId)
+                self.attempts[classId] = nil
+                self.recordPublished(classId: classId)
             }
+            self.persistPending()
         }
     }
 
@@ -187,6 +250,13 @@ final class WebPortalGradesWatcher: ObservableObject {
         }
     }
 
+    /// Cambio de red: reintenta los grupos fallidos solo al pasar de sin conexión a con conexión.
+    func networkChanged(online: Bool) {
+        defer { wasOnline = online }
+        guard online, wasOnline == false else { return }
+        for classId in failedClassIds { debouncer.fireNow(classId: classId) }
+    }
+
     /// Avisos que no son de un grupo: Sync LAN aplicado, estructura del Cuaderno y red.
     func installGlobalObservers() {
         guard !globalObserversInstalled else { return }
@@ -208,11 +278,8 @@ final class WebPortalGradesWatcher: ObservableObject {
 
         let monitor = NWPathMonitor()
         monitor.pathUpdateHandler = { [weak self] path in
-            guard path.status == .satisfied else { return }
-            Task { @MainActor in
-                guard let self else { return }
-                for classId in self.failedClassIds { self.debouncer.fireNow(classId: classId) }
-            }
+            let online = path.status == .satisfied
+            Task { @MainActor in self?.networkChanged(online: online) }
         }
         monitor.start(queue: DispatchQueue(label: "com.migestor.portal-notas.red", qos: .utility))
         pathMonitor = monitor
@@ -223,25 +290,28 @@ final class WebPortalGradesWatcher: ObservableObject {
 
 extension KmpBridge {
     /// Única entrada del portal de notas (diseño, sección 1): un cambio en el grupo, o un
-    /// interruptor, lo pone en la cola de 10 minutos. No bloquea ni lanza.
-    func schedulePortalGradesRepublish(classId: Int64) {
+    /// interruptor, lo pone en la cola de 10 minutos. `immediately`: retirar notas al momento.
+    /// No bloquea ni lanza.
+    func schedulePortalGradesRepublish(classId: Int64, immediately: Bool = false) {
         let watcher = prepareGradesWatcher()
-        watcher.noteSettingsChange(classId: classId)
+        watcher.noteSettingsChange(classId: classId, immediately: immediately)
         watchPortalGrades(classId: classId)
     }
 
-    /// Al final de `refreshClasses()` y al arrancar: vigila los grupos con alguna columna encendida.
+    /// Al final de `refreshClasses()` y al arrancar: vigila los grupos con alguna columna encendida
+    /// y, una vez, retira lo que ya no deba verse.
     func startPortalGradesWatching() {
         let watcher = prepareGradesWatcher()
         for classId in watcher.activeClassIds { watchPortalGrades(classId: classId) }
+        watcher.runStartupPassOnce()
     }
 
     private func prepareGradesWatcher() -> WebPortalGradesWatcher {
         let watcher = WebPortalGradesWatcher.shared
         if watcher.publish == nil {
             watcher.publish = { [weak self] classId in
-                guard let self else { return true }
-                return await self.republishPortalBoards(formInstanceIds: [], gradeClassIds: [classId])
+                guard let self else { return WebPortalGradesPublishStatus() }
+                return await self.republishPortalBoards(formInstanceIds: [], gradeClassIds: [classId], onlyGrades: true)
             }
             watcher.installGlobalObservers()
             watcher.reloadSettings()

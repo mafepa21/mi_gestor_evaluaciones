@@ -58,7 +58,8 @@ enum WebPortalPublisher {
     }
 
     /// JSON del tablón v1. Las claves desconocidas las ignora la web.
-    static func buildBoard(portalId: String, forms: [WebPortalFormEntry], now: Date = Date()) throws -> Data {
+    /// `notas` es el bloque «Mis notas» (fase 2, 4.1): sin él, el tablón queda como en la fase 1.
+    static func buildBoard(portalId: String, forms: [WebPortalFormEntry], notas: [String: Any]? = nil, now: Date = Date()) throws -> Data {
         let pending = forms
             .filter { ($0.mode == "passport" || !$0.done) && $0.expiresAt > now }
             .compactMap { form -> [String: Any]? in
@@ -75,13 +76,14 @@ enum WebPortalPublisher {
         let done = forms
             .filter { $0.done && $0.mode != "passport" }
             .map { ["titulo": $0.title] }
-        let board: [String: Any] = [
+        var board: [String: Any] = [
             "schemaVersion": 1,
             "alias": alias(for: portalId),
             "actualizado": isoString(now),
             "pendientes": pending,
             "hechos": done,
         ]
+        if let notas { board["notas"] = notas }
         return try JSONSerialization.data(withJSONObject: board, options: [.sortedKeys])
     }
 
@@ -95,11 +97,15 @@ enum WebPortalPublisher {
     struct Input {
         let studentId: Int64
         let forms: [WebPortalFormEntry]
+        /// Bloque «Mis notas» ya filtrado por los interruptores. `nil`: sin notas.
+        var notas: [String: Any]?
     }
 
     struct Outcome: Equatable {
         var published = 0
         var failed = 0
+        /// Alumnos cuyo tablón aceptó el servidor.
+        var publishedStudentIds: [Int64] = []
         /// El servidor ya no conoce a estos alumnos (cuenta cerrada desde otro sitio).
         var unknownStudentIds: [Int64] = []
     }
@@ -132,7 +138,7 @@ enum WebPortalPublisher {
                   let key = store.tablonKey(portalId: entry.portalId) else { continue }
             let version = nextVersion(last: entry.ultimaVersion, now: now)
             do {
-                let json = try buildBoard(portalId: entry.portalId, forms: input.forms, now: now)
+                let json = try buildBoard(portalId: entry.portalId, forms: input.forms, notas: input.notas, now: now)
                 guard json.count <= maxBoardBytes else { outcome.failed += 1; continue }
                 let sobre = try WebPortalCrypto.seal(json, key: key, context: .tablon(portalId: entry.portalId, version: version))
                 boards.append((input.studentId, WebPortalClient.Board(portalId: entry.portalId, version: version, sobre: sobre)))
@@ -154,6 +160,7 @@ enum WebPortalPublisher {
                     if result.ok {
                         accepted[item.studentId] = item.board.version
                         outcome.published += 1
+                        outcome.publishedStudentIds.append(item.studentId)
                     } else {
                         outcome.failed += 1
                         if result.reason == "desconocido" { outcome.unknownStudentIds.append(item.studentId) }
@@ -206,19 +213,30 @@ extension KmpBridge {
         }
     }
 
-    func republishPortalBoards(formInstanceIds: Set<String>?) async {
+    /// `gradeClassIds`: grupos cuyas notas han cambiado; solo se suben los alumnos cuyo bloque
+    /// `notas` cambió de verdad. `nil` incluye las notas vigentes de todos los grupos con
+    /// alguna columna encendida. Devuelve `false` si algo no se pudo publicar.
+    @discardableResult
+    func republishPortalBoards(formInstanceIds: Set<String>?, gradeClassIds: Set<Int64>? = nil) async -> Bool {
         guard let store = WebPortalStore.standard(),
               !store.entries.isEmpty,
-              let accountKey = WebSubmissionInbox.accountKey else { return }
+              let accountKey = WebSubmissionInbox.accountKey else { return true }
         let baseURL = UserDefaults.standard.string(forKey: "webSubmissions.baseURL") ?? "https://projectosef.alwaysdata.net"
         let ahora = Date()
         let ahoraMs = Int64(ahora.timeIntervalSince1970 * 1000)
 
-        guard let instancias = try? await container.webSubmissionsRepository.listAllFormInstances() else { return }
+        guard let instancias = try? await container.webSubmissionsRepository.listAllFormInstances() else { return false }
+
+        // Notas vigentes (informe fuera del hilo principal). Un grupo que no se pudo leer no
+        // aparece en `known`: sus alumnos conservan lo último que se publicó.
+        let gradeBlocks = await portalGradeBlocks(classIds: gradeClassIds)
+        let watcher = WebPortalGradesWatcher.shared
+        let onlyGrades = gradeClassIds != nil && formInstanceIds?.isEmpty == true
 
         var formsByStudent: [Int64: [WebPortalFormEntry]] = [:]
         var affected = Set<Int64>()
         for instancia in instancias where !instancia.revoked && !instancia.archived && instancia.expiresAtEpochMs > ahoraMs {
+            if onlyGrades, gradeClassIds?.contains(instancia.classId) != true { continue }
             guard let snapshot = await loadWebSubmissionSnapshot(formInstanceId: instancia.formInstanceId) else { continue }
             let alumnado = (try? await container.classesRepository.listStudentsInClass(classId: instancia.classId)) ?? []
             let links = WebSubmissionPrivateLinksStore.readLinks(
@@ -242,17 +260,30 @@ extension KmpBridge {
             }
         }
 
-        let targets = formInstanceIds == nil ? Set(store.entries.keys) : affected.intersection(store.entries.keys)
-        guard let storeURL = WebPortalStore.standard()?.fileURL else { return }
+        var targets = formInstanceIds == nil ? Set(store.entries.keys) : affected.intersection(store.entries.keys)
+        // Quien tiene un bloque `notas` distinto del último publicado también se sube.
+        for (studentId, _) in store.entries where gradeBlocks.known.contains(studentId) {
+            if watcher.summary.hasChanged(studentId: studentId, notas: gradeBlocks.notas[studentId]) { targets.insert(studentId) }
+        }
+        guard let storeURL = WebPortalStore.standard()?.fileURL else { return true }
+        func notas(for studentId: Int64) -> [String: Any]? {
+            gradeBlocks.known.contains(studentId) ? gradeBlocks.notas[studentId] : watcher.summary.lastNotas(studentId: studentId)
+        }
         let outcome = await WebPortalPublisher.publish(
-            inputs: targets.sorted().map { WebPortalPublisher.Input(studentId: $0, forms: formsByStudent[$0] ?? []) },
+            inputs: targets.sorted().map {
+                WebPortalPublisher.Input(studentId: $0, forms: formsByStudent[$0] ?? [], notas: notas(for: $0))
+            },
             storeURL: storeURL,
             client: WebPortalClient(url: WebPortalClient.url(baseURL: baseURL)),
             accountKey: accountKey,
             now: ahora
         )
+        for studentId in outcome.publishedStudentIds {
+            watcher.summary.record(studentId: studentId, notas: notas(for: studentId))
+        }
         if outcome.published + outcome.failed > 0 {
             WebPortalPublisher.log.notice("Portal: \(outcome.published) tablones publicados, \(outcome.failed) con error")
         }
+        return outcome.failed == 0
     }
 }

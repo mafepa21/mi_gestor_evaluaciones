@@ -206,9 +206,12 @@ enum WebPortalGrades {
         return WebPortalGradeContext(classId: classId, groupName: groupName, subject: subject, columns: meta)
     }
 
-    // MARK: Carga (fuera del hilo principal)
+    // MARK: Carga (`suspend` de Kotlin en `@MainActor`; cálculos en segundo plano)
 
     /// Hoja completa del grupo sin abrirlo en el Cuaderno. Usa la caché de hojas de Kotlin.
+    /// `loadNotebookSnapshot` y `makeGradeReports` invocan funciones `suspend` de Kotlin, que
+    /// Kotlin/Native exige lanzar desde `@MainActor` (el repositorio ya salta a `Dispatchers.Default`).
+    @MainActor
     static func loadGroup(
         container: KmpContainer,
         classId: Int64,
@@ -218,15 +221,28 @@ enum WebPortalGrades {
         withReports: Bool
     ) async -> WebPortalGroupGrades? {
         guard let sheet = try? await container.notebookRepository.loadNotebookSnapshot(classId: classId) else { return nil }
-        let scope = scope(sheet: sheet, preferredTabId: preferredTabId)
+        let prepared = await Task.detached(priority: .utility) {
+            let scope = WebPortalGrades.scope(sheet: sheet, preferredTabId: preferredTabId)
+            return (
+                scope: scope,
+                context: WebPortalGrades.context(classId: classId, groupName: groupName, subject: subject, scope: scope),
+                overview: WebPortalGrades.overview(classId: classId, scope: scope),
+                studentIds: scope.rows.map { $0.student.id }
+            )
+        }.value
         let reports = withReports
-            ? await KmpBridge.makeGradeReports(container: container, classId: classId, columns: scope.allColumns, rows: scope.rows)
+            ? await KmpBridge.makeGradeReports(
+                container: container,
+                classId: classId,
+                columns: prepared.scope.allColumns,
+                rows: prepared.scope.rows
+            )
             : []
         return WebPortalGroupGrades(
-            context: context(classId: classId, groupName: groupName, subject: subject, scope: scope),
+            context: prepared.context,
             reports: reports,
-            overview: overview(classId: classId, scope: scope),
-            studentIds: scope.rows.map { $0.student.id }
+            overview: prepared.overview,
+            studentIds: prepared.studentIds
         )
     }
 
@@ -405,16 +421,14 @@ extension KmpBridge {
             let container = self.container
             let name = schoolClass.name
             let wantsReports = groupSettings.hasActiveColumns
-            let group = await Task.detached(priority: .utility) {
-                await WebPortalGrades.loadGroup(
-                    container: container,
-                    classId: classId,
-                    groupName: name,
-                    subject: subject,
-                    preferredTabId: tab,
-                    withReports: wantsReports
-                )
-            }.value
+            let group = await WebPortalGrades.loadGroup(
+                container: container,
+                classId: classId,
+                groupName: name,
+                subject: subject,
+                preferredTabId: tab,
+                withReports: wantsReports
+            )
             guard let group else {
                 // No se pudo leer: a su alumnado se le retira todo y se reintenta.
                 var failed = WebPortalGradeBlocks()
@@ -438,16 +452,14 @@ extension KmpBridge {
         let tab = tabId ?? restoredSelectedNotebookTab(forClassId: classId)
         let container = self.container
         let name = classes.first(where: { $0.id == classId })?.name ?? ""
-        let group = await Task.detached(priority: .utility) {
-            await WebPortalGrades.loadGroup(
-                container: container,
-                classId: classId,
-                groupName: name,
-                subject: nil,
-                preferredTabId: tab,
-                withReports: false
-            )
-        }.value
+        let group = await WebPortalGrades.loadGroup(
+            container: container,
+            classId: classId,
+            groupName: name,
+            subject: nil,
+            preferredTabId: tab,
+            withReports: false
+        )
         return group?.overview
     }
 }

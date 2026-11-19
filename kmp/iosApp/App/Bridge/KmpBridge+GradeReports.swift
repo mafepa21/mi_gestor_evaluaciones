@@ -27,8 +27,10 @@ extension KmpBridge {
         await Self.makeGradeReports(container: container, classId: classId, columns: columns, rows: rows)
     }
 
-    /// Sin aislamiento de actor: se puede llamar fuera del hilo principal.
-    nonisolated static func makeGradeReports(
+    /// Las llamadas `suspend` a Kotlin van en `@MainActor` (Kotlin/Native exige hilo principal
+    /// al invocarlas; los repositorios saltan a `Dispatchers.Default`). El cálculo del informe
+    /// va en segundo plano.
+    static func makeGradeReports(
         container: KmpContainer,
         classId: Int64,
         columns: [NotebookColumnDefinition],
@@ -63,16 +65,21 @@ extension KmpBridge {
             }
         }
 
-        return BuildStudentGradeReportsUseCase().build(
-            columns: columns,
-            rows: rows,
-            rubricsByColumn: rubricsByColumn,
-            assessmentsByColumn: assessmentsByColumn,
-            criterionCodes: await gradeReportCriterionCodes(container: container)
-        )
+        let criterionCodes = await gradeReportCriterionCodes(container: container)
+        let finalRubricsByColumn = rubricsByColumn
+        let finalAssessmentsByColumn = assessmentsByColumn
+        return await Task.detached(priority: .utility) {
+            BuildStudentGradeReportsUseCase().build(
+                columns: columns,
+                rows: rows,
+                rubricsByColumn: finalRubricsByColumn,
+                assessmentsByColumn: finalAssessmentsByColumn,
+                criterionCodes: criterionCodes
+            )
+        }.value
     }
 
-    private nonisolated static func gradeReportCriterionCodes(container: KmpContainer) async -> [KotlinLong: String] {
+    private static func gradeReportCriterionCodes(container: KmpContainer) async -> [KotlinLong: String] {
         guard let criteria = try? await container.competenciesRepository.listCompetencies() else {
             return [:]
         }

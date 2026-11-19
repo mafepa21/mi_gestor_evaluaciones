@@ -62,3 +62,13 @@ else
   echo
   echo "Prueba cruzada con la web OMITIDA: falta node o $web/src/enlace.mjs (usa ENTREGAS_WEB_REPO)."
 fi
+
+# Portal del alumnado: vectores del contrato (`docs/planes/contrato_portal_v1_*.md`).
+# Compila el `WebPortalCrypto.swift` real. Si existe `portal-v1.json` (de
+# `npm run fixture` en entregas-alumnado) lo cruza con lo que cifra Swift, y deja
+# `portal-swift.json` para que la web abra lo cifrado por Swift.
+echo
+echo "Portal del alumnado…"
+portal_bin="${TMPDIR:-/tmp}/interop_portal"
+swiftc -O "$raiz/kmp/iosApp/AppleShared/WebPortalCrypto.swift" "$raiz/scripts/interop_entregas_web/portal/main.swift" -o "$portal_bin"
+"$portal_bin" "$raiz/kmp/iosApp/PlannerTests/Recursos/portal-v1.json" "${PORTAL_SWIFT_JSON:-${TMPDIR:-/tmp}/portal-swift.json}"

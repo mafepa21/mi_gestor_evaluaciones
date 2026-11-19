@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Portal del alumnado · Fase 1</title>
+<!--
+  Maqueta viva · Portal del alumnado, fase 1 (2026-11-18)
+  Dos partes:
+    1. Web del alumnado (repo entregas-alumnado): activar cuenta, entrar, tablón «Para hacer».
+    2. App (Mi Gestor, Mac/iPad): invitar al grupo y ver qué cuentas están activadas.
+  Datos inventados. Ningún nombre corresponde a alumnado real.
+  La web reutiliza los tokens de src/estilo.css («Progress Passport»).
+-->
+<style>
+:root {
+  --papel: #f2eee1; --papel-alto: #fbf9f2; --papel-hueco: #e7e2d1;
+  --tinta: #10231a; --tinta-suave: #3d5348; --tinta-tenue: #4a5d52;
+  --lanza-texto: #a82b14; --lanza: #c9341a;
+  --pista: #0f3d2e; --pista-viva: #1a6349; --pista-clara: #dfeae3;
+  --oro: #b8860f; --oro-claro: #e6c46a;
+  --u: 0.5rem; --radio: 6px; --borde: 2px solid var(--tinta); --tap: 3rem;
+  --display: "Futura", "Avenir Next Condensed", "Oswald", "Roboto Condensed", "Helvetica Neue", sans-serif;
+  --lectura: "Charter", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+
+  /* App (macOS) */
+  --mac-fondo: #ececec; --mac-hoja: #ffffff; --mac-texto: #1d1d1f; --mac-suave: #5f5f64;
+  --mac-linea: #d9d9de; --mac-acento: #0a64d6; --mac-verde: #1c7c3c; --mac-ambar: #8a5a00; --mac-rojo: #b3261e;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #d7d3c6; color: var(--tinta); font-family: var(--lectura); font-size: 1.0625rem; line-height: 1.5; }
+.lienzo { max-width: 1480px; margin: 0 auto; padding: calc(var(--u)*6) calc(var(--u)*2); }
+.lienzo > header h1 { font-family: var(--display); font-size: 2rem; letter-spacing: .02em; margin: 0 0 var(--u); }
+.lienzo > header p { margin: 0; max-width: 60ch; color: var(--tinta-suave); }
+.parte { margin-top: calc(var(--u)*8); }
+.parte > h2 { font-family: var(--display); text-transform: uppercase; letter-spacing: .08em; font-size: 1rem; margin: 0 0 calc(var(--u)*3); color: var(--pista); }
+.rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: calc(var(--u)*5) calc(var(--u)*4); }
+.estado > h3 { font-family: var(--display); font-size: .8125rem; text-transform: uppercase; letter-spacing: .08em; margin: 0 0 var(--u); color: var(--tinta-suave); }
+.nota { font-size: .875rem; color: var(--tinta-suave); margin: var(--u) 0 0; max-width: 46ch; }
+
+/* ---------- Teléfono (web del alumnado) ---------- */
+.tel { width: 360px; height: 720px; border: 10px solid #1b1b1b; border-radius: 40px; overflow: hidden; position: relative;
+  background-color: var(--papel);
+  background-image: repeating-linear-gradient(to bottom, transparent 0 2.9375rem, rgba(16,35,26,.045) 2.9375rem 3rem);
+  display: flex; flex-direction: column; }
+.tel .pantalla { flex: 1; overflow-y: auto; padding: calc(var(--u)*4) calc(var(--u)*3) calc(var(--u)*3); display: flex; flex-direction: column; }
+.marca { font-family: var(--display); text-transform: uppercase; letter-spacing: .12em; font-size: .75rem; color: var(--pista); font-weight: 700; display: flex; align-items: center; gap: var(--u); }
+.marca::before { content: ""; width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--lanza); }
+.tel h1 { font-family: var(--display); font-size: 1.75rem; line-height: 1.15; margin: calc(var(--u)*3) 0 var(--u); }
+.tel .sub { margin: 0 0 calc(var(--u)*4); color: var(--tinta-suave); }
+.campo { display: block; margin-bottom: calc(var(--u)*3); }
+.campo span { display: block; font-family: var(--display); font-size: 1rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; margin-bottom: var(--u); }
+.campo input { width: 100%; height: 56px; padding: 0 calc(var(--u)*2); font: inherit; font-size: 1.0625rem; color: var(--tinta);
+  background: var(--papel-alto); border: var(--borde); border-radius: var(--radio); }
+.campo small { display: block; margin-top: var(--u); font-size: .875rem; color: var(--tinta-tenue); }
+.pw { position: relative; display: block; } .pw input { padding-right: 104px; }
+.pw button { position: absolute; right: 4px; top: 4px; height: 48px; min-width: 88px; border: 0; border-radius: 4px; background: var(--papel-hueco); font-family: var(--display); font-weight: 700; font-size: .9375rem; color: var(--tinta); cursor: pointer; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.velo-claro { position: absolute; inset: 64px 0 0; background: rgba(242,238,225,.7); }
+.campo.mal input { border-color: var(--lanza); }
+.campo.mal small { color: var(--lanza-texto); font-weight: 600; }
+.codigo-ok { display: flex; align-items: center; gap: calc(var(--u)*1.5); padding: calc(var(--u)*1.5) calc(var(--u)*2); margin-bottom: calc(var(--u)*3);
+  background: var(--pista-clara); border: 2px solid var(--pista-viva); border-radius: var(--radio); font-size: .9375rem; }
+.codigo-ok b { font-family: ui-monospace, Menlo, monospace; letter-spacing: .08em; }
+.check { width: 24px; height: 24px; border-radius: 50%; background: var(--pista-viva); color: #fff; display: grid; place-items: center; font-size: .875rem; flex: none; }
+.fuerza { display: flex; gap: 4px; margin-top: var(--u); }
+.fuerza i { flex: 1; height: 6px; border-radius: 3px; background: var(--papel-hueco); }
+.fuerza i.on { background: var(--pista-viva); }
+.casilla { display: flex; align-items: flex-start; gap: calc(var(--u)*1.5); min-height: var(--tap); margin-bottom: calc(var(--u)*3); font-size: .9375rem; }
+.casilla input { width: 24px; height: 24px; margin: 2px 0 0; accent-color: var(--pista); flex: none; }
+.btn { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 56px; border-radius: var(--radio); font-family: var(--display);
+  font-size: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; cursor: pointer; border: var(--borde); }
+.btn.pri { background: var(--pista); color: #fff; border-color: var(--pista); }
+.btn.sec { background: transparent; color: var(--tinta); }
+.btn.peligro { background: var(--lanza); border-color: var(--lanza); color: #fff; }
+.btn[disabled] { background: var(--papel-hueco); border-color: var(--papel-hueco); color: var(--tinta-tenue); cursor: not-allowed; }
+.enlace { display: inline-flex; align-items: center; min-height: var(--tap); color: var(--pista-viva); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.pie-tel { margin-top: auto; padding-top: calc(var(--u)*3); font-size: .875rem; color: var(--tinta-tenue); text-align: center; }
+.aviso { border: 2px solid var(--lanza); border-radius: var(--radio); background: var(--papel-alto); padding: calc(var(--u)*2); margin-bottom: calc(var(--u)*3); }
+.aviso h2 { font-family: var(--display); font-size: 1.0625rem; margin: 0 0 var(--u); color: var(--lanza-texto); }
+.aviso ol { margin: 0; padding-left: calc(var(--u)*2.5); font-size: .9375rem; }
+.aviso ol li + li { margin-top: var(--u); }
+.aviso.suave { border-color: var(--oro); }
+.aviso.suave h2 { color: var(--tinta); }
+details.tec { font-size: .8125rem; color: var(--tinta-tenue); margin-top: calc(var(--u)*2); }
+details.tec summary { min-height: var(--tap); display: flex; align-items: center; cursor: pointer; }
+
+/* Tablón */
+.barra { display: flex; align-items: center; justify-content: space-between; padding: calc(var(--u)*2) calc(var(--u)*3); border-bottom: var(--borde); background: var(--papel-alto); }
+.barra .yo { font-size: 1rem; color: var(--tinta); cursor: pointer; width: var(--tap); height: var(--tap); border-radius: 50%; border: var(--borde); display: grid; place-items: center; font-family: var(--display); font-weight: 700; background: var(--papel); }
+.saludo { font-family: var(--display); font-size: 1.5rem; margin: 0 0 calc(var(--u)*0.5); }
+.saludo-sub { margin: 0 0 calc(var(--u)*4); color: var(--tinta-suave); font-size: .9375rem; }
+.grupo-t { font-family: var(--display); text-transform: uppercase; letter-spacing: .08em; font-size: 1rem; font-weight: 700; margin: 0 0 calc(var(--u)*1.5); display: flex; justify-content: space-between; }
+.tarea { display: flex; gap: calc(var(--u)*2); align-items: center; padding: calc(var(--u)*2); background: var(--papel-alto); border: var(--borde); border-radius: var(--radio); margin-bottom: var(--u); text-decoration: none; color: inherit; }
+.tarea .tipo { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--pista); display: grid; place-items: center; font-family: var(--display); font-weight: 700; color: var(--pista); font-size: .875rem; flex: none; }
+.tarea .cuerpo { flex: 1; min-width: 0; }
+.tarea .cuerpo b { display: block; font-size: 1rem; line-height: 1.3; }
+.tarea .cuerpo span { display: block; font-size: .875rem; color: var(--tinta-tenue); margin-top: 2px; }
+.tarea .cuerpo .plazo { margin-top: 4px; font-family: var(--display); font-size: .9375rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; color: var(--tinta-suave); text-align: left; }
+.tarea.urgente { border-color: var(--lanza); }
+.tarea.urgente .cuerpo .plazo { color: var(--lanza-texto); }
+.tarea .flecha { font-size: 1.25rem; color: var(--tinta-suave); flex: none; }
+.hecho { margin-top: calc(var(--u)*4); }
+.hecho summary { list-style: none; cursor: pointer; min-height: var(--tap); display: flex; align-items: center; justify-content: space-between; font-family: var(--display); text-transform: uppercase; letter-spacing: .08em; font-size: .8125rem; font-weight: 700; }
+.hecho summary::-webkit-details-marker { display: none; }
+.fila-hecha { display: flex; gap: calc(var(--u)*1.5); align-items: center; min-height: var(--tap); font-size: .9375rem; color: var(--tinta-suave); }
+.sk { background: var(--papel-hueco); border-radius: var(--radio); animation: latido 1.2s infinite alternate; }
+@keyframes latido { to { background: #ddd7c3; } }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+.vacio { margin: auto 0; text-align: center; padding: calc(var(--u)*4) 0; }
+.sello { width: 112px; height: 112px; margin: 0 auto calc(var(--u)*3); border-radius: 50%; border: 4px solid var(--pista-viva); display: grid; place-items: center; transform: rotate(-8deg);
+  font-family: var(--display); text-transform: uppercase; font-weight: 700; color: var(--pista-viva); letter-spacing: .06em; font-size: .9375rem; }
+.cinta { display: flex; gap: var(--u); align-items: center; padding: calc(var(--u)*1.5) calc(var(--u)*3); background: var(--oro-claro); font-size: .875rem; border-bottom: var(--borde); }
+.velo { position: absolute; inset: 0; background: rgba(16,35,26,.45); display: flex; align-items: flex-end; }
+.hoja { width: 100%; background: var(--papel); border-top: var(--borde); border-radius: 16px 16px 0 0; padding: calc(var(--u)*3); }
+.hoja h2 { font-family: var(--display); font-size: 1.25rem; margin: 0 0 var(--u); }
+.hoja p { margin: 0 0 calc(var(--u)*3); font-size: .9375rem; color: var(--tinta-suave); }
+.hoja .btn + .btn { margin-top: var(--u); }
+.menu-yo { position: absolute; top: 72px; right: 16px; width: 240px; background: var(--papel-alto); border: var(--borde); border-radius: var(--radio); box-shadow: 0 8px 24px rgba(16,35,26,.2); }
+.menu-yo div { padding: calc(var(--u)*1.5) calc(var(--u)*2); border-bottom: 1px solid var(--papel-hueco); font-size: .875rem; color: var(--tinta-tenue); }
+.menu-yo button { display: flex; align-items: center; width: 100%; min-height: var(--tap); padding: 0 calc(var(--u)*2); background: none; border: 0; font: inherit; font-size: .9375rem; color: var(--tinta); text-align: left; cursor: pointer; }
+.menu-yo button.rojo { color: var(--lanza-texto); font-weight: 600; }
+
+/* ---------- App (macOS) ---------- */
+.mac { width: 100%; max-width: 680px; background: var(--mac-hoja); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.08);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; color: var(--mac-texto); font-size: 13px; line-height: 1.4; overflow: hidden; position: relative; }
+.mac .cab { padding: 20px 24px 16px; }
+.mac .cab h4 { margin: 0; font-size: 17px; font-weight: 600; }
+.mac .cab p { margin: 4px 0 0; color: var(--mac-suave); }
+.resumen { display: flex; gap: 24px; padding: 0 24px 16px; }
+.resumen div b { display: block; font-size: 22px; font-weight: 600; }
+.resumen div span { color: var(--mac-suave); }
+.tabla { border-top: 1px solid var(--mac-linea); max-height: 320px; overflow: hidden; }
+.tabla .f { display: grid; grid-template-columns: 1fr 1fr 120px 28px; align-items: center; gap: 16px; padding: 0 24px; min-height: 40px; border-bottom: 1px solid #efeff2; }
+.tabla .f.cab-t { min-height: 32px; color: var(--mac-suave); font-size: 11px; font-weight: 600; background: #fafafa; }
+.tabla .f .correo { color: var(--mac-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.chip.act { color: var(--mac-verde); } .chip.pen { color: var(--mac-ambar); } .chip.sin { color: var(--mac-suave); } .chip.cad { color: var(--mac-rojo); }
+.mas { width: 28px; height: 28px; border: 0; background: none; font: inherit; cursor: pointer; border-radius: 6px; display: grid; place-items: center; color: var(--mac-suave); }
+.mac .pie { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--mac-linea); background: #fafafa; }
+.mac .pie .izq { color: var(--mac-suave); }
+.mb { height: 28px; padding: 0 14px; border-radius: 6px; font: inherit; font-size: 13px; border: 1px solid #c8c8cd; background: #fff; color: var(--mac-texto); cursor: pointer; }
+.mb.pri { background: var(--mac-acento); border-color: var(--mac-acento); color: #fff; font-weight: 500; }
+.mb[disabled] { color: #8e8e93; background: #f2f2f5; border-color: #dcdce0; cursor: default; }
+.mb.rojo { background: var(--mac-rojo); border-color: var(--mac-rojo); color: #fff; font-weight: 500; }
+.mac .vacio-mac { padding: 56px 24px; text-align: center; }
+.mac .vacio-mac .icono { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 14px; background: #eef3fb; color: var(--mac-acento); display: grid; place-items: center; font-size: 26px; }
+.mac .vacio-mac h5 { font-size: 15px; margin: 0 0 6px; font-weight: 600; }
+.mac .vacio-mac p { margin: 0 auto 16px; max-width: 42ch; color: var(--mac-suave); }
+.correo-prev { margin: 0 24px 16px; border: 1px solid var(--mac-linea); border-radius: 8px; padding: 16px; font-size: 13px; }
+.correo-prev .meta { color: var(--mac-suave); border-bottom: 1px solid #efeff2; padding-bottom: 8px; margin-bottom: 12px; }
+.correo-prev .meta b { color: var(--mac-texto); font-weight: 500; }
+.correo-prev .boton-correo { display: inline-block; margin: 8px 0; padding: 10px 16px; border-radius: 6px; background: var(--pista); color: #fff; font-weight: 600; }
+.correo-prev code { font-family: ui-monospace, Menlo, monospace; font-size: 15px; letter-spacing: .08em; background: #f4f4f6; padding: 2px 6px; border-radius: 4px; }
+.alerta-mac { position: absolute; inset: 0; background: rgba(0,0,0,.25); display: grid; place-items: center; }
+.alerta-mac .caja { width: 280px; background: #f6f6f6; border-radius: 12px; padding: 20px 16px 16px; text-align: center; box-shadow: 0 16px 48px rgba(0,0,0,.3); }
+.alerta-mac h5 { margin: 8px 0 6px; font-size: 13px; font-weight: 600; }
+.alerta-mac p { margin: 0 0 16px; font-size: 13px; color: var(--mac-suave); }
+.alerta-mac .mb { width: 100%; margin-top: 6px; }
+.error-mac { margin: 16px 24px; padding: 12px 16px; border-radius: 8px; background: #fdf1f0; color: var(--mac-rojo); display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.menu-mac { position: absolute; right: 30px; top: 214px; width: 200px; background: rgba(246,246,246,.98); border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.2), 0 0 0 1px rgba(0,0,0,.08); padding: 4px; }
+.menu-mac div { padding: 4px 10px; border-radius: 4px; }
+.menu-mac div:first-child { background: var(--mac-acento); color: #fff; }
+.menu-mac hr { border: 0; border-top: 1px solid var(--mac-linea); margin: 4px 0; }
+.menu-mac .r { color: var(--mac-rojo); }
+:focus-visible { outline: 3px solid var(--oro); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="lienzo">
+<header>
+  <h1>Portal del alumnado · Fase 1</h1>
+  <p>Un código por correo la primera vez. Después, usuario y contraseña. Dentro, solo lo que el alumno tiene que hacer. Datos inventados.</p>
+</header>
+
+<!-- ======================= WEB DEL ALUMNADO ======================= -->
+<section class="parte">
+<h2>1 · Web del alumnado (móvil)</h2>
+<div class="rejilla">
+
+  <!-- A. Activar -->
+  <div class="estado">
+    <h3>A · Activar cuenta (desde el correo)</h3>
+    <div class="tel"><div class="pantalla">
+      <div class="marca">Mi portal</div>
+      <h1>Crea tu cuenta</h1>
+      <p class="sub">Solo la primera vez. Luego entrarás con tu usuario y tu contraseña.</p>
+      <div class="codigo-ok"><span class="check" aria-hidden="true">✓</span><span>Código <b>K7M2-XQ9P</b> válido</span></div>
+      <label class="campo"><span>Usuario</span><input value="tigre_azul" autocomplete="username" autocapitalize="none">
+        <small>Puede ser un mote. No pongas tu nombre real.</small></label>
+      <label class="campo"><span>Contraseña</span><span class="pw"><input type="password" value="pista-verde-volante" autocomplete="new-password" aria-describedby="ayuda-a"><button type="button" aria-pressed="false">Mostrar</button></span>
+        <div class="fuerza" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+        <small id="ayuda-a">Muy buena. Mínimo 10 caracteres.</small></label>
+      <label class="casilla"><input type="checkbox" checked><span>Recordarme en este móvil</span></label>
+      <button class="btn pri">Crear mi cuenta</button>
+      <p class="pie-tel">Tu docente nunca verá tu contraseña.</p>
+    </div></div>
+    <p class="nota">El código llega metido en el enlace (después de <code>#</code>), así el servidor no lo ve en sus registros. No se repite la contraseña: el botón «Mostrar» deja comprobarla.</p>
+  </div>
+
+  <!-- A2. Contraseña corta -->
+  <div class="estado">
+    <h3>A2 · Contraseña demasiado corta</h3>
+    <div class="tel"><div class="pantalla">
+      <div class="marca">Mi portal</div>
+      <h1>Crea tu cuenta</h1>
+      <p class="sub">Solo la primera vez. Luego entrarás con tu usuario y tu contraseña.</p>
+      <div class="codigo-ok"><span class="check" aria-hidden="true">✓</span><span>Código <b>K7M2-XQ9P</b> válido</span></div>
+      <label class="campo"><span>Usuario</span><input value="tigre_azul"><small>Puede ser un mote. No pongas tu nombre real.</small></label>
+      <label class="campo mal"><span>Contraseña</span><span class="pw"><input type="password" value="1234" aria-invalid="true" aria-describedby="ayuda-a2"><button type="button" aria-pressed="false">Mostrar</button></span>
+        <div class="fuerza" aria-hidden="true"><i class="on" style="background:var(--lanza)"></i><i></i><i></i><i></i></div>
+        <small id="ayuda-a2" role="alert">Muy corta. Usa al menos 10 caracteres, por ejemplo tres palabras.</small></label>
+      <label class="casilla"><input type="checkbox"><span>Recordarme en este móvil</span></label>
+      <button class="btn pri" disabled>Crear mi cuenta</button>
+    </div></div>
+    <p class="nota">Si el usuario ya existe: «Ese usuario ya está cogido. Prueba otro.» en el campo Usuario.</p>
+  </div>
+
+  <!-- B. Código no válido -->
+  <div class="estado">
+    <h3>B · Código caducado o ya usado</h3>
+    <div class="tel"><div class="pantalla">
+      <div class="marca">Mi portal</div>
+      <h1>Este código no funciona</h1>
+      <p class="sub">Puede que esté mal escrito o que ya no valga.</p>
+      <div class="aviso">
+        <h2>Qué puedes hacer</h2>
+        <ol>
+          <li>Si ya creaste tu cuenta, entra con tu usuario.</li>
+          <li>Si no, pide un código nuevo a tu docente.</li>
+        </ol>
+      </div>
+      <button class="btn pri">Entrar con mi usuario</button>
+      
+    </div></div>
+    <p class="nota">Mismo mensaje para mal escrito, caducado y usado. Sin detalle técnico: no le decimos a un extraño qué pasó con el código.</p>
+  </div>
+
+  <!-- C. Entrar -->
+  <div class="estado">
+    <h3>C · Entrar</h3>
+    <div class="tel"><div class="pantalla">
+      <div class="marca">Mi portal</div>
+      <h1>Entra</h1>
+      <p class="sub">Aquí verás lo que tienes que hacer.</p>
+      <label class="campo"><span>Usuario</span><input value="tigre_azul" autocomplete="username"></label>
+      <label class="campo"><span>Contraseña</span><span class="pw"><input type="password" value="••••••••••••" autocomplete="current-password"><button type="button" aria-pressed="false">Mostrar</button></span></label>
+      <label class="casilla"><input type="checkbox"><span>Recordarme en este móvil</span></label>
+      <button class="btn pri">Entrar</button>
+      <p class="pie-tel">¿Olvidaste la contraseña? Pide un código nuevo a tu docente.<br>¿Tienes un código? <a class="enlace" href="#">Crea tu cuenta</a></p>
+    </div></div>
+  </div>
+
+  <!-- D. Error de entrada / bloqueo -->
+  <div class="estado">
+    <h3>D · Datos incorrectos y bloqueo</h3>
+    <div class="tel"><div class="pantalla">
+      <div class="marca">Mi portal</div>
+      <h1>Entra</h1>
+      <div class="aviso suave" role="alert">
+        <h2>Demasiados intentos</h2>
+        <ol style="list-style:none;padding:0"><li>Espera unos minutos y vuelve a probar. Si no recuerdas la contraseña, pide un código nuevo a tu docente.</li></ol>
+      </div>
+      <label class="campo"><span>Usuario</span><input value=""></label>
+      <label class="campo"><span>Contraseña</span><span class="pw"><input type="password" value=""><button type="button" aria-pressed="false">Mostrar</button></span></label>
+      <button class="btn pri" disabled>Entrar en 4:52</button>
+    </div></div>
+    <p class="nota">Antes del bloqueo: «Usuario o contraseña incorrectos». Espera creciente por usuario y por dispositivo (1, 2, 5 min), igual exista o no el usuario. Así un compañero no puede dejar a otro fuera mucho rato.</p>
+  </div>
+
+  <!-- E. Tablón con datos -->
+  <div class="estado">
+    <h3>E · Tablón · con datos</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><button class="yo" aria-haspopup="menu" aria-expanded="false" aria-label="Mi cuenta">T</button></div>
+      <div class="pantalla">
+        <p class="saludo">Hola, tigre_azul</p>
+        <p class="saludo-sub">Tienes 3 cosas por hacer.</p>
+        <p class="grupo-t"><span>Para hacer</span><span>3</span></p>
+        <a class="tarea urgente" href="#"><span class="tipo" aria-hidden="true">A</span>
+          <span class="cuerpo"><b><span class="sr">Urgente: </span>Autoevaluación · Bádminton</b><span>Educación Física · 2º ESO B</span><span class="plazo">Plazo: Mañana</span></span></a>
+        <a class="tarea" href="#"><span class="tipo" aria-hidden="true">C</span>
+          <span class="cuerpo"><b>Coevaluación · Partido 3</b><span>Educación Física · 2º ESO B</span><span class="plazo">Plazo: 25 nov</span></span></a>
+        <a class="tarea" href="#"><span class="tipo" aria-hidden="true">P</span>
+          <span class="cuerpo"><b>Progress Passport · Unit 2</b><span>Physical Education · 2º ESO B</span><span class="plazo">Plazo: 2 dic</span></span></a>
+        <details class="hecho"><summary><span>Ya enviado</span><span>2 ›</span></summary>
+          <div class="fila-hecha"><span class="check" aria-hidden="true">✓</span>Inscripción torneo de bádminton</div>
+          <div class="fila-hecha"><span class="check" aria-hidden="true">✓</span>Diagnóstico inicial · Condición física</div>
+        </details>
+        <p class="pie-tel">Actualizado hoy a las 18:40</p>
+      </div>
+    </div>
+    <p class="nota">Ordenado por plazo. Rojo solo si vence hoy o mañana. Al pulsar se abre el formulario de siempre (su enlace con alias propio). «Ya enviado» lo marca la app al importar la entrega, no el móvil.</p>
+  </div>
+
+  <!-- F. Cargando -->
+  <div class="estado">
+    <h3>F · Tablón · cargando</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><div class="yo" aria-hidden="true">T</div></div>
+      <div class="pantalla" aria-busy="true">
+        <div class="sk" style="height:32px;width:70%;margin-bottom:8px"></div>
+        <div class="sk" style="height:18px;width:50%;margin-bottom:32px"></div>
+        <div class="sk" style="height:14px;width:30%;margin-bottom:12px"></div>
+        <div class="sk" style="height:88px;margin-bottom:8px"></div>
+        <div class="sk" style="height:88px;margin-bottom:8px"></div>
+        <div class="sk" style="height:88px"></div>
+      </div>
+    </div>
+    <p class="nota">Esqueleto con la forma del tablón. Descifrar tarda menos de un segundo; solo se ve con red lenta.</p>
+  </div>
+
+  <!-- G. Vacío -->
+  <div class="estado">
+    <h3>G · Tablón · nada pendiente</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><div class="yo" aria-hidden="true">T</div></div>
+      <div class="pantalla">
+        <div class="vacio">
+          <div class="sello" aria-hidden="true">Al día</div>
+          <p class="saludo">No tienes nada pendiente</p>
+          <p class="saludo-sub">Cuando tu docente publique algo, aparecerá aquí.</p>
+        </div>
+        <details class="hecho"><summary><span>Ya enviado</span><span>5 ›</span></summary></details>
+      </div>
+    </div>
+    <p class="nota">Primer acceso sin nada publicado: mismo estado, sin la línea «Hecho».</p>
+  </div>
+
+  <!-- H. Sin red -->
+  <div class="estado">
+    <h3>H · Tablón · sin conexión</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><div class="yo" aria-hidden="true">T</div></div>
+      <div class="cinta" role="status"><span aria-hidden="true">⚠︎</span><span>Sin conexión. Ves lo guardado hoy a las 18:40.</span></div>
+      <div class="pantalla">
+        <p class="saludo">Hola, tigre_azul</p>
+        <p class="saludo-sub">Tienes 3 cosas por hacer.</p>
+        <p class="grupo-t"><span>Para hacer</span><span>3</span></p>
+        <a class="tarea urgente" href="#"><span class="tipo" aria-hidden="true">A</span><span class="cuerpo"><b><span class="sr">Urgente: </span>Autoevaluación · Bádminton</b><span>Educación Física · 2º ESO B</span><span class="plazo">Plazo: Mañana</span></span></a>
+        <a class="tarea" href="#"><span class="tipo" aria-hidden="true">C</span><span class="cuerpo"><b>Coevaluación · Partido 3</b><span>Educación Física · 2º ESO B</span><span class="plazo">Plazo: 25 nov</span></span></a>
+        <a class="tarea" href="#"><span class="tipo" aria-hidden="true">P</span><span class="cuerpo"><b>Progress Passport · Unit 2</b><span>Physical Education · 2º ESO B</span><span class="plazo">Plazo: 2 dic</span></span></a>
+        <p class="pie-tel">Los formularios se pueden rellenar sin red. Se envían al volver.</p>
+      </div>
+    </div>
+    <p class="nota">Solo guarda copia si marcó «Recordarme en este móvil». Si no, muestra el error con «Reintentar».</p>
+  </div>
+
+  <!-- H2. Error sin copia -->
+  <div class="estado">
+    <h3>H2 · Error de red sin copia guardada</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><div class="yo" aria-hidden="true">T</div></div>
+      <div class="pantalla">
+        <h1>No se pudo cargar</h1>
+        <p class="sub">Tu tablón está a salvo. Solo falla la conexión.</p>
+        <div class="aviso"><h2>Prueba esto</h2><ol><li>Mira si tienes wifi o datos.</li><li>Pulsa «Reintentar».</li><li>Si sigue igual, prueba más tarde.</li></ol></div>
+        <button class="btn pri">Reintentar</button>
+        
+      </div>
+    </div>
+  </div>
+
+  <!-- I. Menú cuenta -->
+  <div class="estado">
+    <h3>I · Menú de cuenta</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><button class="yo" aria-haspopup="menu" aria-expanded="true" aria-label="Mi cuenta">T</button></div>
+      <div class="pantalla"><p class="saludo">Hola, tigre_azul</p></div><div class="velo-claro" aria-hidden="true"></div>
+      <div class="menu-yo" role="menu">
+        <div>Conectado como <b>tigre_azul</b></div>
+        <button role="menuitem">Cambiar contraseña</button>
+        <button role="menuitem" class="rojo">Salir de este dispositivo</button>
+      </div>
+    </div>
+    <p class="nota">Solo dos acciones. Nada de perfil, foto ni ajustes.</p>
+  </div>
+
+  <!-- J. Modal salir -->
+  <div class="estado">
+    <h3>J · Modal · salir de este dispositivo</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><div class="yo">T</div></div>
+      <div class="pantalla"><p class="saludo">Hola, tigre_azul</p></div>
+      <div class="velo"><div class="hoja" role="dialog" aria-modal="true" aria-labelledby="t-salir">
+        <h2 id="t-salir">¿Salir de este móvil?</h2>
+        <p><b>Tienes 1 formulario sin enviar.</b> Si sales, se borra de este móvil.</p>
+        <button class="btn pri" autofocus>Cancelar</button>
+        <button class="btn sec" style="color:var(--lanza-texto);border-color:var(--lanza)">Salir de todos modos</button>
+      </div></div>
+    </div>
+    <p class="nota">&lt;dialog&gt; con showModal(): foco atrapado, Escape cierra. Variante con datos sin enviar. Foco inicial en «Cancelar». Sin nada pendiente: «Se borra tu tablón de este móvil» y botón «Salir».</p>
+  </div>
+
+  <!-- K. Cuenta anulada -->
+  <div class="estado">
+    <h3>K · Sesión terminada (cuenta cerrada o caducada)</h3>
+    <div class="tel"><div class="pantalla">
+      <div class="marca">Mi portal</div>
+      <h1>Tu sesión ha terminado</h1>
+      <p class="sub">Vuelve a entrar. Si no puedes, usa el código nuevo que te dé tu docente.</p>
+      <div class="aviso suave"><h2>Para volver a entrar</h2><ol><li>Prueba a entrar con tu usuario.</li><li>Si no funciona, busca el correo con tu código nuevo.</li></ol></div>
+      <button class="btn pri">Entrar</button>
+      <a class="enlace" href="#" style="justify-content:center">Tengo un código</a>
+    </div></div>
+    <p class="nota">Mismo texto si la sesión caduca o si el docente cerró la cuenta. Al detectarlo se borra la copia local del tablón.</p>
+  </div>
+
+</div>
+</section>
+
+<!-- ======================= APP ======================= -->
+<section class="parte">
+<h2>2 · App · Entregas web › Portal (Mac / iPad)</h2>
+<div class="rejilla" style="grid-template-columns:repeat(auto-fill,minmax(560px,1fr))">
+
+  <!-- L. Vacío -->
+  <div class="estado">
+    <h3>L · Grupo sin invitar</h3>
+    <div class="mac">
+      <div class="cab"><h4>Portal del alumnado</h4><p>2º ESO B · Educación Física</p></div>
+      <div class="vacio-mac">
+        <div class="icono" aria-hidden="true">✉︎</div>
+        <h5>Aún no has invitado a este grupo</h5>
+        <p>Cada alumno recibe un correo con un código para crear su cuenta. Después verá en un solo sitio todo lo que publiques.</p>
+        <button class="mb pri">Invitar al grupo…</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- M. Con datos -->
+  <div class="estado">
+    <h3>M · Con datos</h3>
+    <div class="mac">
+      <div class="cab"><h4>Portal del alumnado</h4><p>2º ESO B · Educación Física</p></div>
+      <div class="resumen">
+        <div><b>18</b><span>Activadas</span></div>
+        <div><b>6</b><span>Pendientes</span></div>
+        <div><b>1</b><span>Sin correo</span></div>
+      </div>
+      <div class="tabla">
+        <div class="f cab-t"><span>Alumno</span><span>Correo</span><span>Cuenta</span><span></span></div>
+        <div class="f"><span>Aitana Prueba Ruiz</span><span class="correo">aitana.prueba@centro.example</span><span class="chip act">Activada</span><button class="mas" aria-label="Acciones">⋯</button></div>
+        <div class="f"><span>Bruno Ficticio Gil</span><span class="correo">bruno.ficticio@centro.example</span><span class="chip pen">Pendiente</span><button class="mas" aria-label="Acciones">⋯</button></div>
+        <div class="f"><span>Carla Inventada Sanz</span><span class="correo">carla.inventada@centro.example</span><span class="chip cad">Código caducado</span><button class="mas" aria-label="Acciones">⋯</button></div>
+        <div class="f"><span>Dani Ejemplo Mora</span><span class="correo">Sin correo</span><span class="chip sin">Sin correo</span><button class="mas" aria-label="Acciones">⋯</button></div>
+        <div class="f"><span>Elsa Muestra Vidal</span><span class="correo">elsa.muestra@centro.example</span><span class="chip act">Activada</span><button class="mas" aria-label="Acciones">⋯</button></div>
+      </div>
+      <div class="pie"><span class="izq">Comprobado hace 2 min</span><span><button class="mb">Más ▾</button> <button class="mb pri">Enviar 7 correos…</button></span></div>
+    </div>
+    <p class="nota" style="color:#3d3d40">«Enviar» cubre pendientes y caducados con correo. «Más ▾» guarda «Imprimir códigos»: una tarjeta con QR para quien no tiene correo. El estado lo pregunta la app al servidor al abrir la pantalla. En SwiftUI: Table con .contextMenu por fila, colores semánticos (.green, .orange, .secondary, .red), sin hex fijos.</p>
+  </div>
+
+  <!-- N. Menú fila -->
+  <div class="estado">
+    <h3>N · Menú de un alumno</h3>
+    <div class="mac">
+      <div class="cab"><h4>Portal del alumnado</h4><p>2º ESO B · Educación Física</p></div>
+      <div class="resumen"><div><b>18</b><span>Activadas</span></div><div><b>6</b><span>Pendientes</span></div><div><b>1</b><span>Sin correo</span></div></div>
+      <div class="tabla">
+        <div class="f cab-t"><span>Alumno</span><span>Correo</span><span>Cuenta</span><span></span></div>
+        <div class="f"><span>Aitana Prueba Ruiz</span><span class="correo">aitana.prueba@centro.example</span><span class="chip act">Activada</span><button class="mas" aria-label="Acciones de Aitana Prueba Ruiz" aria-expanded="true" style="background:#e8e8ed">⋯</button></div>
+        <div class="f"><span>Bruno Ficticio Gil</span><span class="correo">bruno.ficticio@centro.example</span><span class="chip pen">Pendiente</span><button class="mas" aria-label="Acciones">⋯</button></div>
+        <div class="f"><span>Carla Inventada Sanz</span><span class="correo">carla.inventada@centro.example</span><span class="chip cad">Código caducado</span><button class="mas" aria-label="Acciones">⋯</button></div>
+      </div>
+      <div class="pie"><span class="izq">Comprobado hace 2 min</span><span><button class="mb">Más ▾</button> <button class="mb pri">Enviar 7 correos…</button></span></div>
+      <div class="menu-mac" role="menu" style="top:196px">
+        <div>Enviar código nuevo…</div>
+        <div>Imprimir su código</div>
+        <hr>
+        <div class="r">Cerrar su cuenta…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- O. Vista previa correo -->
+  <div class="estado">
+    <h3>O · Vista previa antes de enviar</h3>
+    <div class="mac">
+      <div class="cab"><h4>Preparar 7 correos</h4><p>Así lo verá cada alumno. Cambian el nombre y el código.</p></div>
+      <div class="correo-prev">
+        <div class="meta">Para: <b>bruno.ficticio@centro.example</b> y 6 más<br>Asunto: <b>Tu acceso al portal de Educación Física</b></div>
+        <p style="margin:0 0 8px">Hola, Bruno:</p>
+        <p style="margin:0 0 8px">Desde ahora verás aquí tus autoevaluaciones, coevaluaciones y tareas. Pulsa el botón para crear tu cuenta:</p>
+        <span class="boton-correo">Crear mi cuenta</span>
+        <p style="margin:8px 0 0">Si el botón no funciona, entra en la web del portal y escribe este código: <code>K7M2-XQ9P</code></p>
+        <p style="margin:8px 0 0;color:#5f5f64">Caduca el 25 de noviembre. Sirve una sola vez. Si no has pedido esto, avisa a tu docente.</p>
+      </div>
+      <div class="pie"><span class="izq">Quedarán en Borradores de Mail</span><span><button class="mb">Cancelar</button> <button class="mb pri">Preparar correos</button></span></div>
+    </div>
+    <p class="nota" style="color:#3d3d40">Sin notas ni datos del alumno más allá del nombre de pila. Mismo mecanismo que «Enviar resultados…» de la coevaluación: Borradores o envío directo con confirmación.</p>
+  </div>
+
+  <!-- P. Confirmar cerrar cuenta -->
+  <div class="estado">
+    <h3>P · Modal · cerrar la cuenta de un alumno</h3>
+    <div class="mac" style="height:340px">
+      <div class="cab"><h4>Portal del alumnado</h4><p>2º ESO B · Educación Física</p></div>
+      <div class="alerta-mac"><div class="caja" role="alertdialog" aria-labelledby="t-cerrar">
+        <div style="font-size:28px" aria-hidden="true">⚠︎</div>
+        <h5 id="t-cerrar">¿Cerrar la cuenta de Aitana Prueba Ruiz?</h5>
+        <p>Ya no podrá entrar con su usuario. Sus entregas ya recibidas no se tocan. Podrás mandarle un código nuevo.</p>
+        <button class="mb pri">Cancelar</button>
+        <button class="mb" style="color:var(--mac-rojo)">Cerrar cuenta</button>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- Q. Error servidor -->
+  <div class="estado">
+    <h3>Q · Error de red con el servidor</h3>
+    <div class="mac">
+      <div class="cab"><h4>Portal del alumnado</h4><p>2º ESO B · Educación Física</p></div>
+      <div class="error-mac" role="alert"><span>⚠︎ No se pudo hablar con el servidor. El estado puede no estar al día.</span><button class="mb">Reintentar</button></div>
+      <div class="tabla">
+        <div class="f cab-t"><span>Alumno</span><span>Correo</span><span>Cuenta</span><span></span></div>
+        <div class="f"><span>Aitana Prueba Ruiz</span><span class="correo">aitana.prueba@centro.example</span><span class="chip act">Activada</span><button class="mas" aria-label="Acciones">⋯</button></div>
+        <div class="f"><span>Bruno Ficticio Gil</span><span class="correo">bruno.ficticio@centro.example</span><span class="chip pen">Pendiente</span><button class="mas" aria-label="Acciones">⋯</button></div>
+      </div>
+      <div class="pie"><span class="izq">Último dato: ayer a las 12:10 · Enviar necesita conexión</span><span><button class="mb" disabled>Enviar 7 correos…</button></span></div>
+    </div>
+    <p class="nota" style="color:#3d3d40">Sin servidor no se envían códigos: el correo llevaría un código que el servidor no conoce. Mismo criterio que el ADR del buzón.</p>
+  </div>
+
+  <!-- R. Cargando -->
+  <div class="estado">
+    <h3>R · Cargando estado</h3>
+    <div class="mac">
+      <div class="cab"><h4>Portal del alumnado</h4><p>2º ESO B · Educación Física</p></div>
+      <div class="tabla">
+        <div class="f cab-t"><span>Alumno</span><span>Correo</span><span>Cuenta</span><span></span></div>
+        <div class="f"><span>Aitana Prueba Ruiz</span><span class="correo">aitana.prueba@centro.example</span><span class="sk" style="height:12px;width:80px;background:#e8e8ed"></span><span></span></div>
+        <div class="f"><span>Bruno Ficticio Gil</span><span class="correo">bruno.ficticio@centro.example</span><span class="sk" style="height:12px;width:80px;background:#e8e8ed"></span><span></span></div>
+        <div class="f"><span>Carla Inventada Sanz</span><span class="correo">carla.inventada@centro.example</span><span class="sk" style="height:12px;width:80px;background:#e8e8ed"></span><span></span></div>
+      </div>
+      <div class="pie"><span class="izq">Comprobando…</span><span><button class="mb" disabled>Enviar correos…</button></span></div>
+    </div>
+    <p class="nota" style="color:#3d3d40">Los nombres salen al momento (son locales). Solo espera la columna «Cuenta».</p>
+  </div>
+
+</div>
+</section>
+</div>
+</body>
+</html>

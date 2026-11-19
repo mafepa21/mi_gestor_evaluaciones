@@ -4933,6 +4933,7 @@ extension KmpBridge {
                 let lastOwnWrite = max(lastLocalMutationAt, lastAppliedRemoteChangesAt)
                 if Date().timeIntervalSince(lastOwnWrite) > Self.externalDbChangeQuietPeriod {
                     self.refreshCurrentNotebook()
+                    WebPortalGradesWatcher.shared.noteChangeInAllGroups()
                     postSyncRefreshTask?.cancel()
                     postSyncRefreshTask = Task(priority: .utility) { [weak self] in
                         guard let self else { return }

@@ -8,6 +8,7 @@
     "nonceHex": "0102030405060708090a0b0c",
     "version": "1763491200000",
     "tablonJson": "{\"schemaVersion\":1,\"alias\":\"tigre_azul\",\"actualizado\":\"2026-11-18T18:40:00Z\",\"pendientes\":[{\"titulo\":\"Autoevaluación · Bádminton\",\"contexto\":\"Educación Física · 2º ESO B\",\"tipo\":\"autoevaluacion\",\"plazo\":\"2026-11-19T23:59:59Z\",\"url\":\"https://projectosef.alwaysdata.net/#f=11111111-1111-4111-8111-111111111111&a=AAAAAAAAAAAAAAAAAAAAAA&b=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\"}],\"hechos\":[{\"titulo\":\"Inscripción torneo de bádminton\"}]}",
+    "tablonNotasJson": "{\"schemaVersion\":1,\"alias\":\"tigre_azul\",\"actualizado\":\"2026-11-18T18:40:00Z\",\"pendientes\":[{\"titulo\":\"Autoevaluación · Bádminton\",\"contexto\":\"Educación Física · 2º ESO B\",\"tipo\":\"autoevaluacion\",\"plazo\":\"2026-11-19T23:59:59Z\",\"url\":\"https://projectosef.alwaysdata.net/#f=11111111-1111-4111-8111-111111111111&a=AAAAAAAAAAAAAAAAAAAAAA&b=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\"}],\"hechos\":[{\"titulo\":\"Inscripción torneo de bádminton\"}],\"notas\":{\"provisional\":true,\"actualizado\":\"2026-11-19T18:40:00Z\",\"materias\":[{\"materia\":\"Educación Física\",\"grupo\":\"2º ESO B\",\"media\":{\"valor\":7.4,\"nivel\":\"Notable\"},\"actividades\":[{\"titulo\":\"Bádminton · Rúbrica de juego\",\"fecha\":\"2026-11-12\",\"tipo\":\"rubrica\",\"valor\":8,\"nivel\":\"Notable\",\"rubrica\":[{\"criterio\":\"Golpeo de fondo\",\"nivel\":\"Bueno\",\"posicion\":3,\"de\":4,\"descripcion\":\"Llega al fondo casi siempre y con buena altura.\"},{\"criterio\":\"Saque\",\"nivel\":\"Excelente\",\"posicion\":4,\"de\":4,\"descripcion\":\"Saque corto y largo según la situación.\"}]},{\"titulo\":\"Test de Cooper\",\"fecha\":\"2026-11-05\",\"tipo\":\"\",\"valor\":6.5,\"nivel\":\"Bien\"}]}]}}",
     "usuario": "tigre_azul",
     "contrasena": "contraseña-de-prueba",
     "salContrasenaHex": "07070707070707070707070707070707"
@@ -23,7 +24,8 @@
     "aadAlta": "portal-v1|alta|AAECAwQFBgcICQoLDA0ODw",
     "aadCuenta": "portal-v1|cuenta|AAECAwQFBgcICQoLDA0ODw",
     "aadTablon": "portal-v1|tablon|AAECAwQFBgcICQoLDA0ODw|1763491200000",
-    "tablonSha256": "5158a5b5fe68b1557ccb38d0f4a4605bcc2216d5c0ca29ea1a3ce888f593a664"
+    "tablonSha256": "5158a5b5fe68b1557ccb38d0f4a4605bcc2216d5c0ca29ea1a3ce888f593a664",
+    "tablonNotasSha256": "762ebb9ac3450f1692bc05f99e84dd9b7f805c4520d1335c31b2b8d372d71f86"
   },
   "sobres": {
     "sobreAlta": {
@@ -40,6 +42,11 @@
       "v": 1,
       "nonce": "AQIDBAUGBwgJCgsM",
       "ct": "B6X4bAHEdTyxJoemiNCVKdRvdF_R1tScI_8CPqbL8PUewN6CWDn9myJOUpAhP9tX7PDDiYIIX4Cf2Qt3qdIKflsl3AcRjNzzr74WN233E8V0W9ggDqLWpghpo2k99jeDNy4eqne8BV0fXNJJvQtKFolryeftU1YoDkd0cZMgOdGV5QhdUvHYwZ7hAviy3CPCPH-qUAodS43I01iZG9HKTrET3z9Fz_r9diWYiXYztxQWkVr24zkAjSNvJwpziPFOL42wtsSdm5xekskj2A09UteYeAqn5yikMPPvU_62VbEK1iv3fPN0Oa1nIYSfUB01oKkBsmZInXqwv4uVesANTfp-a_5KCEnlJtoxzX3uZNz4H4RNHw8ioEMSCKmqQ1zrW-BfI3h9vgibkBJn6xqOIzC-EXtVCSICTqTlrSz9QMLQKl-Z_5ioLTQk5Ng5MhhuvYjPrMUFvJqr-NQM7AcTx7R34VBC3DJBlbhBcUnkKAWkOSDkHWAJPY_S6feVC_qNWiIA1vs-003WQVpEr2qUQ9OnC56be4I7tZM22_L3jnDn0XEmniDNbsEiQIm2m4zaQaJMimoT7qo0WFQFpxXtZGGy5LEPUy2lAr2aVhNi0Q"
+    },
+    "tablonNotas": {
+      "v": 1,
+      "nonce": "AQIDBAUGBwgJCgsM",
+      "ct": "B6X4bAHEdTyxJoemiNCVKdRvdF_R1tScI_8CPqbL8PUewN6CWDn9myJOUpAhP9tX7PDDiYIIX4Cf2Qt3qdIKflsl3AcRjNzzr74WN233E8V0W9ggDqLWpghpo2k99jeDNy4eqne8BV0fXNJJvQtKFolryeftU1YoDkd0cZMgOdGV5QhdUvHYwZ7hAviy3CPCPH-qUAodS43I01iZG9HKTrET3z9Fz_r9diWYiXYztxQWkVr24zkAjSNvJwpziPFOL42wtsSdm5xekskj2A09UteYeAqn5yikMPPvU_62VbEK1iv3fPN0Oa1nIYSfUB01oKkBsmZInXqwv4uVesANTfp-a_5KCEnlJtoxzX3uZNz4H4RNHw8ioEMSCKmqQ1zrW-BfI3h9vgibkBJn6xqOIzC-EXtVCSICTqTlrSz9QMLQKl-Z_5ioLTQk5Ng5MhhuvYjPrMUFvJqr-NQM7AcTx7R34VBC3DJBlbhBcUnkKAWkOSDkHWAJPY_S6feVC_qNWiIA1vs-003WQVpEr2qUQ9OnC56be4I7tZM22_L3jnDn0XEmniDNbsEiQIm2m4zaQaJMimoT7qo0WFQFpxW8nTCbUXBXsVzj5jLBumZlkqnzHx4cX5U5sZIxmDJ5zEdzV3ua733UiZUMjqtEeKrjNWjrCjgNk9RYaxOhJSgPVR00jCMrMbRrqWWzeUtQQSSuxktHF6oYXpqEe-67azwQiJ0xpWWX52GQrqn8IZWh6tIlSMnmwWo3T0TmezoBsC7un5fYijNR55q4FFGcMrtx24u9J5kDbIe9H9dzdsAW42zrNtbmIYkW0optNI3-ox4w6BtnYkUpM0BzkKntV4AJp92zo8YkPd108lyGN6njvL182LWTZXNYXNNysGC1RqqbWrJfHOEQYdr94BtNhuqJl0v2NQS8NxxkZJaHrpa8lMDrAZAPZnh-RDnIzI2SSiG4bVtTKhk64oth3CANs1ubzWegFbRcVms6V9vCqWJoDPjki9TXu70o5SF2Uyr4_0NxdlSSbzv3DubFaQOc_oF-rT2DAJGSr09EGoSvPYXX0GXNv8f_rq7y5f8oj4K4G8ggQIAiOwG8uPI_duXBXTgPij6ht49m9e_K6raylpt9Nel6pzlLXEcSbiDFIc61Qdxtzc3t5TIcOcotNeAj7Cmy-XpdePpSYdblTcw_bPiUz1ynkxJoO9RS7EnWLi5sk_pCzOJHLXS4P3freAbnvgEVrrfkL4DsBrXWwRmtVwNG9gRfZT_KzlFE6SbbAdwWwtyxffoTG0taAWi4keIaRQrmTnTyKp_Ivin-I9vvXd5dRo6IeMpk8vWbGesNuxwwBmUhP7F5w-aTObbIjoJmL1OreMa7We58-X3exf0PRurXxcBAbBdGIuJ3RfcKxYe0_fY_ZsamdaxRudqp88ksfws0sONE-iVWsCTjVaAxAFmc4G6mi1u0SEVK5cPCx2OvOecygnIlfBu_"
     }
   },
   "soloWeb": {

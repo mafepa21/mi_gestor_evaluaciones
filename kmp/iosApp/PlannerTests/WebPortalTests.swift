@@ -530,14 +530,31 @@ final class WebPortalSheetLayoutTests: XCTestCase {
     }
 
     /// Mete la hoja en una ventana de 900x450 y fuerza varias pasadas de layout.
-    private func present(failing: Bool, asSheet: Bool) async throws -> NSWindow {
+    /// Muchas columnas que cuentan: la lista de «Notas visibles» es la más alta de la hoja.
+    private static let manyColumns = WebPortalGradeOverview(
+        classId: 1,
+        studentCount: 24,
+        columns: (1...14).map {
+            WebPortalGradeColumnRow(id: "c\($0)", title: "Columna de prueba número \($0)", typeLabel: "Rúbrica", weightPercent: 7, withGrade: 20, total: 24)
+        }
+    )
+
+    private func present(
+        failing: Bool,
+        asSheet: Bool,
+        section: WebPortalSheet.PortalSection = .cuentas,
+        overview: WebPortalGradeOverview? = nil
+    ) async throws -> NSWindow {
         let model = try makeModel(failing: failing)
         let students = self.students
         let sheet = WebPortalSheet(
             groups: [.init(id: 1, name: "3 ESO A")],
             classId: 1,
             model: model,
-            loadStudents: { _ in students }
+            loadStudents: { _ in students },
+            gradesSettingsURL: directory.appendingPathComponent("portal/notas-visibles.json"),
+            loadGrades: { _, _ in overview },
+            initialSection: section
         )
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 450),
@@ -579,6 +596,24 @@ final class WebPortalSheetLayoutTests: XCTestCase {
         for sheet in window.sheets {
             XCTAssertLessThanOrEqual(sheet.frame.height, 450, "la hoja no puede ser más alta que su ventana")
         }
+        window.orderOut(nil)
+    }
+
+    func testPestanaNotasVisiblesNoDesestabilizaLaVentana() async throws {
+        for overview in [Self.manyColumns, nil] {
+            let window = try await present(failing: false, asSheet: true, section: .notas, overview: overview)
+            XCTAssertEqual(window.contentLayoutRect.height, 450, accuracy: 1, "la ventana principal no debe crecer")
+            for sheet in window.sheets {
+                XCTAssertLessThanOrEqual(sheet.frame.height, 450, "la hoja no puede ser más alta que su ventana")
+            }
+            window.orderOut(nil)
+        }
+    }
+
+    func testPestanaNotasVisiblesComoContenidoDeUnaVentanaPequena() async throws {
+        let window = try await present(failing: true, asSheet: false, section: .notas, overview: Self.manyColumns)
+        window.layoutIfNeeded()
+        XCTAssertLessThanOrEqual(window.contentLayoutRect.height, 450.5, "la hoja no debe agrandar una ventana de 450")
         window.orderOut(nil)
     }
 

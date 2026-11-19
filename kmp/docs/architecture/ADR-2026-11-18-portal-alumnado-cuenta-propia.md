@@ -31,3 +31,13 @@ Cada formulario web generaba un enlace nuevo por alumno que el docente mandaba p
 - Rendija conocida: con muchos dispositivos distintos, un usuario real y uno inexistente no se bloquean igual, así que se puede llegar a confirmar que un mote existe. No da acceso a nada.
 - La fase 2 («Mis notas», sección 11 del ticket) cabe en el mismo tablón v1.
 - Puertas humanas: consulta al delegado de protección de datos, permitir `portal.php` en `buzon/.htaccess` del servidor y probar `probar-portal.sh` con PHP antes de abrirlo a alumnado real.
+
+## Anexo: Fase 2 «Mis notas» (2026-11-19)
+
+- **Sin cambios en KMP, SQLDelight ni `portal.php`**: el bloque opcional `notas` viaja dentro del mismo tablón v1 cifrado con `K_tablon` (compatible con la web de la fase 1, que ignora claves desconocidas).
+- **Fuente única de notas**: `WebPortalGrades` reutiliza `BuildStudentGradeReportsUseCase` (`KmpBridge.buildStudentGradeReports(classId:columns:rows:)`) sobre `loadNotebookSnapshot`, fijando la pestaña del Cuaderno en `notas-visibles.json` al encender la primera columna. Así valores, niveles y descriptores coinciden con el PDF de «Enviar notas al alumnado» sin abrir el Cuaderno y sin depender de la pestaña activa en pantalla.
+- **Filtro estricto y privacidad**: todo apagado de entrada; solo entran columnas que cuentan en la media, no ocultas/archivadas y con su interruptor encendido (tras confirmación P2 por columna). La media solo se puede mostrar si todas las columnas que cuentan están encendidas y ninguna está oculta. Nunca salen comentarios, observaciones, Inclusión, asistencia ni datos brutos.
+- **Ajustes solo en Mac**: `notas-visibles.json` y `notas-publicadas.json` (para retirar notas tras reinicio) viven en `Documentos/EntregasWeb/portal/`, no viajan por Sync LAN y en iPad la pestaña es de solo lectura (P5).
+- **Publicación y vigilancia**: `WebPortalGradesWatcher` observa `observeGradesForClass`, `observeClassCells`, `.lanSyncRemoteChangesApplied` y `NotebookRefreshBus` (incluyendo notas llegadas del iPad por Sync LAN). Los cambios en columnas visibles se agrupan en una cola de 10 minutos por grupo; apagar una columna o la media retira al momento. El cálculo y cifrado se ejecutan fuera del hilo principal.
+- **Sin copia local en el navegador**: la web valida el bloque `notas`, muestra N1-N6 con textos neutros y «Notas provisionales», y vuelve a sellar la copia de «Recordarme» sin `notas` (y limpia copias antiguas que pudieran traerlas). Sin conexión se muestra N6.
+- **Puertas humanas adicionales**: consulta al delegado de protección de datos antes de activar notas parciales y aviso previo a familias.

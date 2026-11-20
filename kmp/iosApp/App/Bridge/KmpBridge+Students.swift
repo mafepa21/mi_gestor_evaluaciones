@@ -20,8 +20,9 @@ extension KmpBridge {
         if notebookViewModel.currentClassId == nil, let first = classes.first {
             selectClass(id: first.id)
         }
-        // «Mis notas» del portal: vigila los grupos con alguna columna encendida.
+        // «Mis notas» y «Torneos» del portal: vigilan los grupos activos y retiran tras reiniciar.
         startPortalGradesWatching()
+        startPortalTournamentsWatching()
     }
 
     private func academicYearSnapshot(from year: AcademicYear) async throws -> AcademicYearSnapshot {

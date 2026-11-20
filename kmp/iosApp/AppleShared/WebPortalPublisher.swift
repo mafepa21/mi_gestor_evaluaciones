@@ -58,8 +58,14 @@ enum WebPortalPublisher {
     }
 
     /// JSON del tablón v1. Las claves desconocidas las ignora la web.
-    /// `notas` es el bloque «Mis notas» (fase 2, 4.1): sin él, el tablón queda como en la fase 1.
-    static func buildBoard(portalId: String, forms: [WebPortalFormEntry], notas: [String: Any]? = nil, now: Date = Date()) throws -> Data {
+    /// `notas` (fase 2) y `torneos` (fase 3B) son opcionales: sin ellos queda como en la fase 1.
+    static func buildBoard(
+        portalId: String,
+        forms: [WebPortalFormEntry],
+        notas: [String: Any]? = nil,
+        torneos: [String: Any]? = nil,
+        now: Date = Date()
+    ) throws -> Data {
         let pending = forms
             .filter { ($0.mode == "passport" || !$0.done) && $0.expiresAt > now }
             .compactMap { form -> [String: Any]? in
@@ -84,6 +90,7 @@ enum WebPortalPublisher {
             "hechos": done,
         ]
         if let notas { board["notas"] = notas }
+        if let torneos { board["torneos"] = torneos }
         return try JSONSerialization.data(withJSONObject: board, options: [.sortedKeys])
     }
 
@@ -99,6 +106,8 @@ enum WebPortalPublisher {
         let forms: [WebPortalFormEntry]
         /// Bloque «Mis notas» ya filtrado por los interruptores. `nil`: sin notas.
         var notas: [String: Any]?
+        /// Bloque «Torneos» ya filtrado por los interruptores. `nil`: sin torneos.
+        var torneos: [String: Any]?
     }
 
     struct Outcome: Equatable {
@@ -143,7 +152,13 @@ enum WebPortalPublisher {
                   let key = store.tablonKey(portalId: entry.portalId) else { continue }
             let version = nextVersion(last: entry.ultimaVersion, now: now)
             do {
-                let json = try buildBoard(portalId: entry.portalId, forms: input.forms, notas: input.notas, now: now)
+                let json = try buildBoard(
+                    portalId: entry.portalId,
+                    forms: input.forms,
+                    notas: input.notas,
+                    torneos: input.torneos,
+                    now: now
+                )
                 guard json.count <= maxBoardBytes else {
                     outcome.failed += 1
                     outcome.tooLargeStudentIds.append(input.studentId)
@@ -240,7 +255,9 @@ extension KmpBridge {
     func republishPortalBoards(
         formInstanceIds: Set<String>?,
         gradeClassIds: Set<Int64> = [],
-        onlyGrades: Bool = false
+        tournamentClassIds: Set<Int64> = [],
+        onlyGrades: Bool = false,
+        onlyDynamicBlocks: Bool = false
     ) async -> WebPortalGradesPublishStatus {
         var status = WebPortalGradesPublishStatus()
         guard let store = WebPortalStore.standard(),
@@ -255,21 +272,32 @@ extension KmpBridge {
             return status
         }
 
-        // Notas vigentes (informe fuera del hilo principal).
+        // Notas y torneos vigentes (lectura suspend en `@MainActor`; cálculos en segundo plano).
         let gradeBlocks = await portalGradeBlocks(extraClassIds: gradeClassIds)
+        let tournamentBlocks = await portalTournamentBlocks(extraClassIds: tournamentClassIds)
         let watcher = WebPortalGradesWatcher.shared
+        let tournamentWatcher = WebPortalTournamentsWatcher.shared
         func notas(for studentId: Int64) -> [String: Any]? { gradeBlocks.notas(for: studentId) }
-        // Quien tiene un bloque `notas` distinto del último publicado (o no se sabe) se sube.
-        var gradeTargets = Set<Int64>()
-        for (studentId, _) in store.entries where gradeBlocks.known.contains(studentId) {
-            if watcher.summary.hasChanged(studentId: studentId, notas: gradeBlocks.notas[studentId]) { gradeTargets.insert(studentId) }
+        func torneos(for studentId: Int64) -> [String: Any]? { tournamentBlocks.torneos(for: studentId) }
+
+        var dynamicTargets = Set<Int64>()
+        for (studentId, _) in store.entries {
+            if gradeBlocks.known.contains(studentId),
+               watcher.summary.hasChanged(studentId: studentId, notas: gradeBlocks.notas[studentId]) {
+                dynamicTargets.insert(studentId)
+            }
+            if tournamentBlocks.known.contains(studentId),
+               tournamentWatcher.summary.hasChanged(studentId: studentId, torneos: tournamentBlocks.torneos[studentId]) {
+                dynamicTargets.insert(studentId)
+            }
         }
 
+        let skipUnrelatedForms = onlyGrades || onlyDynamicBlocks
         var formsByStudent: [Int64: [WebPortalFormEntry]] = [:]
         var affected = Set<Int64>()
         for instancia in instancias where !instancia.revoked && !instancia.archived && instancia.expiresAtEpochMs > ahoraMs {
             let alumnado = (try? await container.classesRepository.listStudentsInClass(classId: instancia.classId)) ?? []
-            if onlyGrades, Set(alumnado.map(\.id)).isDisjoint(with: gradeTargets) { continue }
+            if skipUnrelatedForms, Set(alumnado.map(\.id)).isDisjoint(with: dynamicTargets) { continue }
             guard let snapshot = await loadWebSubmissionSnapshot(formInstanceId: instancia.formInstanceId) else { continue }
             let links = WebSubmissionPrivateLinksStore.readLinks(
                 formInstanceId: instancia.formInstanceId,
@@ -293,11 +321,16 @@ extension KmpBridge {
         }
 
         var targets = formInstanceIds == nil ? Set(store.entries.keys) : affected.intersection(store.entries.keys)
-        targets.formUnion(gradeTargets)
+        targets.formUnion(dynamicTargets)
         guard let storeURL = WebPortalStore.standard()?.fileURL else { return status }
         let outcome = await WebPortalPublisher.publish(
             inputs: targets.sorted().map {
-                WebPortalPublisher.Input(studentId: $0, forms: formsByStudent[$0] ?? [], notas: notas(for: $0))
+                WebPortalPublisher.Input(
+                    studentId: $0,
+                    forms: formsByStudent[$0] ?? [],
+                    notas: notas(for: $0),
+                    torneos: torneos(for: $0)
+                )
             },
             storeURL: storeURL,
             client: WebPortalClient(url: WebPortalClient.url(baseURL: baseURL)),
@@ -306,16 +339,22 @@ extension KmpBridge {
         )
         for studentId in outcome.publishedStudentIds {
             watcher.summary.record(studentId: studentId, notas: notas(for: studentId))
+            tournamentWatcher.summary.record(studentId: studentId, torneos: torneos(for: studentId))
         }
         if outcome.published + outcome.failed > 0 {
             WebPortalPublisher.log.notice("Portal: \(outcome.published) tablones publicados, \(outcome.failed) con error")
         }
         // Demasiado grande y alumnos cerrados no se arreglan reintentando.
-        status.retry = outcome.retryableFailures > 0 || !gradeBlocks.failedClassIds.isEmpty
+        status.retry = outcome.retryableFailures > 0 || !gradeBlocks.failedClassIds.isEmpty || !tournamentBlocks.failedClassIds.isEmpty
         status.tooLarge = !outcome.tooLargeStudentIds.isEmpty
         watcher.updatePublishedState(
             withNotes: gradeBlocks.classIdsWithNotes,
             readClassIds: gradeBlocks.readClassIds,
+            complete: !status.retry && !status.tooLarge
+        )
+        tournamentWatcher.updatePublishedState(
+            withTournaments: tournamentBlocks.classIdsWithTournaments,
+            readClassIds: tournamentBlocks.readClassIds,
             complete: !status.retry && !status.tooLarge
         )
         return status

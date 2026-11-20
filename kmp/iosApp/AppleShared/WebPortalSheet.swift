@@ -266,13 +266,16 @@ struct WebPortalSheet: View {
     let loadStudents: (Int64) async -> [WebPortalStudent]
     @StateObject private var model: WebPortalViewModel
     @StateObject private var grades: WebPortalGradesViewModel
+    @StateObject private var tournaments: WebPortalTournamentsViewModel
     @ObservedObject private var gradesWatcher = WebPortalGradesWatcher.shared
+    @ObservedObject private var tournamentsWatcher = WebPortalTournamentsWatcher.shared
     @Environment(\.dismiss) private var dismiss
 
-    /// Dos secciones: las cuentas (fase 1) y las notas que se enseñan (fase 2).
+    /// Tres secciones: cuentas (fase 1), notas visibles (fase 2) y torneos (fase 3B).
     enum PortalSection: String, CaseIterable, Identifiable {
         case cuentas = "Cuentas"
         case notas = "Notas visibles"
+        case torneos = "Torneos"
         var id: String { rawValue }
     }
 
@@ -299,6 +302,9 @@ struct WebPortalSheet: View {
         gradesSettingsURL: URL? = nil,
         loadGrades: @escaping (Int64, String?) async -> WebPortalGradeOverview? = { _, _ in nil },
         gradesChanged: @escaping (Int64, Bool) -> Void = { _, _ in },
+        tournamentsSettingsURL: URL? = nil,
+        loadTournaments: @escaping (Int64) async -> WebPortalTournamentOverview? = { _ in nil },
+        tournamentsChanged: @escaping (Int64, Bool) -> Void = { _, _ in },
         initialSection: PortalSection = .cuentas
     ) {
         self._section = State(initialValue: initialSection)
@@ -311,6 +317,13 @@ struct WebPortalSheet: View {
                 ?? FileManager.default.temporaryDirectory.appendingPathComponent("notas-visibles.json"),
             loadOverview: loadGrades,
             changed: gradesChanged
+        ))
+        self._tournaments = StateObject(wrappedValue: WebPortalTournamentsViewModel(
+            settingsURL: tournamentsSettingsURL
+                ?? WebPortalTournamentSettings.standardURL()
+                ?? FileManager.default.temporaryDirectory.appendingPathComponent("torneos-visibles.json"),
+            loadOverview: loadTournaments,
+            changed: tournamentsChanged
         ))
         self.loadStudents = loadStudents
     }
@@ -325,11 +338,12 @@ struct WebPortalSheet: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(maxWidth: 360)
+            .frame(maxWidth: 420)
             .accessibilityLabel("Sección del portal")
             switch section {
             case .cuentas: content
             case .notas: gradesContent
+            case .torneos: tournamentsContent
             }
         }
         .padding(24)
@@ -346,6 +360,31 @@ struct WebPortalSheet: View {
         }
         .task(id: classId) {
             await grades.load(classId: classId)
+        }
+        .task(id: classId) {
+            await tournaments.load(classId: classId)
+        }
+        // A2 · la primera vez que se enciende un torneo o los nombres de equipo. Cancelar por defecto.
+        .alert(
+            tournamentAlertTitle,
+            isPresented: Binding(get: { tournaments.pendingConfirmation != nil }, set: { if !$0 { tournaments.cancelPending() } }),
+            presenting: tournaments.pendingConfirmation
+        ) { pending in
+            Button("Cancelar", role: .cancel) { tournaments.cancelPending() }
+                .keyboardShortcut(.defaultAction)
+            switch pending {
+            case .showTournament:
+                Button("Mostrar torneo") { tournaments.confirmPending() }
+            case .showNames:
+                Button("Mostrar nombres") { tournaments.confirmPending() }
+            }
+        } message: { pending in
+            switch pending {
+            case .showTournament(let row):
+                Text("\(tournaments.overview?.studentCount ?? 0) alumnos verán el progreso y resultados de «\(row.name)» como «Equipo 1, Equipo 2…» unos 2 minutos después.")
+            case .showNames(let row):
+                Text("El alumnado de \(groupName) verá los nombres tal como están escritos en «\(row.name)» en lugar de «Equipo 1, Equipo 2…». Comprueba que no incluyan apellidos del alumnado.")
+            }
         }
         // P2 · la primera vez que se enciende una columna. Cancelar es lo que responde a Intro y a Escape.
         .alert(
@@ -442,6 +481,23 @@ struct WebPortalSheet: View {
                 WebPortalGradesPane(model: grades, watcher: gradesWatcher, classId: classId)
             }
             WebPortalGradesFooter(watcher: gradesWatcher, classId: classId)
+        }
+    }
+
+    /// Torneos (A1 a A4). Mismo contenedor acotado que Notas visibles.
+    private var tournamentsContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollView(.vertical) {
+                WebPortalTournamentsPane(model: tournaments, watcher: tournamentsWatcher, classId: classId)
+            }
+            WebPortalTournamentsFooter(watcher: tournamentsWatcher, classId: classId)
+        }
+    }
+
+    private var tournamentAlertTitle: String {
+        switch tournaments.pendingConfirmation {
+        case .showNames: return "¿Mostrar los nombres de los equipos?"
+        case .showTournament, nil: return "¿Mostrar este torneo en el portal?"
         }
     }
 

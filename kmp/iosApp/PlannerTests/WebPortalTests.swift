@@ -554,6 +554,8 @@ final class WebPortalSheetLayoutTests: XCTestCase {
             loadStudents: { _ in students },
             gradesSettingsURL: directory.appendingPathComponent("portal/notas-visibles.json"),
             loadGrades: { _, _ in overview },
+            tournamentsSettingsURL: directory.appendingPathComponent("portal/torneos-visibles.json"),
+            loadTournaments: { _ in Self.manyTournaments },
             initialSection: section
         )
         let window = NSWindow(
@@ -608,6 +610,34 @@ final class WebPortalSheetLayoutTests: XCTestCase {
             }
             window.orderOut(nil)
         }
+    }
+
+    private static var manyTournaments: WebPortalTournamentOverview {
+        WebPortalTournamentOverview(
+            classId: 1,
+            studentCount: 28,
+            tournaments: (1...12).map { i in
+                WebPortalTournamentRow(
+                    id: "tor-\(i)",
+                    name: "Torneo \(i) · Educación Física",
+                    formatTitle: "Liguilla + puestos",
+                    status: i == 1 ? .live : .finished,
+                    teamCount: 8,
+                    playedMatches: i == 1 ? 10 : 16,
+                    totalMatches: 16,
+                    hasSchedule: true
+                )
+            }
+        )
+    }
+
+    func testPestanaTorneosNoDesestabilizaLaVentana() async throws {
+        let window = try await present(failing: false, asSheet: true, section: .torneos, overview: nil)
+        XCTAssertEqual(window.contentLayoutRect.height, 450, accuracy: 1, "la ventana principal no debe crecer")
+        for sheet in window.sheets {
+            XCTAssertLessThanOrEqual(sheet.frame.height, 450, "la hoja no puede ser más alta que su ventana")
+        }
+        window.orderOut(nil)
     }
 
     func testPestanaNotasVisiblesComoContenidoDeUnaVentanaPequena() async throws {

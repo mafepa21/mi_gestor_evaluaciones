@@ -9,11 +9,13 @@ final class WebPortalPEViewModel: ObservableObject {
     enum PendingConfirmation: Identifiable, Equatable {
         case showTest(WebPortalPETestRow)
         case showAttendance
+        case showPassport
 
         var id: String {
             switch self {
             case .showTest(let row): return "test-\(row.id)"
             case .showAttendance: return "attendance"
+            case .showPassport: return "passport"
             }
         }
     }
@@ -80,6 +82,17 @@ final class WebPortalPEViewModel: ObservableObject {
         }
     }
 
+    func requestPassport(on: Bool) {
+        guard canEdit else { return }
+        if on, !settings.pasaporteConfirmado {
+            pendingConfirmation = .showPassport
+            return
+        }
+        apply(immediately: !on) {
+            $0.pasaporte = on
+        }
+    }
+
     func confirmPending() {
         guard let pending = pendingConfirmation else { return }
         pendingConfirmation = nil
@@ -93,6 +106,11 @@ final class WebPortalPEViewModel: ObservableObject {
             apply(immediately: false) {
                 $0.asistencia = true
                 $0.asistenciaConfirmada = true
+            }
+        case .showPassport:
+            apply(immediately: false) {
+                $0.pasaporte = true
+                $0.pasaporteConfirmado = true
             }
         }
     }
@@ -202,6 +220,32 @@ struct WebPortalPEPane: View {
                     .toggleStyle(.switch)
                     .disabled(!model.canEdit)
                     .accessibilityLabel("Mostrar resumen de asistencia")
+                }
+                .padding(.vertical, 6)
+
+                Divider().padding(.vertical, 4)
+
+                Text("PASAPORTE DE EDUCACIÓN FÍSICA")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Mostrar sellos del pasaporte").font(.callout.weight(.semibold))
+                        Text("Enseña al alumnado qué paradas lleva selladas en sus pasaportes activos. Nunca muestra sus respuestas.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { model.settings.pasaporte },
+                        set: { model.requestPassport(on: $0) }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .disabled(!model.canEdit)
+                    .accessibilityLabel("Mostrar sellos del pasaporte")
                 }
                 .padding(.vertical, 6)
             }

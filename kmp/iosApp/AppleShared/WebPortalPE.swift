@@ -50,6 +50,19 @@ enum WebPortalPE {
         let status: String
     }
 
+    struct PassportStop: Equatable {
+        let title: String
+        let done: Bool
+    }
+
+    struct PassportEntry: Equatable {
+        let title: String
+        let stops: [PassportStop]
+    }
+
+    static let maxPassports = 10
+    static let maxPassportStops = 20
+
     static func capacityLabel(_ capacity: PhysicalCapacity) -> String {
         switch capacity {
         case .resistance: return "Resistencia"
@@ -203,7 +216,35 @@ enum WebPortalPE {
         ]
     }
 
-    static func digest(fisica: [String: Any]?, asistencia: [String: Any]?) -> String {
+    /// Bloque `pasaporte` de un alumno concreto (solo título de parada y si está sellada; nunca respuestas).
+    static func pasaporteBlock(
+        entries: [PassportEntry],
+        now: Date = Date()
+    ) -> [String: Any]? {
+        let lista: [[String: Any]] = entries.prefix(maxPassports).compactMap { entry in
+            let stops = Array(entry.stops.prefix(maxPassportStops))
+            guard !stops.isEmpty else { return nil }
+            let completed = stops.filter(\.done).count
+            return [
+                "titulo": WebPortalGrades.clip(entry.title, 100),
+                "completadas": completed,
+                "total": stops.count,
+                "paradas": stops.map { stop -> [String: Any] in
+                    [
+                        "titulo": WebPortalGrades.clip(stop.title, 80),
+                        "hecha": stop.done,
+                    ]
+                },
+            ]
+        }
+        guard !lista.isEmpty else { return nil }
+        return [
+            "actualizado": WebPortalGrades.isoString(now),
+            "lista": lista,
+        ]
+    }
+
+    static func digest(fisica: [String: Any]?, asistencia: [String: Any]?, pasaporte: [String: Any]? = nil) -> String {
         var wrapper: [String: Any] = [:]
         if var f = fisica {
             f.removeValue(forKey: "actualizado")
@@ -212,6 +253,10 @@ enum WebPortalPE {
         if var a = asistencia {
             a.removeValue(forKey: "actualizado")
             wrapper["asistencia"] = a
+        }
+        if var p = pasaporte {
+            p.removeValue(forKey: "actualizado")
+            wrapper["pasaporte"] = p
         }
         guard !wrapper.isEmpty,
               let data = try? JSONSerialization.data(withJSONObject: wrapper, options: [.sortedKeys]),
@@ -234,23 +279,25 @@ struct WebPortalPEBlocks {
     var known = Set<Int64>()
     var fisica: [Int64: [String: Any]] = [:]
     var asistencia: [Int64: [String: Any]] = [:]
+    var pasaporte: [Int64: [String: Any]] = [:]
     var readClassIds = Set<Int64>()
     var failedClassIds = Set<Int64>()
     var classIdsWithPE = Set<Int64>()
 
     func fisica(for studentId: Int64) -> [String: Any]? { fisica[studentId] }
     func asistencia(for studentId: Int64) -> [String: Any]? { asistencia[studentId] }
+    func pasaporte(for studentId: Int64) -> [String: Any]? { pasaporte[studentId] }
 }
 
 final class WebPortalPESummary {
     private var digests: [Int64: String] = [:]
 
-    func hasChanged(studentId: Int64, fisica: [String: Any]?, asistencia: [String: Any]?) -> Bool {
-        WebPortalPE.digest(fisica: fisica, asistencia: asistencia) != (digests[studentId] ?? "")
+    func hasChanged(studentId: Int64, fisica: [String: Any]?, asistencia: [String: Any]?, pasaporte: [String: Any]? = nil) -> Bool {
+        WebPortalPE.digest(fisica: fisica, asistencia: asistencia, pasaporte: pasaporte) != (digests[studentId] ?? "")
     }
 
-    func record(studentId: Int64, fisica: [String: Any]?, asistencia: [String: Any]?) {
-        let d = WebPortalPE.digest(fisica: fisica, asistencia: asistencia)
+    func record(studentId: Int64, fisica: [String: Any]?, asistencia: [String: Any]?, pasaporte: [String: Any]? = nil) {
+        let d = WebPortalPE.digest(fisica: fisica, asistencia: asistencia, pasaporte: pasaporte)
         if d.isEmpty { digests.removeValue(forKey: studentId) } else { digests[studentId] = d }
     }
 }
@@ -372,6 +419,35 @@ extension KmpBridge {
                 }
             }
 
+            var passportsByStudent: [Int64: [WebPortalPE.PassportEntry]] = [:]
+            if groupSettings.pasaporte,
+               let instances = try? await container.webSubmissionsRepository.listAllFormInstances() {
+                let classPassports = instances.filter {
+                    $0.classId == classId && $0.mode == "passport" && !$0.revoked && !$0.archived
+                }
+                for inst in classPassports {
+                    guard let manifest = try? JSONDecoder().decode(WebFormManifest.self, from: Data(inst.manifestJson.utf8)),
+                          let sections = manifest.sections, !sections.isEmpty,
+                          let pStore = WebPassportStore.forForm(inst.formInstanceId) else { continue }
+                    for student in students {
+                        let rec = pStore.record(for: student.id)
+                        let completedSections = Set(
+                            (rec?.sectionChangedAt.keys.map { $0 } ?? [])
+                                + (rec?.answers.values.compactMap(\.sectionId) ?? [])
+                        )
+                        let stops = sections.map { section in
+                            WebPortalPE.PassportStop(
+                                title: WebPassportSections.webTitle(section.title),
+                                done: completedSections.contains(section.sectionId)
+                            )
+                        }
+                        passportsByStudent[student.id, default: []].append(
+                            WebPortalPE.PassportEntry(title: inst.title, stops: stops)
+                        )
+                    }
+                }
+            }
+
             var classHasAny = false
             for student in students {
                 if !groupSettings.visibleTestIds.isEmpty,
@@ -390,6 +466,14 @@ extension KmpBridge {
                     now: now
                    ) {
                     result.asistencia[student.id] = aBlock
+                    classHasAny = true
+                }
+                if groupSettings.pasaporte,
+                   let pBlock = WebPortalPE.pasaporteBlock(
+                    entries: passportsByStudent[student.id] ?? [],
+                    now: now
+                   ) {
+                    result.pasaporte[student.id] = pBlock
                     classHasAny = true
                 }
             }

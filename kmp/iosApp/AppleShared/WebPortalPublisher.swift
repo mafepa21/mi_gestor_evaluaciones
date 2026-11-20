@@ -66,6 +66,7 @@ enum WebPortalPublisher {
         torneos: [String: Any]? = nil,
         fisica: [String: Any]? = nil,
         asistencia: [String: Any]? = nil,
+        pasaporte: [String: Any]? = nil,
         now: Date = Date()
     ) throws -> Data {
         let pending = forms
@@ -95,6 +96,7 @@ enum WebPortalPublisher {
         if let torneos { board["torneos"] = torneos }
         if let fisica { board["fisica"] = fisica }
         if let asistencia { board["asistencia"] = asistencia }
+        if let pasaporte { board["pasaporte"] = pasaporte }
         return try JSONSerialization.data(withJSONObject: board, options: [.sortedKeys])
     }
 
@@ -116,6 +118,8 @@ enum WebPortalPublisher {
         var fisica: [String: Any]? = nil
         /// Bloque «Asistencia» filtrado por el interruptor.
         var asistencia: [String: Any]? = nil
+        /// Bloque «Pasaporte» filtrado por el interruptor (fase 3D).
+        var pasaporte: [String: Any]? = nil
     }
 
     struct Outcome: Equatable {
@@ -167,6 +171,7 @@ enum WebPortalPublisher {
                     torneos: input.torneos,
                     fisica: input.fisica,
                     asistencia: input.asistencia,
+                    pasaporte: input.pasaporte,
                     now: now
                 )
                 guard json.count <= maxBoardBytes else {
@@ -294,6 +299,7 @@ extension KmpBridge {
         func torneos(for studentId: Int64) -> [String: Any]? { tournamentBlocks.torneos(for: studentId) }
         func fisica(for studentId: Int64) -> [String: Any]? { peBlocks.fisica(for: studentId) }
         func asistencia(for studentId: Int64) -> [String: Any]? { peBlocks.asistencia(for: studentId) }
+        func pasaporte(for studentId: Int64) -> [String: Any]? { peBlocks.pasaporte(for: studentId) }
 
         var dynamicTargets = Set<Int64>()
         for (studentId, _) in store.entries {
@@ -306,7 +312,7 @@ extension KmpBridge {
                 dynamicTargets.insert(studentId)
             }
             if peBlocks.known.contains(studentId),
-               peWatcher.summary.hasChanged(studentId: studentId, fisica: peBlocks.fisica[studentId], asistencia: peBlocks.asistencia[studentId]) {
+               peWatcher.summary.hasChanged(studentId: studentId, fisica: peBlocks.fisica[studentId], asistencia: peBlocks.asistencia[studentId], pasaporte: peBlocks.pasaporte[studentId]) {
                 dynamicTargets.insert(studentId)
             }
         }
@@ -350,7 +356,8 @@ extension KmpBridge {
                     notas: notas(for: $0),
                     torneos: torneos(for: $0),
                     fisica: fisica(for: $0),
-                    asistencia: asistencia(for: $0)
+                    asistencia: asistencia(for: $0),
+                    pasaporte: pasaporte(for: $0)
                 )
             },
             storeURL: storeURL,
@@ -361,7 +368,7 @@ extension KmpBridge {
         for studentId in outcome.publishedStudentIds {
             watcher.summary.record(studentId: studentId, notas: notas(for: studentId))
             tournamentWatcher.summary.record(studentId: studentId, torneos: torneos(for: studentId))
-            peWatcher.summary.record(studentId: studentId, fisica: fisica(for: studentId), asistencia: asistencia(for: studentId))
+            peWatcher.summary.record(studentId: studentId, fisica: fisica(for: studentId), asistencia: asistencia(for: studentId), pasaporte: pasaporte(for: studentId))
         }
         if outcome.published + outcome.failed > 0 {
             WebPortalPublisher.log.notice("Portal: \(outcome.published) tablones publicados, \(outcome.failed) con error")

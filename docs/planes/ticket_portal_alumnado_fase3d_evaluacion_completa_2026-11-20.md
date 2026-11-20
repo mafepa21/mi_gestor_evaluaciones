@@ -1,6 +1,6 @@
 # Ticket · Portal del alumnado · Fase 3D: Evaluación completa (histórico y sellos de pasaporte)
 
-- **Estado**: Borrador pendiente de `APROBADO` (no se toca código de producción hasta aprobación)
+- **Estado**: Implementado y verificado (tests Swift + 157 tests web + `vite build` + macOS/iOS builds)
 - **Fecha**: 2026-11-20
 - **Ramas previstas**:
   - App: `codex/portal-alumnado-fase3d-evaluacion-completa` (`mafepa21/mi_gestor_evaluaciones`)
@@ -122,8 +122,8 @@ Solo se incluye si el docente activa **«Mostrar sellos del pasaporte»** en `EF
 
 ## 6. Criterios de aceptación
 
-- [ ] Histórico de evaluaciones y sellos del pasaporte empiezan **apagados por defecto** y piden confirmación con **Cancelar** como acción por defecto la primera vez.
-- [ ] En la web del alumno, «Mis notas» muestra «Evolución del curso» solo cuando hay evaluaciones anteriores activadas, y «Mi EF» muestra los sellos circulares del pasaporte solo cuando el docente lo activa.
-- [ ] `sobreParaCopia` elimina `pasaporte` antes de guardar en `localStorage` con «Recordarme».
-- [ ] «Ver como este alumno…» refleja ambos bloques en local antes de publicar.
-- [ ] Tests Swift, tests web (`npm test`), `vite build`, `MiGestorKMPMac` y `MiGestorKMPiOS` pasan en verde.
+- [x] Histórico de evaluaciones y sellos del pasaporte empiezan **apagados por defecto** y piden confirmación con **Cancelar** como acción por defecto la primera vez.
+- [x] En la web del alumno, «Mis notas» muestra «Evolución del curso» solo cuando hay evaluaciones anteriores activadas, y «Mi EF» muestra los sellos circulares del pasaporte solo cuando el docente lo activa.
+- [x] `sobreParaCopia` elimina `pasaporte` antes de guardar en `localStorage` con «Recordarme».
+- [x] «Ver como este alumno…» refleja ambos bloques en local antes de publicar.
+- [x] Tests Swift, tests web (`npm test`), `vite build`, `MiGestorKMPMac` y `MiGestorKMPiOS` pasan en verde.

@@ -87,8 +87,13 @@ struct MacBackupInspectorView: View {
         .sheet(item: $backupToExport) { backup in
             EncryptedBackupExportSheet(
                 backup: backup,
-                onExport: { destinationURL, password in
-                    try await store.exportEncryptedBackup(backup, to: destinationURL, password: password)
+                onExport: { destinationURL, password, includePortalKeys in
+                    try await store.exportEncryptedBackup(
+                        backup,
+                        to: destinationURL,
+                        password: password,
+                        includePortalKeys: includePortalKeys
+                    )
                 },
                 onFinished: { await store.loadBackups() }
             )

@@ -67,6 +67,13 @@ enum WebSubmissionInbox {
 
     static var accountKey: String? { loadToken(name: accountKeyName) }
 
+    /// Restaura la clave de cuenta del buzón desde una copia cifrada `.migestorbackupx`.
+    @discardableResult
+    static func restoreAccountKey(_ token: String) -> Bool {
+        guard !token.isEmpty else { return false }
+        return saveToken(token, name: accountKeyName)
+    }
+
     /// Crea la clave de cuenta si no existe y devuelve su huella para el servidor.
     static func ensureAccountKey() -> String? {
         if let existing = accountKey { return fingerprint(existing) }

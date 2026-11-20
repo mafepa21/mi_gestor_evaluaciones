@@ -12,6 +12,9 @@ public final class AppleBackupService: ObservableObject {
     @Published public var lastError: String? = nil
     @Published public var needsRestart: Bool = false
     @Published public var latestEmergencyBackupUrl: URL? = nil
+    /// Bóveda de llaves del portal extraída en memoria de la última copia cifrada `.migestorbackupx` importada.
+    /// Nunca se persiste en texto claro dentro de `backupsDirectoryURL`.
+    @Published public var lastImportedPortalVault: WebPortalBackupVault? = nil
     var automaticBackupTask: Task<Void, Never>?
 
     /// Bases de datos que el arranque puso en cuarentena porque no pudo abrirlas
@@ -526,11 +529,14 @@ public final class AppleBackupService: ObservableObject {
 
     /// Exporta una copia portable cifrada. El ZIP intermedio y la salida parcial viven en
     /// staging y se eliminan incluso si la operación falla; nunca se carga el paquete entero
-    /// en memoria.
+    /// en memoria. Si `includePortalKeys` es `true`, empaqueta las llaves del portal solo
+    /// dentro del ZIP cifrado (nunca en la copia local `.migestorbackup`).
     public func exportEncryptedBackup(
         _ descriptor: AppleBackupDescriptor,
         to destinationURL: URL,
-        password: String
+        password: String,
+        includePortalKeys: Bool = true,
+        portalVaultOverride: WebPortalBackupVault? = nil
     ) async throws {
         operationState = .exporting
         defer { operationState = .idle }
@@ -554,10 +560,19 @@ public final class AppleBackupService: ObservableObject {
                     userInfo: [NSLocalizedDescriptionKey: "No se puede exportar una copia que no supera la validación de integridad."]
                 )
             }
+            var extraEntries: [String: Data] = [:]
+            if includePortalKeys, let vault = portalVaultOverride ?? WebPortalBackupVault.capture() {
+                extraEntries[WebPortalBackupVault.archiveEntryName] = try vault.encodedData()
+            }
+            let archiveExtraEntries = extraEntries
             operationState = .exporting
             try fileManager.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
             try await Task.detached(priority: .userInitiated) {
-                try AppleBackupPackageArchive.createArchive(packageURL: descriptor.url, archiveURL: archiveURL)
+                try AppleBackupPackageArchive.createArchive(
+                    packageURL: descriptor.url,
+                    archiveURL: archiveURL,
+                    extraEntries: archiveExtraEntries
+                )
                 try AppleEncryptedBackupContainer.encrypt(
                     plaintextURL: archiveURL,
                     destinationURL: stagedDestination,
@@ -580,6 +595,7 @@ public final class AppleBackupService: ObservableObject {
     /// checksum, cabecera SQLite, integrity_check y foreign_key_check.
     public func importPortableBackup(from sourceURL: URL, password: String?) async throws -> AppleBackupDescriptor {
         operationState = .importing
+        lastImportedPortalVault = nil
         defer { operationState = .idle }
 
         let importID = UUID().uuidString
@@ -623,6 +639,14 @@ public final class AppleBackupService: ObservableObject {
                 }.value
             }
 
+            // Extraer `portal-vault.json` SOLO de copias cifradas `.migestorbackupx` y borrarlo
+            // SIEMPRE del paquete antes de guardarlo en `backupsDirectoryURL` (cero llaves en claro).
+            let extractedPortalVault = try WebPortalBackupVault.extractAndStrip(
+                in: stagedPackageURL,
+                format: format,
+                fileManager: fileManager
+            )
+
             let stagedDescriptor = try loadBackupDescriptor(at: stagedPackageURL)
             try ensureSchemaCompatible(stagedDescriptor.manifest)
             let verified = await verifyBackup(stagedDescriptor)
@@ -661,6 +685,7 @@ public final class AppleBackupService: ObservableObject {
                     userInfo: [NSLocalizedDescriptionKey: "La copia se importó pero no conservó su validación de integridad."]
                 )
             }
+            self.lastImportedPortalVault = extractedPortalVault
             return verifiedImport
         } catch {
             if let finalPackageURL, fileManager.fileExists(atPath: finalPackageURL.path) {

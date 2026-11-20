@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maqueta · Portal del alumnado · Fase 3D (Evaluación completa)</title>
+<style>
+  :root {
+    --papel: #f2eee1;
+    --papel-2: #e7e1cf;
+    --papel-card: #fbf8ee;
+    --pista: #0f3d2e;
+    --tinta: #171e1a;
+    --tinta-2: #4f5c54;
+    --linea: rgba(15, 61, 46, 0.14);
+    --mac-bg: #1e1e1c;
+    --mac-card: #282724;
+    --mac-bd: rgba(255,255,255,0.11);
+    --mac-t1: #f5f3ee;
+    --mac-t2: #a9a69d;
+    --mac-green: #34c759;
+    --r-lg: 16px;
+    --r-md: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    background: #141513;
+    color: var(--mac-t1);
+    line-height: 1.45;
+  }
+  header.top {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(20, 21, 19, 0.92); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--mac-bd);
+    padding: 16px 24px;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  .brand h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  .brand p { margin: 2px 0 0; font-size: 12px; color: var(--mac-t2); }
+  nav.states { display: flex; flex-wrap: wrap; gap: 8px; }
+  nav.states button {
+    border: 1px solid var(--mac-bd); background: var(--mac-card); color: var(--mac-t1);
+    border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 500; cursor: pointer; min-height: 36px;
+  }
+  nav.states button[aria-selected="true"] { background: var(--pista); border-color: #34a077; color: #fff; }
+  main { max-width: 1020px; margin: 0 auto; padding: 32px 24px 64px; }
+  .scene { display: none; }
+  .scene.active { display: block; }
+  .scene-meta { margin-bottom: 24px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .scene-meta h2 { margin: 0; font-size: 20px; font-weight: 600; }
+  .scene-meta p { margin: 4px 0 0; font-size: 14px; color: var(--mac-t2); max-width: 720px; }
+  .pill { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: rgba(52,199,89,0.14); color: #6ee79a; }
+
+  .mac-sheet {
+    background: var(--mac-bg); border: 1px solid var(--mac-bd); border-radius: var(--r-lg);
+    box-shadow: 0 24px 64px rgba(0,0,0,0.55); padding: 24px; max-width: 700px; margin: 0 auto;
+  }
+  .seg { display: inline-flex; background: #2c2b28; padding: 3px; border-radius: 9px; gap: 2px; margin-bottom: 18px; }
+  .seg span { font-size: 12.5px; padding: 6px 12px; border-radius: 7px; color: var(--mac-t2); }
+  .seg span.on { background: #484640; color: #fff; font-weight: 600; }
+  .sec-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--mac-t2); margin: 16px 0 6px; font-weight: 600; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--mac-bd); }
+  .row:last-child { border-bottom: none; }
+  .row strong { display: block; font-size: 14px; }
+  .row small { display: block; font-size: 12px; color: var(--mac-t2); margin-top: 2px; }
+  .switch { width: 42px; height: 24px; border-radius: 999px; background: #555; position: relative; flex-shrink: 0; cursor: pointer; border: none; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .switch[aria-checked="true"] { background: var(--mac-green); }
+  .switch[aria-checked="true"]::after { transform: translateX(18px); }
+
+  .phone-wrap { display: flex; justify-content: center; }
+  .phone {
+    width: 100%; max-width: 440px;
+    background: var(--papel);
+    background-image: repeating-linear-gradient(to bottom, transparent 0px, transparent 31px, rgba(15,61,46,0.065) 31px, rgba(15,61,46,0.065) 32px);
+    color: var(--tinta); border-radius: 26px; border: 6px solid #2b2c29;
+    box-shadow: 0 28px 70px rgba(0,0,0,0.6); padding: 20px 18px 28px;
+  }
+  .web-tabs { display: flex; gap: 6px; background: var(--papel-2); padding: 4px; border-radius: 999px; margin-bottom: 18px; }
+  .web-tabs span { flex: 1; text-align: center; font-size: 12.5px; font-weight: 600; padding: 8px 8px; border-radius: 999px; color: var(--tinta-2); }
+  .web-tabs span.on { background: var(--pista); color: #fff; }
+
+  .card { background: var(--papel-card); border: 1px solid var(--linea); border-radius: 14px; padding: 15px 16px; margin-bottom: 12px; }
+  .card h4 { margin: 0; font-size: 15px; color: var(--pista); }
+  .card .sub { margin: 2px 0 0; font-size: 12px; color: var(--tinta-2); }
+
+  .hist-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0; border-bottom: 1px dashed var(--linea);
+  }
+  .hist-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .hist-grade {
+    font-size: 17px; font-weight: 800; color: var(--pista); font-variant-numeric: tabular-nums;
+    background: rgba(15,61,46,0.09); padding: 4px 10px; border-radius: 8px;
+  }
+
+  /* Passport stamps */
+  .bar-bg { height: 8px; border-radius: 999px; background: var(--papel-2); overflow: hidden; margin: 10px 0 14px; }
+  .bar-fill { height: 100%; background: var(--pista); border-radius: 999px; width: 75%; }
+  .stamps-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stamp-item {
+    border: 1.5px solid var(--linea); border-radius: 12px; padding: 12px 10px; text-align: center;
+    background: #fff;
+  }
+  .stamp-item.done { border-color: rgba(15,61,46,0.35); background: #f3f9f5; }
+  .seal {
+    width: 54px; height: 54px; margin: 0 auto 8px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 9px; font-weight: 800; letter-spacing: 0.06em;
+  }
+  .stamp-item.done .seal {
+    border: 2.5px solid var(--pista); color: var(--pista); transform: rotate(-9deg);
+    background: rgba(15,61,46,0.06);
+  }
+  .stamp-item.todo .seal {
+    border: 2px dashed #aeb8b2; color: #8c9891;
+  }
+  .stamp-item strong { display: block; font-size: 12.5px; color: var(--pista); }
+  .stamp-item.todo strong { color: var(--tinta-2); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <h1>Portal del alumnado · Fase 3D (Evaluación completa)</h1>
+    <p>Maqueta interactiva · Histórico de evaluaciones + Sellos del Pasaporte de EF · Sin 5.ª pestaña</p>
+  </div>
+  <nav class="states" role="tablist">
+    <button role="tab" aria-selected="true" data-scene="d1">D1 · App: Histórico en Notas visibles</button>
+    <button role="tab" aria-selected="false" data-scene="d2">D2 · App: Sellos en EF y seguimiento</button>
+    <button role="tab" aria-selected="false" data-scene="w1">W1 · Web: Evolución del curso</button>
+    <button role="tab" aria-selected="false" data-scene="w2">W2 · Web: Sellos del Pasaporte</button>
+  </nav>
+</header>
+
+<main>
+  <!-- D1 -->
+  <section id="scene-d1" class="scene active" role="tabpanel">
+    <div class="scene-meta">
+      <div>
+        <h2>D1 · App macOS: Histórico de evaluaciones en «Notas visibles»</h2>
+        <p>Si el Cuaderno del grupo tiene varias pestañas (1.ª Eval, 2.ª Eval…), el docente puede encender las evaluaciones cerradas anteriores para mostrar la evolución del curso.</p>
+      </div>
+      <span class="pill">Apagado por defecto</span>
+    </div>
+
+    <div class="mac-sheet">
+      <div class="seg">
+        <span>Cuentas</span>
+        <span class="on">Notas visibles</span>
+        <span>Torneos</span>
+        <span>EF y seguimiento</span>
+      </div>
+
+      <div class="sec-label">Evaluación activa: 2.ª Evaluación</div>
+      <div class="row">
+        <div><strong>Mostrar la media</strong><small>La misma media del Cuaderno, solo con lo que cuenta.</small></div>
+        <button class="switch" type="button" role="switch" aria-checked="true"></button>
+      </div>
+
+      <div class="sec-label">Histórico de evaluaciones anteriores</div>
+      <div class="row">
+        <div>
+          <strong>1.ª Evaluación</strong>
+          <small>Muestra la media final de esta pestaña en el bloque «Evolución del curso».</small>
+        </div>
+        <button class="switch" type="button" role="switch" aria-checked="true"></button>
+      </div>
+      <div class="row">
+        <div>
+          <strong>3.ª Evaluación</strong>
+          <small>Aún sin publicar. Solo se muestra si la enciendes aquí.</small>
+        </div>
+        <button class="switch" type="button" role="switch" aria-checked="false"></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- D2 -->
+  <section id="scene-d2" class="scene" role="tabpanel">
+    <div class="scene-meta">
+      <div>
+        <h2>D2 · App macOS: «Mostrar sellos del pasaporte» en «EF y seguimiento»</h2>
+        <p>Un solo interruptor limpio debajo de Asistencia. Solo muestra paradas selladas/pendientes, nunca las respuestas escritas.</p>
+      </div>
+      <span class="pill">Sin respuestas privadas</span>
+    </div>
+
+    <div class="mac-sheet">
+      <div class="seg">
+        <span>Cuentas</span>
+        <span>Notas visibles</span>
+        <span>Torneos</span>
+        <span class="on">EF y seguimiento</span>
+      </div>
+
+      <div class="sec-label">Asistencia</div>
+      <div class="row">
+        <div><strong>Mostrar resumen de asistencia</strong><small>Solo contadores y fechas recientes.</small></div>
+        <button class="switch" type="button" role="switch" aria-checked="true"></button>
+      </div>
+
+      <div class="sec-label">Pasaporte de Educación Física</div>
+      <div class="row">
+        <div>
+          <strong>Mostrar sellos del pasaporte</strong>
+          <small>Enseña al alumnado qué paradas lleva selladas en sus pasaportes activos. Nunca muestra sus respuestas.</small>
+        </div>
+        <button class="switch" type="button" role="switch" aria-checked="true"></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- W1 -->
+  <section id="scene-w1" class="scene" role="tabpanel">
+    <div class="scene-meta">
+      <div>
+        <h2>W1 · Web del alumno: «Evolución del curso» en «Mis notas»</h2>
+        <p>Tarjeta limpia y compacta con las medias de evaluaciones anteriores que el docente haya activado.</p>
+      </div>
+      <span class="pill">Mismas 4 pestañas</span>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="web-tabs">
+          <span>Para hacer</span>
+          <span class="on">Mis notas</span>
+          <span>Mi EF</span>
+          <span>Torneo</span>
+        </div>
+
+        <div class="card">
+          <h4>Evolución del curso</h4>
+          <p class="sub">Evaluaciones anteriores</p>
+          <div style="margin-top:8px;">
+            <div class="hist-row">
+              <div><strong>1.ª Evaluación</strong><div class="sub">Notable</div></div>
+              <span class="hist-grade">7,8</span>
+            </div>
+            <div class="hist-row">
+              <div><strong>2.ª Evaluación (actual)</strong><div class="sub">Notable · +0,6</div></div>
+              <span class="hist-grade">8,4</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- W2 -->
+  <section id="scene-w2" class="scene" role="tabpanel">
+    <div class="scene-meta">
+      <div>
+        <h2>W2 · Web del alumno: Sellos del Pasaporte en «Mi EF»</h2>
+        <p>Integrado dentro de «Mi EF» sin añadir una 5.ª pestaña. Sellos circulares verdes para paradas completadas y borde punteado para pendientes.</p>
+      </div>
+      <span class="pill">Solo en memoria</span>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="web-tabs">
+          <span>Para hacer</span>
+          <span>Mis notas</span>
+          <span class="on">Mi EF</span>
+          <span>Torneo</span>
+        </div>
+
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:baseline;">
+            <h4>Pasaporte · Balonmano</h4>
+            <span class="sub" style="font-weight:700; color:var(--pista);">3 de 4 paradas</span>
+          </div>
+          <div class="bar-bg"><div class="bar-fill"></div></div>
+
+          <div class="stamps-grid">
+            <div class="stamp-item done">
+              <div class="seal">SELLADA</div>
+              <strong>Punto de partida</strong>
+            </div>
+            <div class="stamp-item done">
+              <div class="seal">SELLADA</div>
+              <strong>Ataque en equipo</strong>
+            </div>
+            <div class="stamp-item done">
+              <div class="seal">SELLADA</div>
+              <strong>Defensa activa</strong>
+            </div>
+            <div class="stamp-item todo">
+              <div class="seal">PEND.</div>
+              <strong>Reflexión final</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  const tabs = document.querySelectorAll('nav.states button');
+  const scenes = document.querySelectorAll('.scene');
+  tabs.forEach(b => b.addEventListener('click', () => {
+    const id = b.dataset.scene;
+    tabs.forEach(x => x.setAttribute('aria-selected', x === b ? 'true' : 'false'));
+    scenes.forEach(s => s.classList.toggle('active', s.id === 'scene-' + id));
+  }));
+  document.querySelectorAll('.switch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      sw.setAttribute('aria-checked', sw.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
+    });
+  });
+</script>
+</body>
+</html>

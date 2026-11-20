@@ -3,7 +3,7 @@
 ## Estado actual
 
 - Formularios web (autoevaluación, coevaluación, pasaporte por paradas, inscripción a torneos) publicados desde la app, con buzón cifrado en alwaysdata (ADR-2026-10-24).
-- Portal del alumnado, fase 1 (`codex/portal-alumnado-fase1`, ADR-2026-11-18): cuenta propia con código de alta y tablón cifrado «Para hacer». Fase 2 «Mis notas» (`codex/portal-alumnado-fase2`): pestaña «Notas visibles», bloque `notas` en el tablón, cola de 10 min y retirada inmediata al apagar. Fase 3B «Torneos» (`codex/portal-alumnado-fase3b-torneos`): pestaña «Torneos» en la app y pestaña dinámica «Torneo» en la web (progreso, clasificación, rondas/cuadro y podio), todo apagado de entrada y sin nombres de equipo por defecto.
+- Portal del alumnado, fase 1 (`codex/portal-alumnado-fase1`, ADR-2026-11-18): cuenta propia con código de alta y tablón cifrado «Para hacer». Fase 2 «Mis notas» (`codex/portal-alumnado-fase2`): pestaña «Notas visibles», bloque `notas` en el tablón, cola de 10 min y retirada inmediata al apagar. Fase 3B «Torneos» (`codex/portal-alumnado-fase3b-torneos`): pestaña «Torneos» en la app y pestaña dinámica «Torneo» en la web (progreso, clasificación, rondas/cuadro y podio), todo apagado de entrada y sin nombres de equipo por defecto. Fase 3A «Base operativa» (`codex/portal-alumnado-fase3a-base-operativa`): tarjetas QR imprimibles A4 (Mac + iPad), vista previa local «Ver como este alumno…» y respaldo cifrado de llaves del portal dentro de `.migestorbackupx`.
 
 ## Terreno de juego
 

@@ -1,6 +1,6 @@
 # Ticket · Portal del alumnado · Fase 3A: Base operativa
 
-- **Estado**: Borrador pendiente de `APROBADO` (no se toca código de producción hasta aprobación)
+- **Estado**: Implementado y verificado (63/63 tests en verde + builds macOS e iOS Simulator)
 - **Fecha**: 2026-11-20
 - **Rama**: `codex/portal-alumnado-fase3a-base-operativa`
 - **Repos afectados**: **solo `mi_gestor_evaluaciones`** (SwiftUI / `kmp/iosApp/AppleShared/`). Cero cambios en `entregas-alumnado`, `portal.php`, KMP ni SQLDelight.
@@ -132,7 +132,7 @@ Esta fase cierra los tres frentes con una interfaz mínima (principios `jobs-des
 
 ## 5. Criterios de aceptación
 
-- [ ] Desde `WebPortalSheet` › `Cuentas` (en Mac y en iPad) se puede generar un PDF A4 con 8 tarjetas QR recortables por página para alumnos sin invitar/caducados o seleccionados, con códigos válidos en el servidor y aviso de custodia.
-- [ ] Desde el menú de cualquier alumno se abre «Ver como este alumno…» mostrando exactamente lo que vería (Para hacer, Mis notas y Torneo) sin publicar ni tocar el servidor.
-- [ ] Al exportar una copia cifrada `.migestorbackupx` se incluyen opcionalmente (ON por defecto) las llaves y configuración del portal; al importarla en otro equipo se ofrece restaurarlas al Llavero, y **nunca** quedan llaves en claro en `.migestorbackup` ni se aceptan desde copias legacy sin cifrar.
-- [ ] Todas las suites `WebPortal*Tests` y `AppleEncryptedBackupTests` pasan en verde, y compilan tanto `MiGestorKMPMac` como `MiGestorKMPiOS`.
+- [x] Desde `WebPortalSheet` › `Cuentas` (en Mac y en iPad) se puede generar un PDF A4 con 8 tarjetas QR recortables por página para alumnos sin invitar/caducados o seleccionados, con códigos válidos en el servidor y aviso de custodia.
+- [x] Desde el menú de cualquier alumno se abre «Ver como este alumno…» mostrando exactamente lo que vería (Para hacer, Mis notas y Torneo) sin publicar ni tocar el servidor.
+- [x] Al exportar una copia cifrada `.migestorbackupx` se incluyen opcionalmente (ON por defecto) las llaves y configuración del portal; al importarla en otro equipo se ofrece restaurarlas al Llavero, y **nunca** quedan llaves en claro en `.migestorbackup` ni se aceptan desde copias legacy sin cifrar.
+- [x] Todas las suites `WebPortal*Tests` y `AppleEncryptedBackupTests` pasan en verde, y compilan tanto `MiGestorKMPMac` como `MiGestorKMPiOS`.

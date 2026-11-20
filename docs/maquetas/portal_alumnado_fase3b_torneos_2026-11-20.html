@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Portal · Fase 3B · Torneos</title>
+<!-- Maqueta viva · Portal del alumnado, fase 3B «Torneos» (2026-11-20). Datos inventados. -->
+<style>
+:root {
+  --papel: #f2eee1; --papel-alto: #fbf9f2; --papel-hueco: #e7e2d1;
+  --tinta: #10231a; --tinta-suave: #3d5348; --tinta-tenue: #4a5d52;
+  --lanza-texto: #a82b14; --lanza: #c9341a;
+  --pista: #0f3d2e; --pista-viva: #1a6349; --pista-clara: #dfeae3;
+  --oro: #9e6f08; --oro-claro: #f2dfa6;
+  --u: 0.5rem; --radio: 6px; --borde: 2px solid var(--tinta); --tap: 3rem;
+  --display: "Futura", "Avenir Next Condensed", "Oswald", "Roboto Condensed", "Helvetica Neue", sans-serif;
+  --lectura: "Charter", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+
+  /* App (macOS) */
+  --mac-fondo: #ececec; --mac-hoja: #ffffff; --mac-texto: #1d1d1f; --mac-suave: #5f5f64;
+  --mac-linea: #d9d9de; --mac-acento: #0a64d6; --mac-verde: #1c7c3c; --mac-ambar: #8a5a00; --mac-rojo: #b3261e;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #d7d3c6; color: var(--tinta); font-family: var(--lectura); font-size: 1.0625rem; line-height: 1.5; }
+.lienzo { max-width: 1480px; margin: 0 auto; padding: calc(var(--u)*6) calc(var(--u)*2); }
+.lienzo > header h1 { font-family: var(--display); font-size: 2rem; letter-spacing: .02em; margin: 0 0 var(--u); }
+.lienzo > header p { margin: 0; max-width: 68ch; color: var(--tinta-suave); }
+.parte { margin-top: calc(var(--u)*8); }
+.parte > h2 { font-family: var(--display); text-transform: uppercase; letter-spacing: .08em; font-size: 1rem; margin: 0 0 calc(var(--u)*3); color: var(--pista); }
+.rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: calc(var(--u)*5) calc(var(--u)*4); }
+.estado > h3 { font-family: var(--display); font-size: .8125rem; text-transform: uppercase; letter-spacing: .08em; margin: 0 0 var(--u); color: var(--tinta-suave); }
+.nota { font-size: .875rem; color: var(--tinta-suave); margin: var(--u) 0 0; max-width: 46ch; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+:focus-visible { outline: 3px solid var(--oro); outline-offset: 2px; }
+
+/* ---------- Teléfono (web del alumnado) ---------- */
+.tel { width: 360px; height: 740px; border: 10px solid #1b1b1b; border-radius: 40px; overflow: hidden; position: relative;
+  background-color: var(--papel);
+  background-image: repeating-linear-gradient(to bottom, transparent 0 2.9375rem, rgba(16,35,26,.045) 2.9375rem 3rem);
+  display: flex; flex-direction: column; }
+.tel .pantalla { flex: 1; overflow-y: auto; padding: calc(var(--u)*3) calc(var(--u)*2.5) calc(var(--u)*3); display: flex; flex-direction: column; }
+.barra { display: flex; align-items: center; justify-content: space-between; padding: calc(var(--u)*2) calc(var(--u)*3); border-bottom: var(--borde); background: var(--papel-alto); }
+.marca { font-family: var(--display); text-transform: uppercase; letter-spacing: .12em; font-size: .75rem; color: var(--pista); font-weight: 700; display: flex; align-items: center; gap: var(--u); }
+.marca::before { content: ""; width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--lanza); }
+.barra .yo { font-size: 1rem; color: var(--tinta); cursor: pointer; width: var(--tap); height: var(--tap); border-radius: 50%; border: var(--borde); display: grid; place-items: center; font-family: var(--display); font-weight: 700; background: var(--papel); }
+.tel h1 { font-family: var(--display); font-size: 1.5rem; line-height: 1.15; margin: 0 0 var(--u); }
+.tel .sub { margin: 0 0 calc(var(--u)*3); color: var(--tinta-suave); font-size: .9375rem; }
+.pie-tel { margin-top: auto; padding-top: calc(var(--u)*2); font-size: .8125rem; color: var(--tinta-tenue); text-align: center; }
+
+/* Pestañas (3 solo cuando hay torneo visible) */
+.pestanas { display: flex; gap: 4px; padding: 4px; margin: 0 0 calc(var(--u)*2.5); background: var(--papel-hueco); border-radius: 10px; }
+.pestanas button { flex: 1; min-height: 48px; border: 0; border-radius: 8px; background: transparent; font-family: var(--display); font-weight: 700; font-size: .875rem; color: var(--tinta-suave); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; padding: 0 4px; }
+.pestanas button[aria-selected="true"] { background: var(--papel-alto); color: var(--tinta); box-shadow: inset 0 -4px 0 var(--pista); }
+
+/* Cabecera del torneo y línea de fases */
+.torneo-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--u); margin-bottom: calc(var(--u)*1.5); }
+.torneo-cab b { font-family: var(--display); font-size: 1.25rem; line-height: 1.2; display: block; }
+.torneo-cab span { font-size: .875rem; color: var(--tinta-tenue); }
+.estado-pill { flex: none; padding: 4px 10px; border-radius: 999px; font-family: var(--display); font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; border: 2px solid var(--pista-viva); color: var(--pista); background: var(--pista-clara); }
+.estado-pill.fin { border-color: var(--oro); background: var(--oro-claro); color: var(--tinta); }
+.estado-pill.plan { border-color: var(--tinta-tenue); background: var(--papel-hueco); color: var(--tinta-suave); }
+
+.fases { display: flex; gap: 6px; margin-bottom: calc(var(--u)*2); }
+.fase { flex: 1; padding: 6px 8px; border-radius: var(--radio); background: var(--papel-hueco); font-family: var(--display); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; text-align: center; color: var(--tinta-tenue); border: 2px solid transparent; }
+.fase.hecha { color: var(--pista); background: var(--pista-clara); }
+.fase.ahora { background: var(--pista); color: #fff; font-weight: 700; }
+
+/* Tarjeta destacada: Tu equipo + próximo partido */
+.mi-equipo { background: var(--papel-alto); border: 2px solid var(--pista); border-radius: var(--radio); padding: calc(var(--u)*2); margin-bottom: calc(var(--u)*2); }
+.mi-equipo .kicker { display: inline-block; font-family: var(--display); font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--pista); margin-bottom: 2px; }
+.mi-equipo .nombre-eq { font-family: var(--display); font-size: 1.375rem; font-weight: 700; color: var(--tinta); line-height: 1.2; }
+.mi-equipo .resumen-eq { font-size: .875rem; color: var(--tinta-suave); margin-top: 2px; }
+.prox { margin-top: calc(var(--u)*1.5); padding-top: calc(var(--u)*1.5); border-top: 1px solid var(--papel-hueco); }
+.prox .etq { font-family: var(--display); font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--tinta-tenue); font-weight: 700; display: flex; justify-content: space-between; }
+.prox .duelo { font-family: var(--display); font-size: 1.0625rem; font-weight: 700; margin-top: 4px; color: var(--tinta); }
+
+/* Sub-sección */
+.bloque-t { font-family: var(--display); text-transform: uppercase; letter-spacing: .07em; font-size: .8125rem; font-weight: 700; color: var(--pista); margin: calc(var(--u)*2) 0 var(--u); display: flex; justify-content: space-between; align-items: baseline; }
+.bloque-t small { font-family: var(--lectura); text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--tinta-tenue); font-size: .8125rem; }
+
+/* Tabla de clasificación */
+.clasif { width: 100%; border-collapse: collapse; background: var(--papel-alto); border: var(--borde); border-radius: var(--radio); overflow: hidden; font-size: .875rem; }
+.clasif th { font-family: var(--display); font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; color: var(--tinta-tenue); text-align: left; padding: 8px 8px; background: var(--papel-hueco); border-bottom: 1px solid var(--papel-hueco); }
+.clasif th.n, .clasif td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.clasif td { padding: 9px 8px; border-top: 1px solid var(--papel-hueco); }
+.clasif tr.mio { background: var(--pista-clara); font-weight: 700; }
+.clasif tr.mio td:first-child { box-shadow: inset 4px 0 0 var(--pista); }
+.badge-mio { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--pista); color: #fff; font-family: var(--display); font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em; vertical-align: middle; }
+
+/* Partidos / Cuadro */
+.partido { background: var(--papel-alto); border: var(--borde); border-radius: var(--radio); padding: 10px 12px; margin-bottom: var(--u); }
+.partido.mio { border-color: var(--pista); background: #f3f7f4; }
+.partido .meta { display: flex; justify-content: space-between; gap: 8px; font-family: var(--display); font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; color: var(--tinta-tenue); margin-bottom: 6px; }
+.partido .fila-p { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .9375rem; padding: 2px 0; }
+.partido .fila-p.gana { font-weight: 700; color: var(--tinta); }
+.partido .fila-p.pierde { color: var(--tinta-tenue); }
+.partido .pts { font-family: var(--display); font-size: 1.0625rem; font-weight: 700; min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; }
+.partido .dest { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--papel-hueco); font-size: .8125rem; color: var(--tinta-suave); }
+
+/* Podio */
+.podio { background: var(--papel-alto); border: var(--borde); border-radius: var(--radio); overflow: hidden; margin-bottom: calc(var(--u)*2); }
+.podio-fila { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--papel-hueco); }
+.podio-fila:first-child { border-top: 0; }
+.podio-fila.mio { background: var(--pista-clara); }
+.puesto { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: .9375rem; flex: none; border: 2px solid var(--tinta); background: var(--papel); }
+.puesto.p1 { background: var(--oro-claro); border-color: var(--oro); }
+.podio-fila b { font-family: var(--display); font-size: 1.0625rem; flex: 1; }
+
+.vacio { margin: auto 0; text-align: center; padding: calc(var(--u)*4) 0; }
+.sello { width: 108px; height: 108px; margin: 0 auto calc(var(--u)*2.5); border-radius: 50%; border: 4px solid var(--pista-viva); display: grid; place-items: center; transform: rotate(-7deg);
+  font-family: var(--display); text-transform: uppercase; font-weight: 700; color: var(--pista-viva); letter-spacing: .06em; font-size: .875rem; }
+.btn { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 52px; border-radius: var(--radio); font-family: var(--display);
+  font-size: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; cursor: pointer; border: var(--borde); }
+.btn.pri { background: var(--pista); color: #fff; border-color: var(--pista); }
+.descansa { font-size: .8125rem; color: var(--tinta-tenue); margin: 4px 0 0; }
+
+/* ---------- App (macOS / iPad) ---------- */
+.mac { width: 100%; max-width: 680px; background: var(--mac-hoja); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.08);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; color: var(--mac-texto); font-size: 13px; line-height: 1.4; overflow: hidden; position: relative; }
+.mac .cab { padding: 20px 24px 14px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.mac .cab h4 { margin: 0; font-size: 17px; font-weight: 600; }
+.mac .cab p { margin: 4px 0 0; color: var(--mac-suave); }
+.seg-mac { display: inline-flex; margin: 0 24px 16px; padding: 2px; background: #e8e8ed; border-radius: 7px; }
+.seg-mac span { padding: 4px 14px; border-radius: 5px; font-weight: 500; color: var(--mac-suave); }
+.seg-mac span.on { background: #fff; color: var(--mac-texto); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.toggle { width: 38px; height: 22px; border-radius: 11px; border: 0; padding: 0; cursor: pointer; background: #d1d1d6; position: relative; display: inline-block; flex: none; }
+.toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.toggle.on { background: var(--mac-verde); } .toggle.on::after { left: 18px; }
+.toggle[disabled] { opacity: .45; cursor: default; }
+.ver { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--mac-suave); }
+.fila-tor { display: grid; grid-template-columns: 1fr 124px 118px 80px; gap: 12px; align-items: center; padding: 10px 24px; min-height: 48px; border-bottom: 1px solid #efeff2; }
+.fila-tor.cab-t { min-height: 30px; padding: 0 24px; color: var(--mac-suave); font-size: 11px; font-weight: 600; background: #fafafa; border-top: 1px solid var(--mac-linea); }
+.fila-tor .sub { color: var(--mac-suave); font-size: 11px; display: block; margin-top: 2px; }
+.chip-m { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; }
+.chip-m::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.chip-m.live { color: var(--mac-verde); } .chip-m.fin { color: var(--mac-ambar); } .chip-m.plan { color: var(--mac-suave); }
+.mac .pie { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 24px; border-top: 1px solid var(--mac-linea); background: #fafafa; color: var(--mac-suave); font-size: 12px; }
+.mac .vacio-mac { padding: 48px 24px; text-align: center; }
+.mac .vacio-mac .icono { width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 14px; background: #eef3fb; color: var(--mac-acento); display: grid; place-items: center; font-size: 24px; }
+.mac .vacio-mac h5 { font-size: 15px; margin: 0 0 6px; font-weight: 600; }
+.mac .vacio-mac p { margin: 0 auto; max-width: 44ch; color: var(--mac-suave); }
+.aviso-mac { margin: 0 24px 12px; padding: 10px 14px; border-radius: 8px; background: #eef3fb; color: #0b4aa8; font-size: 12px; }
+.alerta-mac { position: absolute; inset: 0; background: rgba(0,0,0,.25); display: grid; place-items: center; }
+.alerta-mac .caja { width: 310px; background: #f6f6f6; border-radius: 12px; padding: 20px 16px 16px; text-align: center; box-shadow: 0 16px 48px rgba(0,0,0,.3); }
+.alerta-mac h5 { margin: 6px 0 6px; font-size: 13px; font-weight: 600; }
+.alerta-mac p { margin: 0 0 14px; font-size: 12.5px; color: var(--mac-suave); }
+.mb { height: 28px; padding: 0 14px; border-radius: 6px; font: inherit; font-size: 13px; border: 1px solid #c8c8cd; background: #fff; color: var(--mac-texto); cursor: pointer; }
+.mb.pri { background: var(--mac-acento); border-color: var(--mac-acento); color: #fff; font-weight: 500; }
+.alerta-mac .mb { width: 100%; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="lienzo">
+<header>
+  <h1>Portal del alumnado · Fase 3B · Torneos</h1>
+  <p>Cuando activas un torneo de un grupo en la app, el alumnado ve en su portal su equipo, próximo partido, clasificación y cuadro, cifrado en el mismo tablón v1. Todo apagado de entrada y sin nombres de equipo por defecto. Datos inventados.</p>
+</header>
+
+<section class="parte">
+<h2>1 · Web del alumnado (móvil)</h2>
+<div class="rejilla">
+
+  <!-- T1 -->
+  <div class="estado">
+    <h3>T1 · Torneo en curso · sin nombres (por defecto)</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><button class="yo" aria-label="Mi cuenta">L</button></div>
+      <div class="pantalla">
+        <div class="pestanas" role="tablist" aria-label="Secciones">
+          <button role="tab" aria-selected="false" tabindex="-1">Para hacer</button>
+          <button role="tab" aria-selected="false" tabindex="-1">Mis notas</button>
+          <button role="tab" aria-selected="true" tabindex="0">Torneo</button>
+        </div>
+        <div class="torneo-cab">
+          <div><b>Torneo de Bádminton</b><span>2º ESO B · Liguilla + puestos</span></div>
+          <span class="estado-pill">En curso</span>
+        </div>
+        <div class="fases" aria-label="Fases del torneo">
+          <div class="fase ahora">Liguilla</div>
+          <div class="fase">Cuadro</div>
+          <div class="fase">Podio</div>
+        </div>
+        <div class="mi-equipo">
+          <span class="kicker">Tu equipo</span>
+          <div class="nombre-eq">Equipo 3</div>
+          <div class="resumen-eq">2º en Grupo A · 2G 1P</div>
+          <div class="prox">
+            <div class="etq"><span>Próximo partido · Ronda 4</span><span>Pista 2</span></div>
+            <div class="duelo">Equipo 3 vs Equipo 6</div>
+          </div>
+        </div>
+        <div class="bloque-t"><span>Clasificación · Grupo A</span><small>PG / PP / Pts</small></div>
+        <table class="clasif">
+          <thead><tr><th scope="col">#</th><th scope="col">Equipo</th><th scope="col" class="n">PJ</th><th scope="col" class="n">PG</th><th scope="col" class="n">Pts</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Equipo 1</td><td class="n">3</td><td class="n">3</td><td class="n">9</td></tr>
+            <tr class="mio"><td>2</td><td>Equipo 3 <span class="badge-mio">Tú</span></td><td class="n">3</td><td class="n">2</td><td class="n">6</td></tr>
+            <tr><td>3</td><td>Equipo 6</td><td class="n">3</td><td class="n">1</td><td class="n">3</td></tr>
+            <tr><td>4</td><td>Equipo 4</td><td class="n">3</td><td class="n">0</td><td class="n">0</td></tr>
+          </tbody>
+        </table>
+        <p class="pie-tel">Actualizado hoy a las 11:20</p>
+      </div>
+    </div>
+    <p class="nota">La pestaña «Torneo» solo aparece si el docente activó algún torneo del grupo. Sin nombres por defecto («Equipo N»), igual que en la proyección del Mac. Tu equipo se marca con borde + etiqueta «Tú».</p>
+  </div>
+
+  <!-- T2 -->
+  <div class="estado">
+    <h3>T2 · Cuadro / eliminatorias · con nombres de equipo</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><button class="yo" aria-label="Mi cuenta">L</button></div>
+      <div class="pantalla">
+        <div class="pestanas" role="tablist" aria-label="Secciones">
+          <button role="tab" aria-selected="false" tabindex="-1">Para hacer</button>
+          <button role="tab" aria-selected="false" tabindex="-1">Mis notas</button>
+          <button role="tab" aria-selected="true" tabindex="0">Torneo</button>
+        </div>
+        <div class="torneo-cab">
+          <div><b>Torneo de Bádminton</b><span>2º ESO B · Liguilla + puestos</span></div>
+          <span class="estado-pill">En curso</span>
+        </div>
+        <div class="fases" aria-label="Fases del torneo">
+          <div class="fase hecha">Liguilla ✓</div>
+          <div class="fase ahora">Cuadro</div>
+          <div class="fase">Podio</div>
+        </div>
+        <div class="bloque-t"><span>Semifinales</span><small>En juego</small></div>
+        <div class="partido">
+          <div class="meta"><span>Pista 1 · Puestos 1–4</span><span>Finalizado</span></div>
+          <div class="fila-p gana"><span>Halcones Verdes</span><span class="pts">15</span></div>
+          <div class="fila-p pierde"><span>Rayo Azul</span><span class="pts">11</span></div>
+          <div class="dest">Gana: juega por 1º–2º · Pierde: por 3º–4º</div>
+        </div>
+        <div class="partido mio">
+          <div class="meta"><span>Pista 2 · Puestos 1–4</span><span>Tu partido</span></div>
+          <div class="fila-p"><span><b>Volantes Pro</b> <span class="badge-mio">Tú</span></span><span class="pts">—</span></div>
+          <div class="fila-p"><span>Saque Rápido</span><span class="pts">—</span></div>
+          <div class="dest">Gana: juega por 1º–2º · Pierde: por 3º–4º</div>
+        </div>
+        <div class="partido">
+          <div class="meta"><span>Pista 3 · Puestos 5–8</span><span>Finalizado</span></div>
+          <div class="fila-p gana"><span>Lobos de Pista</span><span class="pts">15</span></div>
+          <div class="fila-p pierde"><span>Estrellas EF</span><span class="pts">12</span></div>
+        </div>
+        <p class="descansa">Descansan en esta ronda: ninguno.</p>
+        <p class="pie-tel">Actualizado hoy a las 11:38</p>
+      </div>
+    </div>
+    <p class="nota">Solo salen nombres de equipo si el docente activó explícitamente «Nombres de equipo». Ganadores en negrita; el partido del alumno lleva borde verde y rótulo «Tu partido».</p>
+  </div>
+
+  <!-- T3 -->
+  <div class="estado">
+    <h3>T3 · Torneo finalizado · Podio y puesto final</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><button class="yo" aria-label="Mi cuenta">L</button></div>
+      <div class="pantalla">
+        <div class="pestanas" role="tablist" aria-label="Secciones">
+          <button role="tab" aria-selected="false" tabindex="-1">Para hacer</button>
+          <button role="tab" aria-selected="false" tabindex="-1">Mis notas</button>
+          <button role="tab" aria-selected="true" tabindex="0">Torneo</button>
+        </div>
+        <div class="torneo-cab">
+          <div><b>Torneo de Bádminton</b><span>2º ESO B · Liguilla + puestos</span></div>
+          <span class="estado-pill fin">Finalizado</span>
+        </div>
+        <div class="fases" aria-label="Fases del torneo">
+          <div class="fase hecha">Liguilla ✓</div>
+          <div class="fase hecha">Cuadro ✓</div>
+          <div class="fase ahora">Podio</div>
+        </div>
+        <div class="mi-equipo">
+          <span class="kicker">Resultado final · Tu equipo</span>
+          <div class="nombre-eq">2º puesto · Equipo 3</div>
+          <div class="resumen-eq">4 victorias · 2 derrotas · 6 partidos jugados</div>
+        </div>
+        <div class="bloque-t"><span>Podio del torneo</span></div>
+        <div class="podio">
+          <div class="podio-fila"><span class="puesto p1">1º</span><b>Equipo 1</b></div>
+          <div class="podio-fila mio"><span class="puesto">2º</span><b>Equipo 3 <span class="badge-mio">Tú</span></b></div>
+          <div class="podio-fila"><span class="puesto">3º</span><b>Equipo 6</b></div>
+        </div>
+        <div class="bloque-t"><span>Final · Puestos 1–2</span></div>
+        <div class="partido mio">
+          <div class="meta"><span>Pista 1</span><span>Finalizado</span></div>
+          <div class="fila-p gana"><span>Equipo 1</span><span class="pts">15</span></div>
+          <div class="fila-p pierde"><span>Equipo 3 <span class="badge-mio">Tú</span></span><span class="pts">13</span></div>
+        </div>
+        <p class="pie-tel">Actualizado hoy a las 12:15</p>
+      </div>
+    </div>
+    <p class="nota">Al acabar el torneo, el foco pasa al puesto final del alumno y al podio, conservando los resultados de las rondas debajo.</p>
+  </div>
+
+  <!-- T4 -->
+  <div class="estado">
+    <h3>T4 · Alumno sin equipo o calendario aún pendiente</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><button class="yo" aria-label="Mi cuenta">L</button></div>
+      <div class="pantalla">
+        <div class="pestanas" role="tablist" aria-label="Secciones">
+          <button role="tab" aria-selected="false" tabindex="-1">Para hacer</button>
+          <button role="tab" aria-selected="false" tabindex="-1">Mis notas</button>
+          <button role="tab" aria-selected="true" tabindex="0">Torneo</button>
+        </div>
+        <div class="torneo-cab">
+          <div><b>Torneo de Voleibol</b><span>2º ESO B · Liga</span></div>
+          <span class="estado-pill plan">Planificado</span>
+        </div>
+        <div class="vacio">
+          <div class="sello" aria-hidden="true">Pronto</div>
+          <h1>Aún no han empezado los partidos</h1>
+          <p class="sub">En cuanto se jueguen las primeras rondas verás aquí la clasificación y los resultados.</p>
+        </div>
+        <p class="pie-tel">Actualizado hoy a las 09:05</p>
+      </div>
+    </div>
+    <p class="nota">Si el alumno no está en ningún equipo (p. ej. baja médica o árbitro) se omite la tarjeta «Tu equipo» y ve igualmente el progreso del torneo sin errores.</p>
+  </div>
+
+  <!-- T5 -->
+  <div class="estado">
+    <h3>T5 · Sin conexión</h3>
+    <div class="tel">
+      <div class="barra"><div class="marca">Mi portal</div><button class="yo" aria-label="Mi cuenta">L</button></div>
+      <div class="pantalla">
+        <div class="pestanas" role="tablist" aria-label="Secciones">
+          <button role="tab" aria-selected="false" tabindex="-1">Para hacer</button>
+          <button role="tab" aria-selected="false" tabindex="-1">Mis notas</button>
+          <button role="tab" aria-selected="true" tabindex="0">Torneo</button>
+        </div>
+        <h1>Necesitas conexión</h1>
+        <p class="sub">Los datos del torneo no se guardan en el móvil. Conéctate para ver los últimos resultados.</p>
+        <button class="btn pri">Reintentar</button>
+      </div>
+    </div>
+    <p class="nota">Mismo principio que «Mis notas» (N6): el bloque <code>torneos</code> nunca se copia a <code>localStorage</code>.</p>
+  </div>
+
+</div>
+</section>
+
+<section class="parte">
+<h2>2 · App · Portal del alumnado › Torneos (Mac / iPad)</h2>
+<div class="rejilla" style="grid-template-columns:repeat(auto-fill,minmax(580px,1fr))">
+
+  <!-- A1 -->
+  <div class="estado">
+    <h3>A1 · Pestaña «Torneos» en la hoja del portal (Mac)</h3>
+    <div class="mac">
+      <div class="cab">
+        <div><h4>Portal del alumnado</h4><p>2º ESO B · Educación Física</p></div>
+        <button class="mb">Cerrar</button>
+      </div>
+      <div class="seg-mac" role="tablist" aria-label="Portal">
+        <span role="tab" aria-selected="false">Cuentas</span>
+        <span role="tab" aria-selected="false">Notas visibles</span>
+        <span role="tab" aria-selected="true" class="on">Torneos</span>
+      </div>
+      <div class="fila-tor cab-t">
+        <span>Torneos del grupo</span>
+        <span>Estado</span>
+        <span>Nombres equipo</span>
+        <span>Mostrar</span>
+      </div>
+      <div class="fila-tor">
+        <span><b>Torneo de Bádminton</b><span class="sub">Liguilla + puestos · 8 equipos · 12/16 partidos</span></span>
+        <span class="chip-m live">En curso</span>
+        <span class="ver"><button class="toggle" role="switch" aria-checked="false" aria-label="Mostrar nombres de equipo en Torneo de Bádminton"></button>Equipo N</span>
+        <span class="ver"><button class="toggle on" role="switch" aria-checked="true" aria-label="Mostrar Torneo de Bádminton en el portal"></button>Sí</span>
+      </div>
+      <div class="fila-tor">
+        <span><b>Liga de Voleibol</b><span class="sub">Liga · 6 equipos · 0/15 partidos</span></span>
+        <span class="chip-m plan">Planificado</span>
+        <span class="ver"><button class="toggle" role="switch" aria-checked="false" disabled aria-label="Mostrar nombres de equipo en Liga de Voleibol"></button>Equipo N</span>
+        <span class="ver"><button class="toggle" role="switch" aria-checked="false" aria-label="Mostrar Liga de Voleibol en el portal"></button>No</span>
+      </div>
+      <div class="fila-tor">
+        <span><b>Torneo de Hockey</b><span class="sub">Eliminatoria · 8 equipos · Finalizado</span></span>
+        <span class="chip-m fin">Finalizado</span>
+        <span class="ver"><button class="toggle" role="switch" aria-checked="false" disabled aria-label="Mostrar nombres de equipo en Torneo de Hockey"></button>Equipo N</span>
+        <span class="ver"><button class="toggle" role="switch" aria-checked="false" aria-label="Mostrar Torneo de Hockey en el portal"></button>No</span>
+      </div>
+      <div class="pie">
+        <span>Los resultados se publican solos 2 minutos después · apagar retira al momento</span>
+        <span>Último publicado: hoy 11:20</span>
+      </div>
+    </div>
+    <p class="nota" style="color:#3d3d40">Todo apagado de entrada. El interruptor «Nombres equipo» solo se habilita si el torneo está encendido; apagado usa «Equipo N» (reutilizando <code>ProjectionTeamLabels</code>). Nunca se publican incidencias ni notas de rúbrica desde aquí.</p>
+  </div>
+
+  <!-- A2 -->
+  <div class="estado">
+    <h3>A2 · Confirmación al activar nombres de equipo</h3>
+    <div class="mac" style="height:320px">
+      <div class="cab"><div><h4>Portal del alumnado</h4><p>2º ESO B · Educación Física</p></div></div>
+      <div class="alerta-mac">
+        <div class="caja" role="alertdialog" aria-labelledby="t-a2" aria-describedby="d-a2">
+          <h5 id="t-a2">¿Mostrar los nombres de los equipos?</h5>
+          <p id="d-a2">El alumnado de 2º ESO B verá los nombres tal como están escritos en «Torneo de Bádminton» en lugar de «Equipo 1, Equipo 2…». Comprueba que no incluyan apellidos del alumnado.</p>
+          <button class="mb pri" autofocus>Cancelar</button>
+          <button class="mb">Mostrar nombres</button>
+        </div>
+      </div>
+    </div>
+    <p class="nota" style="color:#3d3d40">Mismo patrón que P2 en Notas visibles: <b>Cancelar</b> es la acción por defecto y responde a Escape. Hay confirmación análoga al encender por primera vez «Mostrar» en un torneo.</p>
+  </div>
+
+  <!-- A3 -->
+  <div class="estado">
+    <h3>A3 · Grupo sin torneos</h3>
+    <div class="mac">
+      <div class="cab"><div><h4>Portal del alumnado</h4><p>1º ESO A · Educación Física</p></div></div>
+      <div class="seg-mac" role="tablist" aria-label="Portal">
+        <span role="tab" aria-selected="false">Cuentas</span>
+        <span role="tab" aria-selected="false">Notas visibles</span>
+        <span role="tab" aria-selected="true" class="on">Torneos</span>
+      </div>
+      <div class="vacio-mac">
+        <div class="icono" aria-hidden="true">🏆</div>
+        <h5>Este grupo no tiene torneos</h5>
+        <p>Cuando crees un torneo para este curso en Situaciones de aprendizaje o en Torneos, podrás elegir aquí si el alumnado ve su progreso en el portal.</p>
+      </div>
+    </div>
+    <p class="nota" style="color:#3d3d40">SF Symbol en SwiftUI: <code>trophy</code>. Sin botones innecesarios.</p>
+  </div>
+
+  <!-- A4 -->
+  <div class="estado">
+    <h3>A4 · Desde el iPad (solo lectura)</h3>
+    <div class="mac">
+      <div class="cab"><div><h4>Portal del alumnado</h4><p>2º ESO B · Educación Física</p></div></div>
+      <div class="seg-mac" role="tablist" aria-label="Portal">
+        <span role="tab" aria-selected="false">Cuentas</span>
+        <span role="tab" aria-selected="false">Notas visibles</span>
+        <span role="tab" aria-selected="true" class="on">Torneos</span>
+      </div>
+      <div class="aviso-mac">Los torneos visibles se activan desde el Mac. Los marcadores que anotes aquí en Modo directo suben solos al portal cuando lleguen al Mac por sincronización.</div>
+      <div class="fila-tor cab-t">
+        <span>Torneos del grupo</span>
+        <span>Estado</span>
+        <span>Nombres equipo</span>
+        <span>Mostrar</span>
+      </div>
+      <div class="fila-tor">
+        <span><b>Torneo de Bádminton</b><span class="sub">Liguilla + puestos · 8 equipos</span></span>
+        <span class="chip-m live">En curso</span>
+        <span class="ver"><button class="toggle" role="switch" aria-checked="false" disabled></button>Equipo N</span>
+        <span class="ver"><button class="toggle on" role="switch" aria-checked="true" disabled></button>Sí</span>
+      </div>
+    </div>
+    <p class="nota" style="color:#3d3d40">Coherente con P5 de Notas visibles: interruptores desactivados y explicación clara del flujo iPad → Sync LAN → Mac → Portal.</p>
+  </div>
+
+</div>
+</section>
+</div>
+</body>
+</html>

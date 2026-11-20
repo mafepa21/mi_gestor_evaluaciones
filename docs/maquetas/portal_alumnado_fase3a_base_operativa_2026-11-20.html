@@ -1,0 +1,942 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maqueta · Portal del alumnado · Fase 3A (Base operativa)</title>
+<style>
+  :root {
+    --papel: #f2eee1;
+    --papel-2: #e7e1cf;
+    --papel-card: #fbf8ee;
+    --pista: #0f3d2e;
+    --pista-claro: #1b5c46;
+    --tinta: #171e1a;
+    --tinta-2: #4f5c54;
+    --linea: rgba(15, 61, 46, 0.14);
+    --acento: #b85d19;
+    --aviso-bg: #fff5e5;
+    --aviso-bd: rgba(184, 93, 25, 0.35);
+    --mac-bg: #1e1e1c;
+    --mac-card: #282724;
+    --mac-bd: rgba(255,255,255,0.11);
+    --mac-t1: #f5f3ee;
+    --mac-t2: #a9a69d;
+    --mac-blue: #3b82f6;
+    --mac-green: #34c759;
+    --mac-orange: #ff9f0a;
+    --r-lg: 16px;
+    --r-md: 12px;
+    --r-sm: 8px;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    background: #141513;
+    color: var(--mac-t1);
+    line-height: 1.45;
+  }
+
+  header.top {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: rgba(20, 21, 19, 0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--mac-bd);
+    padding: 16px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .brand h1 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .brand p {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--mac-t2);
+  }
+
+  nav.states {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  nav.states button {
+    appearance: none;
+    border: 1px solid var(--mac-bd);
+    background: var(--mac-card);
+    color: var(--mac-t1);
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    min-height: 36px;
+    transition: background .15s, border-color .15s;
+  }
+  nav.states button:hover { border-color: rgba(255,255,255,0.28); }
+  nav.states button[aria-selected="true"] {
+    background: var(--pista);
+    border-color: #34a077;
+    color: #fff;
+  }
+
+  main {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 32px 24px 64px;
+  }
+
+  .scene { display: none; }
+  .scene.active { display: block; }
+
+  .scene-meta {
+    margin-bottom: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .scene-meta h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .scene-meta p {
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: var(--mac-t2);
+    max-width: 720px;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(52, 199, 89, 0.14);
+    color: #6ee79a;
+  }
+
+  /* macOS Sheet frame */
+  .mac-sheet {
+    background: var(--mac-bg);
+    border: 1px solid var(--mac-bd);
+    border-radius: var(--r-lg);
+    box-shadow: 0 24px 64px rgba(0,0,0,0.55);
+    padding: 24px;
+    max-width: 680px;
+    margin: 0 auto;
+  }
+  .mac-sheet.wide { max-width: 820px; }
+
+  .sheet-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .sheet-head h3 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+  .sheet-head .sub {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: var(--mac-t2);
+  }
+
+  .btn {
+    appearance: none;
+    border: 1px solid var(--mac-bd);
+    background: #33322e;
+    color: var(--mac-t1);
+    border-radius: var(--r-sm);
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn.primary {
+    background: var(--mac-blue);
+    border-color: transparent;
+    color: #fff;
+    font-weight: 600;
+  }
+  .btn.subtle {
+    background: transparent;
+  }
+  .btn.danger {
+    background: rgba(255, 69, 58, 0.16);
+    border-color: rgba(255, 69, 58, 0.4);
+    color: #ff6961;
+  }
+
+  .card {
+    background: var(--mac-card);
+    border: 1px solid var(--mac-bd);
+    border-radius: var(--r-md);
+    padding: 16px;
+  }
+
+  .radio-group {
+    display: grid;
+    gap: 10px;
+    margin: 16px 0;
+  }
+  .radio-opt {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--mac-bd);
+    background: var(--mac-card);
+    cursor: pointer;
+  }
+  .radio-opt.selected {
+    border-color: var(--mac-blue);
+    background: rgba(59, 130, 246, 0.10);
+  }
+  .radio-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid var(--mac-t2);
+    margin-top: 2px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+  }
+  .radio-opt.selected .radio-dot {
+    border-color: var(--mac-blue);
+  }
+  .radio-opt.selected .radio-dot::after {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--mac-blue);
+  }
+  .radio-opt strong { display: block; font-size: 14px; }
+  .radio-opt span { display: block; font-size: 12px; color: var(--mac-t2); margin-top: 2px; }
+
+  .notice {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(255, 159, 10, 0.11);
+    border: 1px solid rgba(255, 159, 10, 0.28);
+    font-size: 13px;
+    color: #ffd699;
+    margin: 16px 0;
+  }
+  .notice.info {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.30);
+    color: #cfe0ff;
+  }
+
+  .sheet-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--mac-bd);
+  }
+  .sheet-footer .actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  /* A4 PDF Preview */
+  .a4-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .a4-page {
+    width: 100%;
+    max-width: 760px;
+    aspect-ratio: 210 / 297;
+    background: #fff;
+    color: #161c18;
+    border-radius: 6px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .a4-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 11px;
+    color: #5b665f;
+    border-bottom: 1px solid #e3e6e1;
+    padding-bottom: 8px;
+  }
+  .a4-header strong { color: #0f3d2e; font-size: 12px; }
+  .qr-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .qr-card {
+    border: 1.5px dashed #b9c2bc;
+    border-radius: 8px;
+    padding: 12px 14px;
+    display: grid;
+    grid-template-columns: 1fr 82px;
+    gap: 12px;
+    align-items: center;
+    background: #fcfbf7;
+  }
+  .qr-card .student {
+    font-size: 13px;
+    font-weight: 700;
+    color: #10261d;
+    margin: 0;
+  }
+  .qr-card .group {
+    font-size: 10.5px;
+    color: #58665e;
+    margin: 1px 0 8px;
+  }
+  .qr-card .code {
+    font-family: "SF Mono", ui-monospace, Menlo, monospace;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #0f3d2e;
+    background: #eef3ef;
+    padding: 4px 8px;
+    border-radius: 6px;
+    display: inline-block;
+    margin-bottom: 6px;
+  }
+  .qr-card .steps {
+    font-size: 9.5px;
+    line-height: 1.35;
+    color: #46534b;
+    margin: 0;
+  }
+  .qr-card .exp {
+    font-size: 9px;
+    color: #8a5219;
+    margin-top: 4px;
+    font-weight: 600;
+  }
+  .qr-svg {
+    width: 82px;
+    height: 82px;
+    border: 1px solid #d7ddd9;
+    border-radius: 6px;
+    background: #fff;
+    padding: 5px;
+  }
+
+  /* Student Preview (Warm Notebook Paper inside macOS Sheet) */
+  .preview-banner {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: rgba(52, 199, 89, 0.12);
+    border: 1px solid rgba(52, 199, 89, 0.28);
+    color: #c8f7d4;
+    font-size: 12.5px;
+    margin-bottom: 16px;
+  }
+  .preview-banner strong { color: #fff; }
+
+  .notebook-canvas {
+    background: var(--papel);
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 31px,
+      rgba(15, 61, 46, 0.07) 31px,
+      rgba(15, 61, 46, 0.07) 32px
+    );
+    color: var(--tinta);
+    border-radius: var(--r-md);
+    border: 1px solid rgba(15, 61, 46, 0.22);
+    padding: 20px;
+    min-height: 360px;
+  }
+
+  .nb-tabs {
+    display: inline-flex;
+    background: var(--papel-2);
+    padding: 4px;
+    border-radius: 999px;
+    gap: 4px;
+    margin-bottom: 20px;
+  }
+  .nb-tabs button {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--tinta-2);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    min-height: 34px;
+  }
+  .nb-tabs button[aria-selected="true"] {
+    background: var(--pista);
+    color: #fff;
+  }
+
+  .nb-section { display: none; }
+  .nb-section.active { display: block; }
+
+  .nb-card {
+    background: var(--papel-card);
+    border: 1px solid var(--linea);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .nb-card h4 { margin: 0; font-size: 15px; color: var(--pista); }
+  .nb-card p { margin: 3px 0 0; font-size: 13px; color: var(--tinta-2); }
+  .grade-badge {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--pista);
+    background: rgba(15, 61, 46, 0.09);
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  .nb-summary-box {
+    background: var(--pista);
+    color: #fff;
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .nb-summary-box .big {
+    font-size: 28px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .nb-summary-box small { display: block; opacity: 0.8; font-size: 12px; }
+
+  .stamp-wrap {
+    text-align: center;
+    padding: 48px 16px;
+  }
+  .stamp {
+    width: 96px;
+    height: 96px;
+    margin: 0 auto 16px;
+    border: 3px solid var(--pista);
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    color: var(--pista);
+    transform: rotate(-8deg);
+  }
+  .stamp-wrap h4 { margin: 0 0 6px; font-size: 20px; color: var(--pista); }
+  .stamp-wrap p { margin: 0; font-size: 14px; color: var(--tinta-2); }
+
+  /* Backup toggle & split */
+  .split-two {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 24px;
+    align-items: start;
+  }
+  .field {
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--mac-bd);
+    background: #171715;
+    color: var(--mac-t1);
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+  .toggle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px;
+    border-radius: var(--r-md);
+    background: rgba(52, 199, 89, 0.09);
+    border: 1px solid rgba(52, 199, 89, 0.25);
+    margin: 16px 0;
+  }
+  .switch {
+    width: 42px;
+    height: 24px;
+    border-radius: 999px;
+    background: var(--mac-green);
+    position: relative;
+    flex-shrink: 0;
+    cursor: pointer;
+    border: none;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform .15s;
+  }
+  .switch[aria-checked="false"] { background: #555; }
+  .switch[aria-checked="false"]::after { transform: translateX(-18px); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <h1>Portal del alumnado · Fase 3A (Base operativa)</h1>
+    <p>Maqueta interactiva · Solo App Apple (macOS + iPadOS) · Sin cambios en web ni servidor</p>
+  </div>
+  <nav class="states" role="tablist" aria-label="Estados de la maqueta">
+    <button role="tab" aria-selected="true" data-scene="q1">Q1 · Generar tarjetas QR</button>
+    <button role="tab" aria-selected="false" data-scene="q2">Q2 · Hoja A4 imprimible</button>
+    <button role="tab" aria-selected="false" data-scene="v1">V1 · Ver como alumno</button>
+    <button role="tab" aria-selected="false" data-scene="v2">V2 · Alumno sin nada visible</button>
+    <button role="tab" aria-selected="false" data-scene="b1">B1 · Backup cifrado (.migestorbackupx)</button>
+  </nav>
+</header>
+
+<main>
+  <!-- Q1 -->
+  <section id="scene-q1" class="scene active" role="tabpanel">
+    <div class="scene-meta">
+      <div>
+        <h2>Q1 · Hoja «Tarjetas QR en PDF…»</h2>
+        <p>Se abre desde Portal del alumnado › Cuentas (en Mac y en iPad). Permite repartir altas en clase sin depender del correo electrónico.</p>
+      </div>
+      <span class="pill">Mac + iPad</span>
+    </div>
+
+    <div class="mac-sheet">
+      <div class="sheet-head">
+        <div>
+          <h3>Tarjetas QR imprimibles</h3>
+          <p class="sub">2º ESO B · 8 tarjetas recortables por página A4</p>
+        </div>
+        <button class="btn subtle" type="button">Cancelar</button>
+      </div>
+
+      <div class="radio-group" id="qr-scope">
+        <div class="radio-opt selected" data-count="12" data-active="0" tabindex="0">
+          <div class="radio-dot"></div>
+          <div>
+            <strong>Sin invitar y caducados (12 alumnos)</strong>
+            <span>Crea invitaciones nuevas solo para quienes aún no tienen cuenta activa. Recomendado.</span>
+          </div>
+        </div>
+        <div class="radio-opt" data-count="3" data-active="1" tabindex="0">
+          <div class="radio-dot"></div>
+          <div>
+            <strong>Solo seleccionados en la tabla (3 alumnos)</strong>
+            <span>Incluye 1 alumno con cuenta activa: su cuenta seguirá funcionando hasta que use el código nuevo.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="notice" id="qr-notice">
+        <span>⚠</span>
+        <div>
+          <strong>Custodia del documento:</strong> cada código sirve una sola vez y caduca en 7 días. El PDF contiene los nombres solo en tu dispositivo para repartirlos en clase; guárdalo o destrúyelo tras repartirlo.
+        </div>
+      </div>
+
+      <div class="sheet-footer">
+        <span style="font-size:12.5px; color: var(--mac-t2);" id="qr-pages">2 páginas A4 · 12 tarjetas</span>
+        <div class="actions">
+          <button class="btn subtle" type="button">Cancelar</button>
+          <button class="btn primary" type="button" id="qr-go" data-jump="q2">Generar PDF (12 tarjetas)</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Q2 -->
+  <section id="scene-q2" class="scene" role="tabpanel">
+    <div class="scene-meta">
+      <div>
+        <h2>Q2 · Hoja A4 generada (8 tarjetas recortables)</h2>
+        <p>Renderizado vectorial con CoreGraphics + CoreImage QR. Idéntico en macOS (Guardar / Imprimir) e iPadOS (Compartir / AirPrint).</p>
+      </div>
+      <span class="pill">A4 · 2 × 4</span>
+    </div>
+
+    <div class="a4-wrap">
+      <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
+        <button class="btn primary" type="button">Guardar PDF…</button>
+        <button class="btn" type="button">Imprimir…</button>
+        <button class="btn subtle" type="button" data-jump="q1">Volver a opciones</button>
+      </div>
+
+      <div class="a4-page" aria-label="Vista previa página A4 con 8 tarjetas QR">
+        <div class="a4-header">
+          <span><strong>Portal del alumnado · 2º ESO B</strong> — Uso interno del docente (recortar y repartir)</span>
+          <span>Página 1 de 2 · Caduca el 27 nov 2026</span>
+        </div>
+        <div class="qr-grid" id="qr-grid"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- V1 -->
+  <section id="scene-v1" class="scene" role="tabpanel">
+    <div class="scene-meta">
+      <div>
+        <h2>V1 · Vista previa «Ver como este alumno…»</h2>
+        <p>Solo lectura, 100 % local. Usa exactamente las mismas reglas del publicador para confirmar qué ve Ana García ahora mismo sin subir nada al servidor.</p>
+      </div>
+      <span class="pill">Solo lectura · Local</span>
+    </div>
+
+    <div class="mac-sheet wide">
+      <div class="sheet-head">
+        <div>
+          <h3>Ana García López</h3>
+          <p class="sub">2º ESO B · Cuenta activada · 2 tareas · 3 de 6 notas visibles · 1 torneo</p>
+        </div>
+        <button class="btn primary" type="button">Cerrar</button>
+      </div>
+
+      <div class="preview-banner">
+        <span><strong>Vista previa local</strong> · Así lo vería Ana García ahora mismo. No se ha publicado ningún cambio.</span>
+        <span style="opacity:.85;">3 columnas ocultas no aparecen</span>
+      </div>
+
+      <div class="notebook-canvas">
+        <div class="nb-tabs" role="tablist" aria-label="Secciones del tablón del alumno">
+          <button role="tab" aria-selected="true" data-nbtab="hacer">Para hacer (2)</button>
+          <button role="tab" aria-selected="false" data-nbtab="notas">Mis notas (3)</button>
+          <button role="tab" aria-selected="false" data-nbtab="torneo">Torneo (1)</button>
+        </div>
+
+        <div class="nb-section active" id="nb-hacer">
+          <div class="nb-card">
+            <div>
+              <h4>Autoevaluación · Balonmano táctico</h4>
+              <p>Rúbrica de 4 criterios · Pendiente de enviar</p>
+            </div>
+            <span class="grade-badge" style="font-size:12px;">Abrir →</span>
+          </div>
+          <div class="nb-card">
+            <div>
+              <h4>Diario de calentamiento · Semana 4</h4>
+              <p>Entrega abierta · Sin fecha límite</p>
+            </div>
+            <span class="grade-badge" style="font-size:12px;">Abrir →</span>
+          </div>
+        </div>
+
+        <div class="nb-section" id="nb-notas">
+          <div class="nb-summary-box">
+            <div>
+              <strong>Tu media actual</strong>
+              <small>Calculada con las 3 notas publicadas</small>
+            </div>
+            <div class="big">8,4</div>
+          </div>
+          <div class="nb-card">
+            <div>
+              <h4>Juegos colectivos</h4>
+              <p>Rúbrica · Peso 13 %</p>
+            </div>
+            <span class="grade-badge">8,8</span>
+          </div>
+          <div class="nb-card">
+            <div>
+              <h4>Test 1000m · Nota</h4>
+              <p>Prueba física · Peso 12 %</p>
+            </div>
+            <span class="grade-badge">7,9</span>
+          </div>
+          <div class="nb-card">
+            <div>
+              <h4>Plancha · Nota</h4>
+              <p>Prueba física · Peso 12 %</p>
+            </div>
+            <span class="grade-badge">8,5</span>
+          </div>
+        </div>
+
+        <div class="nb-section" id="nb-torneo">
+          <div class="nb-summary-box">
+            <div>
+              <strong>Liga de Bádminton · 2º ESO B</strong>
+              <small>Tu equipo: Equipo 2 · 2.º puesto (7 pts)</small>
+            </div>
+            <div class="big" style="font-size:15px;">Jornada 4</div>
+          </div>
+          <div class="nb-card">
+            <div>
+              <h4>Próximo partido · Pista 1</h4>
+              <p><strong>Equipo 2 (tú)</strong> vs Equipo 5 · Miércoles</p>
+            </div>
+            <span class="grade-badge" style="font-size:12px;">Pendiente</span>
+          </div>
+          <div class="nb-card">
+            <div>
+              <h4>Último resultado · Jornada 3</h4>
+              <p>Equipo 2 (tú) 21 – 16 Equipo 1</p>
+            </div>
+            <span class="grade-badge" style="font-size:13px;">Victoria</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- V2 -->
+  <section id="scene-v2" class="scene" role="tabpanel">
+    <div class="scene-meta">
+      <div>
+        <h2>V2 · Vista previa cuando no hay nada visible</h2>
+        <p>Confirma visualmente al docente que, con todas las columnas y torneos apagados, el alumno ve la pantalla «Al día» y no se filtra ningún dato privado.</p>
+      </div>
+      <span class="pill">Privacidad verificada</span>
+    </div>
+
+    <div class="mac-sheet wide">
+      <div class="sheet-head">
+        <div>
+          <h3>Hugo Martín Ruiz</h3>
+          <p class="sub">2º ESO B · Aún sin cuenta activada · 0 tareas · 0 de 6 notas visibles · 0 torneos</p>
+        </div>
+        <button class="btn primary" type="button">Cerrar</button>
+      </div>
+
+      <div class="preview-banner">
+        <span><strong>Vista previa local</strong> · Así lo vería Hugo Martín en cuanto active su cuenta.</span>
+        <span style="opacity:.85;">6 columnas y 1 torneo ocultos</span>
+      </div>
+
+      <div class="notebook-canvas">
+        <div class="stamp-wrap">
+          <div class="stamp">AL DÍA</div>
+          <h4>No tienes nada pendiente</h4>
+          <p>Cuando tu docente publique algo, aparecerá aquí.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- B1 -->
+  <section id="scene-b1" class="scene" role="tabpanel">
+    <div class="scene-meta">
+      <div>
+        <h2>B1 · Llaves del portal en el backup cifrado (.migestorbackupx)</h2>
+        <p>Solo en copias portables cifradas (PBKDF2 600k + AES-256-GCM). Nunca se guardan en texto claro en copias locales ni legacy.</p>
+      </div>
+      <span class="pill">AES-256-GCM · Sin texto claro</span>
+    </div>
+
+    <div class="split-two">
+      <!-- Exportar -->
+      <div class="mac-sheet" style="margin:0; max-width:none;">
+        <div class="sheet-head">
+          <div>
+            <h3>Exportar copia cifrada</h3>
+            <p class="sub">backup_20261120.migestorbackupx</p>
+          </div>
+        </div>
+
+        <p style="font-size:13px; color: var(--mac-t2); margin-top:0;">
+          La contraseña cifra los datos antes de compartirlos. No se guarda ni se puede recuperar.
+        </p>
+
+        <input class="field" type="password" value="••••••••••••••" aria-label="Contraseña">
+        <input class="field" type="password" value="••••••••••••••" aria-label="Repetir contraseña">
+
+        <div class="toggle-row">
+          <div>
+            <strong style="display:block; font-size:13.5px;">Incluir llaves del portal del alumnado</strong>
+            <span style="font-size:12px; color: var(--mac-t2);">28 cuentas y clave del buzón · cifradas con esta misma contraseña</span>
+          </div>
+          <button class="switch" type="button" role="switch" aria-checked="true" id="vault-switch" aria-label="Incluir llaves del portal"></button>
+        </div>
+
+        <button class="btn primary" type="button" style="width:100%; justify-content:center; padding:10px;">
+          Crear copia cifrada
+        </button>
+      </div>
+
+      <!-- Importar -->
+      <div class="mac-sheet" style="margin:0; max-width:none;">
+        <div class="sheet-head">
+          <div>
+            <h3>Copia importada</h3>
+            <p class="sub">backup_20261120.migestorbackupx</p>
+          </div>
+        </div>
+
+        <div class="notice info" style="margin-top:0;">
+          <span>🔐</span>
+          <div>
+            <strong>Esta copia incluye las llaves del portal (28 cuentas)</strong><br>
+            Si las restauras ahora en el Llavero de este equipo, podrás seguir publicando al alumnado sin reinvitar a nadie.
+          </div>
+        </div>
+
+        <div class="notice">
+          <span>⚠</span>
+          <div>
+            Este equipo ya tiene 4 llaves del portal guardadas. Si restauras las de la copia, las sustituirán.
+          </div>
+        </div>
+
+        <div class="sheet-footer" style="margin-top:16px;">
+          <span style="font-size:12px; color:var(--mac-t2);">Nunca se guardan en texto claro</span>
+          <div class="actions">
+            <button class="btn primary" type="button">Omitir llaves</button>
+            <button class="btn" type="button">Restaurar llaves</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  const tabs = document.querySelectorAll('nav.states button');
+  const scenes = document.querySelectorAll('.scene');
+  function showScene(id) {
+    tabs.forEach(b => b.setAttribute('aria-selected', b.dataset.scene === id ? 'true' : 'false'));
+    scenes.forEach(s => s.classList.toggle('active', s.id === 'scene-' + id));
+  }
+  tabs.forEach(b => b.addEventListener('click', () => showScene(b.dataset.scene)));
+  document.querySelectorAll('[data-jump]').forEach(el => {
+    el.addEventListener('click', () => showScene(el.dataset.jump));
+  });
+
+  // Q1 scope radio
+  const opts = document.querySelectorAll('#qr-scope .radio-opt');
+  const goBtn = document.getElementById('qr-go');
+  const pagesEl = document.getElementById('qr-pages');
+  opts.forEach(opt => {
+    opt.addEventListener('click', () => {
+      opts.forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+      const n = Number(opt.dataset.count);
+      const p = Math.ceil(n / 8);
+      goBtn.textContent = `Generar PDF (${n} tarjetas)`;
+      pagesEl.textContent = `${p} ${p === 1 ? 'página' : 'páginas'} A4 · ${n} tarjetas`;
+    });
+  });
+
+  // Q2 populate 8 cards with crisp SVG pseudo-QR
+  const alumnos = [
+    ['Ana García López', 'K7M4P-9QX2W'],
+    ['Bruno Sánchez Díaz', 'R3T8V-4N2CJ'],
+    ['Carla Morales Vega', 'H6W9B-5D7PK'],
+    ['Daniel Ortega Ruiz', 'M2F5Q-8Y3ZL'],
+    ['Elena Navarro Gil', 'C9J4X-6R2VM'],
+    ['Hugo Martín Ruiz', 'P5L8D-3K7BN'],
+    ['Lucía Romero Sanz', 'T4G2W-9H6QF'],
+    ['Mateo Torres León', 'V8N3C-2M5XR'],
+  ];
+  function makeQrSvg(seed) {
+    let rects = '';
+    const finder = (x, y) =>
+      `<rect x="${x}" y="${y}" width="7" height="7" fill="#0f3d2e"/>` +
+      `<rect x="${x+1}" y="${y+1}" width="5" height="5" fill="#fff"/>` +
+      `<rect x="${x+2}" y="${y+2}" width="3" height="3" fill="#0f3d2e"/>`;
+    rects += finder(0,0) + finder(14,0) + finder(0,14);
+    let h = 2166136261;
+    for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+    for (let y = 0; y < 21; y++) {
+      for (let x = 0; x < 21; x++) {
+        if ((x < 8 && y < 8) || (x > 12 && y < 8) || (x < 8 && y > 12)) continue;
+        h = Math.imul(h ^ (x * 31 + y * 17), 16777619);
+        if ((h >>> 28) % 2 === 0) rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="#0f3d2e"/>`;
+      }
+    }
+    return `<svg class="qr-svg" viewBox="0 0 21 21" shape-rendering="crispEdges" aria-hidden="true">${rects}</svg>`;
+  }
+  const grid = document.getElementById('qr-grid');
+  alumnos.forEach(([name, code]) => {
+    const card = document.createElement('div');
+    card.className = 'qr-card';
+    card.innerHTML = `
+      <div>
+        <p class="student">${name}</p>
+        <p class="group">2º ESO B · Portal del alumnado</p>
+        <div class="code">${code}</div>
+        <p class="steps">1. Escanea el QR o entra en la web.<br>2. Crea tu usuario sin usar tu nombre real.</p>
+        <p class="exp">Un solo uso · Caduca el 27 nov</p>
+      </div>
+      ${makeQrSvg(code)}
+    `;
+    grid.appendChild(card);
+  });
+
+  // V1 inner tabs
+  const nbTabs = document.querySelectorAll('.nb-tabs button');
+  const nbSecs = document.querySelectorAll('.nb-section');
+  nbTabs.forEach(b => b.addEventListener('click', () => {
+    nbTabs.forEach(x => x.setAttribute('aria-selected', x === b ? 'true' : 'false'));
+    nbSecs.forEach(s => s.classList.toggle('active', s.id === 'nb-' + b.dataset.nbtab));
+  }));
+
+  // B1 switch
+  const sw = document.getElementById('vault-switch');
+  sw.addEventListener('click', () => {
+    sw.setAttribute('aria-checked', sw.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
+  });
+</script>
+</body>
+</html>

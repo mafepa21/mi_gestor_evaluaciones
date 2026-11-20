@@ -201,10 +201,20 @@ final class MacBackupStore: ObservableObject {
         lastMessage = "Ruta copiada al portapapeles."
     }
 
-    func exportEncryptedBackup(_ descriptor: AppleBackupDescriptor, to targetURL: URL, password: String) async throws {
+    func exportEncryptedBackup(
+        _ descriptor: AppleBackupDescriptor,
+        to targetURL: URL,
+        password: String,
+        includePortalKeys: Bool = true
+    ) async throws {
         operationState = .saving("Exportando")
         do {
-            try await service.exportEncryptedBackup(descriptor, to: targetURL, password: password)
+            try await service.exportEncryptedBackup(
+                descriptor,
+                to: targetURL,
+                password: password,
+                includePortalKeys: includePortalKeys
+            )
             lastMessage = "Copia cifrada exportada con éxito a \(targetURL.path)"
             operationState = .saved("Exportada")
         } catch {
@@ -214,13 +224,16 @@ final class MacBackupStore: ObservableObject {
         }
     }
 
-    func importPortableBackup(from sourceURL: URL, password: String?) async throws {
+    func importPortableBackup(from sourceURL: URL, password: String?) async throws -> WebPortalBackupVault? {
         operationState = .saving("Importando")
         do {
             _ = try await service.importPortableBackup(from: sourceURL, password: password)
+            let vault = service.lastImportedPortalVault
+            service.lastImportedPortalVault = nil
             lastMessage = "Copia importada y validada con éxito."
             operationState = .saved("Importada")
             await loadBackups()
+            return vault
         } catch {
             lastMessage = error.localizedDescription
             operationState = .failed("Error importando")

@@ -88,13 +88,21 @@ struct BackupCenterView: View {
             BackupRestorePreviewSheet(service: service, backup: backup)
         }
         .sheet(item: $backupToExport) { backup in
-            EncryptedBackupExportSheet(backup: backup) { destinationURL, password in
-                try await service.exportEncryptedBackup(backup, to: destinationURL, password: password)
+            EncryptedBackupExportSheet(backup: backup) { destinationURL, password, includePortalKeys in
+                try await service.exportEncryptedBackup(
+                    backup,
+                    to: destinationURL,
+                    password: password,
+                    includePortalKeys: includePortalKeys
+                )
             }
         }
         .sheet(item: $importSelection) { selection in
             PortableBackupImportSheet(selection: selection) { url, password in
                 _ = try await service.importPortableBackup(from: url, password: password)
+                let vault = service.lastImportedPortalVault
+                service.lastImportedPortalVault = nil
+                return vault
             }
         }
         .fileImporter(

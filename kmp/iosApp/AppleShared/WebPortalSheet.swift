@@ -181,6 +181,33 @@ final class WebPortalViewModel: ObservableObject {
         await refresh()
     }
 
+    /// Crea invitaciones en el servidor y devuelve el PDF A4 con las tarjetas QR listas para repartir.
+    func generateCardsPDF(for targets: [WebPortalStudent], groupName: String) async -> Data? {
+        errorText = nil
+        resultText = nil
+        guard !targets.isEmpty, let invitations = await invite(targets) else { return nil }
+        let byId = Dictionary(uniqueKeysWithValues: targets.map { ($0.id, $0) })
+        let fallback = Date().addingTimeInterval(7 * 24 * 3600)
+        let cards = invitations.compactMap { invitation -> WebPortalCardItem? in
+            guard let student = byId[invitation.studentId] else { return nil }
+            return WebPortalCardItem(
+                studentId: student.id,
+                studentName: student.fullName,
+                groupName: groupName,
+                code: WebPortalCrypto.displayCode(invitation.code),
+                link: WebPortalClient.inviteLink(baseURL: baseURL, code: invitation.code),
+                expiresAt: invitation.expires ?? fallback
+            )
+        }
+        guard let pdf = WebPortalCardsPDFRenderer.render(cards: cards, groupName: groupName) else {
+            errorText = "No se pudo generar el documento PDF."
+            return nil
+        }
+        resultText = "PDF preparado con \(cards.count) \(cards.count == 1 ? "tarjeta" : "tarjetas") QR."
+        await refresh()
+        return pdf
+    }
+
     func closeAccount(of student: WebPortalStudent) async {
         errorText = nil
         guard let accountKey = WebSubmissionInbox.accountKey else {
@@ -264,6 +291,7 @@ struct WebPortalSheet: View {
     let groups: [PortalGroup]
     @State var classId: Int64
     let loadStudents: (Int64) async -> [WebPortalStudent]
+    let loadPreview: (Int64, WebPortalStudent, WebPortalAccountStatus) async -> WebPortalStudentPreviewData
     @StateObject private var model: WebPortalViewModel
     @StateObject private var grades: WebPortalGradesViewModel
     @StateObject private var tournaments: WebPortalTournamentsViewModel
@@ -283,6 +311,8 @@ struct WebPortalSheet: View {
     @State private var selection = Set<Int64>()
     @State private var closing: WebPortalStudent?
     @State private var showingPreview = false
+    @State private var showingCardsPDF = false
+    @State private var previewingStudent: WebPortalStudent?
     @State private var reinvite: PendingReinvite?
     @State private var previewTargets: [WebPortalStudent] = []
 
@@ -305,6 +335,9 @@ struct WebPortalSheet: View {
         tournamentsSettingsURL: URL? = nil,
         loadTournaments: @escaping (Int64) async -> WebPortalTournamentOverview? = { _ in nil },
         tournamentsChanged: @escaping (Int64, Bool) -> Void = { _, _ in },
+        loadPreview: @escaping (Int64, WebPortalStudent, WebPortalAccountStatus) async -> WebPortalStudentPreviewData = { _, student, status in
+            .empty(studentName: student.fullName, accountStatus: status)
+        },
         initialSection: PortalSection = .cuentas
     ) {
         self._section = State(initialValue: initialSection)
@@ -326,6 +359,7 @@ struct WebPortalSheet: View {
             changed: tournamentsChanged
         ))
         self.loadStudents = loadStudents
+        self.loadPreview = loadPreview
     }
 
     private var groupName: String { groups.first { $0.id == classId }?.name ?? "" }
@@ -424,6 +458,29 @@ struct WebPortalSheet: View {
         }
         .sheet(item: $model.card) { card in
             WebPortalCodeCardView(card: card)
+        }
+        .sheet(isPresented: $showingCardsPDF) {
+            let pending = WebPortalCardsTargetFilter.pendingOrUninvited(students: model.students) { model.status(of: $0) }
+            let selected = model.students.filter { selection.contains($0.id) }
+            let activeInSelected = selected.filter { model.status(of: $0) == .activada }.count
+            WebPortalCardsPDFSheet(
+                groupName: groupName,
+                pendingTargets: pending,
+                selectedTargets: selected,
+                activeCountInSelected: activeInSelected,
+                onGenerate: { targets in
+                    await model.generateCardsPDF(for: targets, groupName: groupName)
+                }
+            )
+        }
+        .sheet(item: $previewingStudent) { student in
+            let status = model.status(of: student)
+            WebPortalStudentPreviewSheet(
+                student: student,
+                groupName: groupName,
+                accountStatus: status,
+                loadPreview: { await loadPreview(classId, student, status) }
+            )
         }
         #if os(macOS)
         .sheet(isPresented: $showingPreview) {
@@ -556,20 +613,27 @@ struct WebPortalSheet: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 #if os(macOS)
-                HStack {
+                HStack(spacing: 10) {
                     Button("Invitar al grupo…") { askToSend() }
                         .buttonStyle(.borderedProminent)
                         .disabled(model.sendTargets.isEmpty || !canSend)
+                    Button("Tarjetas QR en PDF…") { showingCardsPDF = true }
+                        .disabled(model.students.isEmpty || !canSend)
                     if model.noEmailCount > 0 {
-                        Text("\(model.noEmailCount) sin correo: usa «Mostrar su código…» en su fila.")
+                        Text("\(model.noEmailCount) sin correo.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
                 #else
-                Text("Los correos se preparan desde el Mac. Aquí, mantén pulsado un alumno y elige «Mostrar su código…».")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    Button("Tarjetas QR en PDF…") { showingCardsPDF = true }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(model.students.isEmpty || !canSend)
+                    Text("O mantén pulsado un alumno para ver su código.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 #endif
             }
             Spacer(minLength: 0)
@@ -663,6 +727,8 @@ struct WebPortalSheet: View {
     private func rowMenu(for ids: [Int64]) -> some View {
         let people = model.students.filter { ids.contains($0.id) }
         if let one = people.first, people.count == 1 {
+            Button("Ver como este alumno…") { previewingStudent = one }
+            Divider()
             #if os(macOS)
             Button("Enviar código nuevo…") { requestReinvite(one, kind: .email) }
             .disabled(!one.hasUsableEmail || !canSend)
@@ -679,20 +745,25 @@ struct WebPortalSheet: View {
     private var canSend: Bool { model.phase == .loaded && !model.working }
 
     private var footer: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             footerStatus
             Spacer()
-            #if os(macOS)
-            // Un solo botón principal por pantalla: en el estado L lo pone el aviso.
             if !showsEmptyInvite {
+                let pendingCards = WebPortalCardsTargetFilter.pendingOrUninvited(students: model.students) { model.status(of: $0) }
+                let canPrintCards = canSend && (!pendingCards.isEmpty || !selection.isEmpty)
+                #if os(macOS)
+                Button("Tarjetas QR en PDF…") { showingCardsPDF = true }
+                    .disabled(!canPrintCards)
                 let targets = model.sendTargets
                 Button("Enviar \(targets.count) \(targets.count == 1 ? "correo" : "correos")…") { askToSend() }
                     .buttonStyle(.borderedProminent)
                     .disabled(targets.isEmpty || !canSend)
+                #else
+                Button("Tarjetas QR en PDF…") { showingCardsPDF = true }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canPrintCards)
+                #endif
             }
-            #else
-            Text("Los correos se preparan desde el Mac.").font(.footnote).foregroundStyle(.secondary)
-            #endif
         }
     }
 

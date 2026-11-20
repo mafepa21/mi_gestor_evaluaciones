@@ -389,6 +389,7 @@ enum AppleBackupPackageArchive {
     static func createArchive(
         packageURL: URL,
         archiveURL: URL,
+        extraEntries: [String: Data] = [:],
         fileManager: FileManager = .default
     ) throws {
         var isDirectory: ObjCBool = false
@@ -449,6 +450,37 @@ enum AppleBackupPackageArchive {
                 relativeTo: packageRoot,
                 compressionMethod: entry.isDirectory ? .none : .deflate,
                 bufferSize: 1_024 * 1_024
+            )
+        }
+        let existingPaths = Set(entries.map(\.relativePath))
+        for relativePath in extraEntries.keys.sorted() {
+            guard let data = extraEntries[relativePath] else { continue }
+            let canonical = try canonicalRelativePath(relativePath)
+            guard !existingPaths.contains(canonical) else {
+                throw AppleEncryptedBackupError.unsafeArchiveEntry
+            }
+            let size = UInt64(data.count)
+            guard size <= ApplePortableBackupLimits.entryBytes else {
+                throw AppleEncryptedBackupError.archiveEntryTooLarge
+            }
+            let (nextTotal, overflow) = totalSize.addingReportingOverflow(size)
+            guard !overflow, nextTotal <= ApplePortableBackupLimits.extractedBytes else {
+                throw AppleEncryptedBackupError.extractedArchiveTooLarge
+            }
+            totalSize = nextTotal
+            guard entries.count + extraEntries.count <= ApplePortableBackupLimits.entryCount else {
+                throw AppleEncryptedBackupError.tooManyEntries
+            }
+            try archive.addEntry(
+                with: canonical,
+                type: .file,
+                uncompressedSize: Int64(data.count),
+                compressionMethod: .deflate,
+                provider: { position, chunkSize in
+                    let start = Int(position)
+                    let end = min(start + chunkSize, data.count)
+                    return data.subdata(in: start..<end)
+                }
             )
         }
         let size = try archiveURL.resourceValues(forKeys: [.fileSizeKey]).fileSize.map(UInt64.init) ?? 0

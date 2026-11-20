@@ -295,15 +295,18 @@ struct WebPortalSheet: View {
     @StateObject private var model: WebPortalViewModel
     @StateObject private var grades: WebPortalGradesViewModel
     @StateObject private var tournaments: WebPortalTournamentsViewModel
+    @StateObject private var pe: WebPortalPEViewModel
     @ObservedObject private var gradesWatcher = WebPortalGradesWatcher.shared
     @ObservedObject private var tournamentsWatcher = WebPortalTournamentsWatcher.shared
+    @ObservedObject private var peWatcher = WebPortalPEWatcher.shared
     @Environment(\.dismiss) private var dismiss
 
-    /// Tres secciones: cuentas (fase 1), notas visibles (fase 2) y torneos (fase 3B).
+    /// Cuatro secciones: cuentas (fase 1), notas visibles (fase 2), torneos (fase 3B) y EF (fase 3C).
     enum PortalSection: String, CaseIterable, Identifiable {
         case cuentas = "Cuentas"
         case notas = "Notas visibles"
         case torneos = "Torneos"
+        case ef = "EF y seguimiento"
         var id: String { rawValue }
     }
 
@@ -335,6 +338,9 @@ struct WebPortalSheet: View {
         tournamentsSettingsURL: URL? = nil,
         loadTournaments: @escaping (Int64) async -> WebPortalTournamentOverview? = { _ in nil },
         tournamentsChanged: @escaping (Int64, Bool) -> Void = { _, _ in },
+        peSettingsURL: URL? = nil,
+        loadPE: @escaping (Int64) async -> WebPortalPEOverview? = { _ in nil },
+        peChanged: @escaping (Int64, Bool) -> Void = { _, _ in },
         loadPreview: @escaping (Int64, WebPortalStudent, WebPortalAccountStatus) async -> WebPortalStudentPreviewData = { _, student, status in
             .empty(studentName: student.fullName, accountStatus: status)
         },
@@ -358,6 +364,13 @@ struct WebPortalSheet: View {
             loadOverview: loadTournaments,
             changed: tournamentsChanged
         ))
+        self._pe = StateObject(wrappedValue: WebPortalPEViewModel(
+            settingsURL: peSettingsURL
+                ?? WebPortalPESettings.standardURL()
+                ?? FileManager.default.temporaryDirectory.appendingPathComponent("ef-visible.json"),
+            loadOverview: loadPE,
+            changed: peChanged
+        ))
         self.loadStudents = loadStudents
         self.loadPreview = loadPreview
     }
@@ -372,12 +385,13 @@ struct WebPortalSheet: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(maxWidth: 420)
+            .frame(maxWidth: 540)
             .accessibilityLabel("Sección del portal")
             switch section {
             case .cuentas: content
             case .notas: gradesContent
             case .torneos: tournamentsContent
+            case .ef: peContent
             }
         }
         .padding(24)
@@ -397,6 +411,42 @@ struct WebPortalSheet: View {
         }
         .task(id: classId) {
             await tournaments.load(classId: classId)
+        }
+        .task(id: classId) {
+            await pe.load(classId: classId)
+        }
+        // Fase 3C · confirmación al encender una prueba física o asistencia (Cancelar por defecto).
+        .alert(
+            peAlertTitle,
+            isPresented: Binding(get: { pe.pendingConfirmation != nil }, set: { if !$0 { pe.cancelPending() } }),
+            presenting: pe.pendingConfirmation
+        ) { pending in
+            Button("Cancelar", role: .cancel) { pe.cancelPending() }
+                .keyboardShortcut(.defaultAction)
+            switch pending {
+            case .showTest:
+                Button("Mostrar prueba") { pe.confirmPending() }
+            case .showAttendance:
+                Button("Mostrar asistencia") { pe.confirmPending() }
+            }
+        } message: { pending in
+            switch pending {
+            case .showTest(let row):
+                Text("Cada alumno de \(groupName) verá solo sus propias marcas y evolución en «\(row.name)» unos 10 minutos después. Nunca verá datos de otros compañeros.")
+            case .showAttendance:
+                Text("Cada alumno de \(groupName) verá únicamente sus contadores y fechas de faltas, retrasos y equipación. Tus notas privadas e incidencias nunca salen.")
+            }
+        }
+        // Fase 3C · A2 · confirmación al activar comentarios de celda en Notas visibles.
+        .alert(
+            "¿Mostrar tus comentarios de celda al alumnado?",
+            isPresented: $grades.pendingCommentsConfirmation
+        ) {
+            Button("Cancelar", role: .cancel) { grades.cancelComments() }
+                .keyboardShortcut(.defaultAction)
+            Button("Mostrar comentarios") { grades.confirmComments() }
+        } message: {
+            Text("Las observaciones escritas en las columnas visibles de \(groupName) aparecerán como «Comentario del docente» en el móvil de cada alumno. Comprueba que no incluyan apuntes internos.")
         }
         // A2 · la primera vez que se enciende un torneo o los nombres de equipo. Cancelar por defecto.
         .alert(
@@ -548,6 +598,23 @@ struct WebPortalSheet: View {
                 WebPortalTournamentsPane(model: tournaments, watcher: tournamentsWatcher, classId: classId)
             }
             WebPortalTournamentsFooter(watcher: tournamentsWatcher, classId: classId)
+        }
+    }
+
+    /// EF y seguimiento (fase 3C). Mismo contenedor acotado que Notas visibles y Torneos.
+    private var peContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollView(.vertical) {
+                WebPortalPEPane(model: pe, watcher: peWatcher, classId: classId)
+            }
+            WebPortalPEFooter(watcher: peWatcher, classId: classId)
+        }
+    }
+
+    private var peAlertTitle: String {
+        switch pe.pendingConfirmation {
+        case .showAttendance: return "¿Mostrar el resumen de asistencia?"
+        case .showTest, nil: return "¿Mostrar esta prueba física en el portal?"
         }
     }
 

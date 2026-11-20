@@ -252,6 +252,10 @@ struct WebSubmissionsWorkspaceView: View {
                 tournamentsChanged: { classId, immediately in
                     bridge.schedulePortalTournamentsRepublish(classId: classId, immediately: immediately)
                 },
+                loadPE: { classId in await bridge.portalPEOverview(classId: classId) },
+                peChanged: { classId, immediately in
+                    bridge.schedulePortalPERepublish(classId: classId, immediately: immediately)
+                },
                 loadPreview: { classId, student, status in
                     await bridge.portalStudentPreview(classId: classId, student: student, status: status)
                 }

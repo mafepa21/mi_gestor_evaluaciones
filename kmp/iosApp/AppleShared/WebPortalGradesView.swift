@@ -17,6 +17,8 @@ final class WebPortalGradesViewModel: ObservableObject {
     @Published private(set) var phase: Phase = .idle
     /// Columna que se acaba de encender por primera vez y espera confirmación (P2).
     @Published var pendingConfirmation: WebPortalGradeColumnRow?
+    /// Primera activación de «Mostrar comentarios de celda» (maqueta 3C A2).
+    @Published var pendingCommentsConfirmation = false
     /// Fallo al guardar los ajustes: se enseña en la hoja.
     @Published private(set) var saveError: String?
 
@@ -76,6 +78,27 @@ final class WebPortalGradesViewModel: ObservableObject {
     func setMedia(_ on: Bool) {
         guard canEdit, !on || canShowMedia else { return }
         apply(immediately: !on) { $0.media = on }
+    }
+
+    func requestComments(_ on: Bool) {
+        guard canEdit else { return }
+        if on, !settings.comentariosConfirmados {
+            pendingCommentsConfirmation = true
+            return
+        }
+        apply(immediately: !on) { $0.mostrarComentarios = on }
+    }
+
+    func confirmComments() {
+        pendingCommentsConfirmation = false
+        apply(immediately: false) {
+            $0.mostrarComentarios = true
+            $0.comentariosConfirmados = true
+        }
+    }
+
+    func cancelComments() {
+        pendingCommentsConfirmation = false
     }
 
     /// Pestaña de la que se publican media y notas.
@@ -188,6 +211,7 @@ struct WebPortalGradesPane: View {
             } else {
                 tabPicker
                 mediaRow
+                commentsRow
                 Divider()
                 columnsList
             }
@@ -245,6 +269,25 @@ struct WebPortalGradesPane: View {
                 label: "Mostrar la media al alumnado",
                 isOn: Binding(get: { model.mediaIsOn }, set: { model.setMedia($0) }),
                 enabled: model.canShowMedia
+            )
+        }
+    }
+
+    // Fase 3C · A2 · «Mostrar comentarios de celda»
+    private var commentsRow: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Mostrar comentarios de celda").font(.body.weight(.semibold))
+                Text("Muestra las observaciones escritas en columnas visibles como «Comentario del docente».")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            switchView(
+                label: "Mostrar comentarios de celda al alumnado",
+                isOn: Binding(get: { model.settings.mostrarComentarios }, set: { model.requestComments($0) }),
+                enabled: true
             )
         }
     }

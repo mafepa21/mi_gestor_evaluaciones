@@ -58,6 +58,7 @@ public struct WebPortalBackupVault: Codable, Equatable, Sendable {
     public let alumnosJSON: Data?
     public let notasVisiblesJSON: Data?
     public let torneosVisiblesJSON: Data?
+    public let efVisibleJSON: Data?
     public let keys: [KeyEntry]
     public let accountKey: String?
 
@@ -66,6 +67,7 @@ public struct WebPortalBackupVault: Codable, Equatable, Sendable {
         alumnosJSON: Data?,
         notasVisiblesJSON: Data?,
         torneosVisiblesJSON: Data?,
+        efVisibleJSON: Data? = nil,
         keys: [KeyEntry],
         accountKey: String?
     ) {
@@ -73,6 +75,7 @@ public struct WebPortalBackupVault: Codable, Equatable, Sendable {
         self.alumnosJSON = alumnosJSON
         self.notasVisiblesJSON = notasVisiblesJSON
         self.torneosVisiblesJSON = torneosVisiblesJSON
+        self.efVisibleJSON = efVisibleJSON
         self.keys = keys
         self.accountKey = accountKey
     }
@@ -141,10 +144,12 @@ public struct WebPortalBackupVault: Codable, Equatable, Sendable {
         let alumnosURL = dir.appendingPathComponent("alumnos.json")
         let notasURL = dir.appendingPathComponent("notas-visibles.json")
         let torneosURL = dir.appendingPathComponent("torneos-visibles.json")
+        let efURL = dir.appendingPathComponent("ef-visible.json")
 
         let alumnosJSON = try? Data(contentsOf: alumnosURL)
         let notasJSON = try? Data(contentsOf: notasURL)
         let torneosJSON = try? Data(contentsOf: torneosURL)
+        let efJSON = try? Data(contentsOf: efURL)
 
         let store = WebPortalStore(fileURL: alumnosURL, keychainService: resolvedService)
         let portalIds = Array(Set(store.entries.values.map(\.portalId))).sorted()
@@ -156,7 +161,7 @@ public struct WebPortalBackupVault: Codable, Equatable, Sendable {
         }
 
         let accountKey = accountKeyReader()
-        let hasAnything = alumnosJSON != nil || notasJSON != nil || torneosJSON != nil
+        let hasAnything = alumnosJSON != nil || notasJSON != nil || torneosJSON != nil || efJSON != nil
             || !keyEntries.isEmpty || (accountKey?.isEmpty == false)
         guard hasAnything else { return nil }
 
@@ -164,6 +169,7 @@ public struct WebPortalBackupVault: Codable, Equatable, Sendable {
             alumnosJSON: alumnosJSON,
             notasVisiblesJSON: notasJSON,
             torneosVisiblesJSON: torneosJSON,
+            efVisibleJSON: efJSON,
             keys: keyEntries,
             accountKey: accountKey
         )
@@ -228,6 +234,7 @@ public struct WebPortalBackupVault: Codable, Equatable, Sendable {
         try writePrivate(alumnosJSON, filename: "alumnos.json")
         try writePrivate(notasVisiblesJSON, filename: "notas-visibles.json")
         try writePrivate(torneosVisiblesJSON, filename: "torneos-visibles.json")
+        try writePrivate(efVisibleJSON, filename: "ef-visible.json")
 
         let store = WebPortalStore(
             fileURL: dir.appendingPathComponent("alumnos.json"),

@@ -59,6 +59,9 @@ struct WebPortalGradeContext {
     let subject: String?
     /// Solo columnas visibles (ni ocultas ni archivadas).
     let columns: [String: WebPortalGradeColumnMeta]
+    /// Notas de celda por alumno y columna (`studentId -> [columnId: note]`).
+    /// Solo se exportan si el docente activó explícitamente `mostrarComentarios`.
+    var cellNotes: [Int64: [String: String]] = [:]
 }
 
 /// Informe completo de un grupo: contexto, informes por alumno y resumen para la hoja.
@@ -203,7 +206,26 @@ enum WebPortalGrades {
                 dateEpochMs: column.dateEpochMs?.int64Value
             )
         }
-        return WebPortalGradeContext(classId: classId, groupName: groupName, subject: subject, columns: meta)
+        var cellNotes: [Int64: [String: String]] = [:]
+        for row in scope.rows {
+            var perColumn: [String: String] = [:]
+            for cell in row.persistedCells {
+                guard meta[cell.columnId] != nil,
+                      let raw = cell.annotation?.note?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !raw.isEmpty else { continue }
+                perColumn[cell.columnId] = raw
+            }
+            if !perColumn.isEmpty {
+                cellNotes[row.student.id] = perColumn
+            }
+        }
+        return WebPortalGradeContext(
+            classId: classId,
+            groupName: groupName,
+            subject: subject,
+            columns: meta,
+            cellNotes: cellNotes
+        )
     }
 
     // MARK: Carga (`suspend` de Kotlin en `@MainActor`; cálculos en segundo plano)
@@ -304,6 +326,11 @@ enum WebPortalGrades {
                     }
                     return entry
                 }
+            }
+            if settings.mostrarComentarios,
+               let comment = context.cellNotes[report.studentId]?[instrument.columnId],
+               !comment.isEmpty {
+                item["comentario"] = clip(comment, longTextLimit)
             }
             activities.append(item)
         }

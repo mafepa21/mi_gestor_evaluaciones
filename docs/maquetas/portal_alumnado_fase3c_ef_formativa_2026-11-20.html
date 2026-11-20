@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maqueta · Portal del alumnado · Fase 3C (EF y evaluación formativa)</title>
+<style>
+  :root {
+    --papel: #f2eee1;
+    --papel-2: #e7e1cf;
+    --papel-card: #fbf8ee;
+    --pista: #0f3d2e;
+    --pista-2: #1c5c46;
+    --tinta: #171e1a;
+    --tinta-2: #4f5c54;
+    --linea: rgba(15, 61, 46, 0.14);
+    --mejora-bg: #e1f4e8;
+    --mejora-tx: #0d5c33;
+    --aviso-bg: #fff5e5;
+    --aviso-tx: #8c4810;
+    --mac-bg: #1e1e1c;
+    --mac-card: #282724;
+    --mac-bd: rgba(255,255,255,0.11);
+    --mac-t1: #f5f3ee;
+    --mac-t2: #a9a69d;
+    --mac-green: #34c759;
+    --mac-blue: #3b82f6;
+    --r-lg: 16px;
+    --r-md: 12px;
+    --r-sm: 8px;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    background: #141513;
+    color: var(--mac-t1);
+    line-height: 1.45;
+  }
+
+  header.top {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: rgba(20, 21, 19, 0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--mac-bd);
+    padding: 16px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .brand h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  .brand p { margin: 2px 0 0; font-size: 12px; color: var(--mac-t2); }
+
+  nav.states { display: flex; flex-wrap: wrap; gap: 8px; }
+  nav.states button {
+    appearance: none;
+    border: 1px solid var(--mac-bd);
+    background: var(--mac-card);
+    color: var(--mac-t1);
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    min-height: 36px;
+  }
+  nav.states button[aria-selected="true"] {
+    background: var(--pista);
+    border-color: #34a077;
+    color: #fff;
+  }
+
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 24px 64px; }
+  .scene { display: none; }
+  .scene.active { display: block; }
+
+  .scene-meta {
+    margin-bottom: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .scene-meta h2 { margin: 0; font-size: 20px; font-weight: 600; }
+  .scene-meta p { margin: 4px 0 0; font-size: 14px; color: var(--mac-t2); max-width: 720px; }
+  .pill {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(52, 199, 89, 0.14);
+    color: #6ee79a;
+  }
+
+  /* macOS Sheet */
+  .mac-sheet {
+    background: var(--mac-bg);
+    border: 1px solid var(--mac-bd);
+    border-radius: var(--r-lg);
+    box-shadow: 0 24px 64px rgba(0,0,0,0.55);
+    padding: 24px;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  .sheet-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .sheet-head h3 { margin: 0; font-size: 20px; font-weight: 700; }
+  .sheet-head .sub { margin: 2px 0 0; font-size: 13px; color: var(--mac-t2); }
+
+  .seg {
+    display: inline-flex;
+    background: #2c2b28;
+    padding: 3px;
+    border-radius: 9px;
+    gap: 2px;
+    margin-bottom: 20px;
+  }
+  .seg span {
+    font-size: 12.5px;
+    padding: 6px 12px;
+    border-radius: 7px;
+    color: var(--mac-t2);
+  }
+  .seg span.on { background: #484640; color: #fff; font-weight: 600; }
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 13px 0;
+    border-bottom: 1px solid var(--mac-bd);
+  }
+  .row:last-child { border-bottom: none; }
+  .row strong { display: block; font-size: 14px; }
+  .row small { display: block; font-size: 12px; color: var(--mac-t2); margin-top: 2px; }
+
+  .sec-label {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--mac-t2);
+    margin: 18px 0 6px;
+    font-weight: 600;
+  }
+
+  .switch {
+    width: 42px;
+    height: 24px;
+    border-radius: 999px;
+    background: #555;
+    position: relative;
+    flex-shrink: 0;
+    cursor: pointer;
+    border: none;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform .15s;
+  }
+  .switch[aria-checked="true"] { background: var(--mac-green); }
+  .switch[aria-checked="true"]::after { transform: translateX(18px); }
+
+  .sheet-foot {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--mac-bd);
+    font-size: 12px;
+    color: var(--mac-t2);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .alert-box {
+    margin-top: 18px;
+    padding: 16px;
+    border-radius: 12px;
+    background: #2c2a26;
+    border: 1px solid rgba(255, 159, 10, 0.35);
+  }
+  .alert-box h4 { margin: 0 0 6px; font-size: 14.5px; }
+  .alert-box p { margin: 0 0 12px; font-size: 13px; color: var(--mac-t2); }
+  .btn {
+    border: 1px solid var(--mac-bd);
+    background: #353430;
+    color: #fff;
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .btn.primary { background: var(--mac-blue); border-color: transparent; font-weight: 600; }
+
+  /* Mobile Web Portal Frame */
+  .phone-wrap {
+    display: flex;
+    justify-content: center;
+  }
+  .phone {
+    width: 100%;
+    max-width: 440px;
+    background: var(--papel);
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 31px,
+      rgba(15, 61, 46, 0.065) 31px,
+      rgba(15, 61, 46, 0.065) 32px
+    );
+    color: var(--tinta);
+    border-radius: 26px;
+    border: 6px solid #2b2c29;
+    box-shadow: 0 28px 70px rgba(0,0,0,0.6);
+    padding: 20px 18px 28px;
+  }
+  .web-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .web-head .alias { font-weight: 800; font-size: 15px; color: var(--pista); }
+  .web-head .menu-btn {
+    font-size: 12px;
+    color: var(--pista);
+    border: 1px solid var(--linea);
+    background: var(--papel-card);
+    border-radius: 999px;
+    padding: 5px 11px;
+  }
+
+  .web-tabs {
+    display: flex;
+    gap: 6px;
+    background: var(--papel-2);
+    padding: 4px;
+    border-radius: 999px;
+    margin-bottom: 18px;
+    overflow-x: auto;
+  }
+  .web-tabs span {
+    flex: 1;
+    text-align: center;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 10px;
+    border-radius: 999px;
+    color: var(--tinta-2);
+    white-space: nowrap;
+  }
+  .web-tabs span.on { background: var(--pista); color: #fff; }
+
+  .pe-card {
+    background: var(--papel-card);
+    border: 1px solid var(--linea);
+    border-radius: 14px;
+    padding: 15px 16px;
+    margin-bottom: 12px;
+  }
+  .pe-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .pe-top h4 { margin: 0; font-size: 15.5px; color: var(--pista); }
+  .pe-cap { font-size: 11.5px; color: var(--tinta-2); margin-top: 2px; }
+  .badge-up {
+    font-size: 11.5px;
+    font-weight: 700;
+    background: var(--mejora-bg);
+    color: var(--mejora-tx);
+    padding: 4px 9px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .pe-metrics {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--linea);
+  }
+  .pe-mark {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--pista);
+    font-variant-numeric: tabular-nums;
+  }
+  .pe-mark small { font-size: 13px; font-weight: 600; color: var(--tinta-2); margin-left: 3px; }
+  .pe-prev { font-size: 12px; color: var(--tinta-2); }
+  .pe-score {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--pista);
+    background: rgba(15, 61, 46, 0.09);
+    padding: 4px 9px;
+    border-radius: 8px;
+  }
+
+  .att-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .att-cell {
+    background: var(--papel);
+    border-radius: 10px;
+    padding: 10px 6px;
+    text-align: center;
+  }
+  .att-cell strong { display: block; font-size: 19px; color: var(--pista); }
+  .att-cell span { font-size: 10.5px; color: var(--tinta-2); }
+
+  .att-list {
+    margin: 12px 0 0;
+    padding: 10px 0 0;
+    border-top: 1px dashed var(--linea);
+    list-style: none;
+    display: grid;
+    gap: 6px;
+    font-size: 12.5px;
+  }
+  .att-list li {
+    display: flex;
+    justify-content: space-between;
+    color: var(--tinta-2);
+  }
+  .att-list li strong { color: var(--tinta); font-weight: 600; }
+
+  /* Rubric comment */
+  .crit {
+    padding: 9px 0;
+    border-bottom: 1px solid var(--linea);
+  }
+  .crit:last-of-type { border-bottom: none; }
+  .crit-head { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; color: var(--pista); }
+  .crit p { margin: 3px 0 0; font-size: 12px; color: var(--tinta-2); }
+  .teacher-note {
+    margin-top: 12px;
+    background: var(--aviso-bg);
+    border-left: 3px solid #c96f24;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12.5px;
+    color: var(--aviso-tx);
+  }
+  .teacher-note strong { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <h1>Portal del alumnado · Fase 3C (EF y evaluación formativa)</h1>
+    <p>Maqueta interactiva · App Apple + Web del alumnado · Sin cambios en servidor PHP ni KMP</p>
+  </div>
+  <nav class="states" role="tablist">
+    <button role="tab" aria-selected="true" data-scene="a1">A1 · App: EF y seguimiento</button>
+    <button role="tab" aria-selected="false" data-scene="a2">A2 · App: Comentarios en notas</button>
+    <button role="tab" aria-selected="false" data-scene="w1">W1 · Web: Mi EF (progreso + asistencia)</button>
+    <button role="tab" aria-selected="false" data-scene="w2">W2 · Web: Rúbrica + comentario</button>
+    <button role="tab" aria-selected="false" data-scene="w3">W3 · Privacidad y todo apagado</button>
+  </nav>
+</header>
+
+<main>
+  <!-- A1 -->
+  <section id="scene-a1" class="scene active" role="tabpanel">
+    <div class="scene-meta">
+      <div>
+        <h2>A1 · App macOS: pestaña «EF y seguimiento»</h2>
+        <p>Todo empieza apagado por defecto. El docente decide qué pruebas físicas y si el resumen de asistencia se muestran al alumnado.</p>
+      </div>
+      <span class="pill">Control total en Mac</span>
+    </div>
+
+    <div class="mac-sheet">
+      <div class="sheet-head">
+        <div>
+          <h3>Portal del alumnado</h3>
+          <p class="sub">2º ESO B</p>
+        </div>
+        <button class="btn" type="button">Cerrar</button>
+      </div>
+
+      <div class="seg">
+        <span>Cuentas</span>
+        <span>Notas visibles</span>
+        <span>Torneos</span>
+        <span class="on">EF y seguimiento</span>
+      </div>
+
+      <div class="sec-label">Pruebas físicas del grupo</div>
+      <div class="row">
+        <div>
+          <strong>Test 1000m</strong>
+          <small>Resistencia · 28 de 30 con registro · 2 intentos en el curso</small>
+        </div>
+        <button class="switch" type="button" role="switch" aria-checked="true" aria-label="Mostrar Test 1000m"></button>
+      </div>
+      <div class="row">
+        <div>
+          <strong>Salto horizontal</strong>
+          <small>Fuerza explosiva · 29 de 30 con registro · 2 intentos en el curso</small>
+        </div>
+        <button class="switch" type="button" role="switch" aria-checked="true" aria-label="Mostrar Salto horizontal"></button>
+      </div>
+      <div class="row">
+        <div>
+          <strong>Plancha abdominal</strong>
+          <small>Resistencia muscular · 27 de 30 con registro · 1 intento</small>
+        </div>
+        <button class="switch" type="button" role="switch" aria-checked="false" aria-label="Mostrar Plancha abdominal"></button>
+      </div>
+
+      <div class="sec-label">Asistencia</div>
+      <div class="row">
+        <div>
+          <strong>Mostrar resumen de asistencia</strong>
+          <small>Solo contadores y fechas de faltas, retrasos y equipación. Nunca notas privadas ni incidencias.</small>
+        </div>
+        <button class="switch" type="button" role="switch" aria-checked="true" aria-label="Mostrar asistencia"></button>
+      </div>
+
+      <div class="sheet-foot">
+        <span>Los cambios se publican solos 10 minutos después · Apagar retira al momento</span>
+        <span>Solo lectura en iPad</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- A2 -->
+  <section id="scene-a2" class="scene" role="tabpanel">
+    <div class="scene-meta">
+      <div>
+        <h2>A2 · App macOS: «Mostrar comentarios de celda»</h2>
+        <p>Interruptor opcional apagado por defecto en «Notas visibles». Al encenderlo la primera vez, pide confirmación explícita (Cancelar por defecto).</p>
+      </div>
+      <span class="pill">Cancelar por defecto</span>
+    </div>
+
+    <div class="mac-sheet">
+      <div class="sheet-head">
+        <div>
+          <h3>Portal del alumnado</h3>
+          <p class="sub">2º ESO B</p>
+        </div>
+        <button class="btn" type="button">Cerrar</button>
+      </div>
+
+      <div class="seg">
+        <span>Cuentas</span>
+        <span class="on">Notas visibles</span>
+        <span>Torneos</span>
+        <span>EF y seguimiento</span>
+      </div>
+
+      <div class="row">
+        <div>
+          <strong>Mostrar la media</strong>
+          <small>La misma media del Cuaderno, solo con lo que cuenta.</small>
+        </div>
+        <button class="switch" type="button" role="switch" aria-checked="true" aria-label="Mostrar la media"></button>
+      </div>
+      <div class="row">
+        <div>
+          <strong>Mostrar comentarios de celda</strong>
+          <small>Muestra al alumnado las notas escritas en las columnas visibles como feedback formativo.</small>
+        </div>
+        <button class="switch" type="button" role="switch" aria-checked="false" aria-label="Mostrar comentarios"></button>
+      </div>
+
+      <div class="alert-box">
+        <h4>¿Mostrar tus comentarios de celda al alumnado?</h4>
+        <p>Las observaciones escritas en las columnas visibles de 2º ESO B aparecerán como «Comentario del docente» en el móvil de cada alumno. Comprueba que no incluyan apuntes internos.</p>
+        <div style="display:flex; justify-content:flex-end; gap:8px;">
+          <button class="btn" type="button">Mostrar comentarios</button>
+          <button class="btn primary" type="button">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- W1 -->
+  <section id="scene-w1" class="scene" role="tabpanel">
+    <div class="scene-meta">
+      <div>
+        <h2>W1 · Web del alumno: pestaña dinámica «Mi EF»</h2>
+        <p>Solo aparece si el docente activó pruebas físicas o asistencia. Muestra únicamente la evolución personal del alumno (nunca rankings ni comparativas con compañeros).</p>
+      </div>
+      <span class="pill">Solo en memoria</span>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="web-head">
+          <span class="alias">tigre_azul</span>
+          <span class="menu-btn">Menú</span>
+        </div>
+        <div class="web-tabs">
+          <span>Para hacer</span>
+          <span>Mis notas</span>
+          <span class="on">Mi EF</span>
+          <span>Torneo</span>
+        </div>
+
+        <div class="pe-card">
+          <div class="pe-top">
+            <div>
+              <h4>Test 1000m</h4>
+              <div class="pe-cap">Resistencia · 2 registros</div>
+            </div>
+            <span class="badge-up">Mejoraste 17 s</span>
+          </div>
+          <div class="pe-metrics">
+            <div>
+              <div class="pe-mark">4:15<small>min</small></div>
+              <div class="pe-prev">Antes: 4:32 (28 sep) → 18 nov</div>
+            </div>
+            <span class="pe-score">Nota 8,5</span>
+          </div>
+        </div>
+
+        <div class="pe-card">
+          <div class="pe-top">
+            <div>
+              <h4>Salto horizontal</h4>
+              <div class="pe-cap">Fuerza explosiva · 2 registros</div>
+            </div>
+            <span class="badge-up">+14 cm</span>
+          </div>
+          <div class="pe-metrics">
+            <div>
+              <div class="pe-mark">2,18<small>m</small></div>
+              <div class="pe-prev">Antes: 2,04 m (2 oct) → 14 nov</div>
+            </div>
+            <span class="pe-score">Nota 8,8</span>
+          </div>
+        </div>
+
+        <div class="pe-card">
+          <div class="pe-top">
+            <div>
+              <h4>Mi asistencia</h4>
+              <div class="pe-cap">Resumen del curso · 2º ESO B</div>
+            </div>
+          </div>
+          <div class="att-grid">
+            <div class="att-cell"><strong>2</strong><span>Faltas</span></div>
+            <div class="att-cell"><strong>1</strong><span>Retraso</span></div>
+            <div class="att-cell"><strong>1</strong><span>Justif.</span></div>
+            <div class="att-cell"><strong>1</strong><span>Equip.</span></div>
+          </div>
+          <ul class="att-list">
+            <li><strong>14 nov</strong><span>Retraso</span></li>
+            <li><strong>5 nov</strong><span>Sin equipación</span></li>
+            <li><strong>22 oct</strong><span>Falta</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- W2 -->
+  <section id="scene-w2" class="scene" role="tabpanel">
+    <div class="scene-meta">
+      <div>
+        <h2>W2 · Web del alumno: «Mis notas» con rúbrica y comentario</h2>
+        <p>Si el docente activa «Mostrar comentarios de celda», cada actividad con feedback muestra la caja «Comentario del docente» junto a los criterios de la rúbrica.</p>
+      </div>
+      <span class="pill">Evaluación formativa</span>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="web-head">
+          <span class="alias">tigre_azul</span>
+          <span class="menu-btn">Menú</span>
+        </div>
+        <div class="web-tabs">
+          <span>Para hacer</span>
+          <span class="on">Mis notas</span>
+          <span>Mi EF</span>
+          <span>Torneo</span>
+        </div>
+
+        <div class="pe-card">
+          <div class="pe-top">
+            <div>
+              <h4>Juegos colectivos · Balonmano</h4>
+              <div class="pe-cap">Rúbrica · 15 nov</div>
+            </div>
+            <span class="pe-score">8,8 · Sobresaliente</span>
+          </div>
+
+          <div style="margin-top:12px;">
+            <div class="crit">
+              <div class="crit-head"><span>Desmarque y ocupación</span><span>Nivel 4/4</span></div>
+              <p>Crea espacios libres de forma constante y apoya al compañero con balón.</p>
+            </div>
+            <div class="crit">
+              <div class="crit-head"><span>Defensa colectiva</span><span>Nivel 3/4</span></div>
+              <p>Mantiene su marca y ayuda en bloque, con pequeños desajustes en transición.</p>
+            </div>
+          </div>
+
+          <div class="teacher-note">
+            <strong>Comentario del docente</strong>
+            Muy buena lectura del juego en ataque y gran actitud con el equipo. Para llegar al 4 en defensa, vigila la vuelta rápida tras pérdida.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- W3 -->
+  <section id="scene-w3" class="scene" role="tabpanel">
+    <div class="scene-meta">
+      <div>
+        <h2>W3 · Privacidad garantizada por diseño</h2>
+        <p>Resumen de garantías técnicas que se verifican con tests automáticos en Swift y Node antes de fusionar.</p>
+      </div>
+      <span class="pill">Cero fugas</span>
+    </div>
+
+    <div class="mac-sheet">
+      <div class="row">
+        <div>
+          <strong>Todo apagado por defecto</strong>
+          <small>Si no enciendes ninguna prueba ni asistencia, la pestaña «Mi EF» ni siquiera existe en la web del alumnado.</small>
+        </div>
+        <span class="pill">Opt-in estricto</span>
+      </div>
+      <div class="row">
+        <div>
+          <strong>Sin comparativas ni rankings entre alumnado</strong>
+          <small>Cada alumno solo recibe sus propios intentos y su evolución personal (marca inicial → actual).</small>
+        </div>
+        <span class="pill">Personal</span>
+      </div>
+      <div class="row">
+        <div>
+          <strong>Cero notas privadas de asistencia o lesiones</strong>
+          <small>Attendance.note, hasIncident, followUpRequired e incidencias de tutoría jamás se incluyen en el tablón.</small>
+        </div>
+        <span class="pill">Filtrado en Swift</span>
+      </div>
+      <div class="row">
+        <div>
+          <strong>Nunca en localStorage («Recordarme»)</strong>
+          <small>sobreParaCopia elimina fisica y asistencia (igual que notas y torneos) antes de sellar la copia local del navegador.</small>
+        </div>
+        <span class="pill">Solo en RAM</span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  const tabs = document.querySelectorAll('nav.states button');
+  const scenes = document.querySelectorAll('.scene');
+  tabs.forEach(b => b.addEventListener('click', () => {
+    const id = b.dataset.scene;
+    tabs.forEach(x => x.setAttribute('aria-selected', x === b ? 'true' : 'false'));
+    scenes.forEach(s => s.classList.toggle('active', s.id === 'scene-' + id));
+  }));
+  document.querySelectorAll('.switch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      sw.setAttribute('aria-checked', sw.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
+    });
+  });
+</script>
+</body>
+</html>

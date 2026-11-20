@@ -24,6 +24,32 @@ struct WebPortalStudentPreviewData: Equatable {
         let typeLabel: String
         let valueText: String
         let levelText: String?
+        let comment: String?
+    }
+
+    struct PhysicalTestSummary: Identifiable, Equatable {
+        let id: String
+        let name: String
+        let capacity: String
+        let currentMark: String
+        let previousMark: String?
+        let diffText: String?
+        let improved: Bool
+        let scoreText: String?
+    }
+
+    struct AttendanceSummary: Equatable {
+        let absences: Int
+        let lates: Int
+        let excused: Int
+        let noKit: Int
+        let recent: [(date: String, label: String)]
+
+        static func == (lhs: AttendanceSummary, rhs: AttendanceSummary) -> Bool {
+            lhs.absences == rhs.absences && lhs.lates == rhs.lates
+                && lhs.excused == rhs.excused && lhs.noKit == rhs.noKit
+                && lhs.recent.count == rhs.recent.count
+        }
     }
 
     struct GradeSubject: Identifiable, Equatable {
@@ -51,6 +77,8 @@ struct WebPortalStudentPreviewData: Equatable {
     let doneTasks: [DoneTask]
     let gradeSubjects: [GradeSubject]
     let tournaments: [TournamentSummary]
+    let physicalTests: [PhysicalTestSummary]
+    let attendance: AttendanceSummary?
     let hiddenGradeColumnCount: Int
     let hiddenTournamentCount: Int
 
@@ -58,8 +86,12 @@ struct WebPortalStudentPreviewData: Equatable {
         gradeSubjects.reduce(0) { $0 + $1.items.count }
     }
 
+    var hasPEData: Bool {
+        !physicalTests.isEmpty || attendance != nil
+    }
+
     var isCompletelyEmpty: Bool {
-        pendingTasks.isEmpty && doneTasks.isEmpty && gradeSubjects.isEmpty && tournaments.isEmpty
+        pendingTasks.isEmpty && doneTasks.isEmpty && gradeSubjects.isEmpty && tournaments.isEmpty && !hasPEData
     }
 
     static func empty(
@@ -75,6 +107,8 @@ struct WebPortalStudentPreviewData: Equatable {
             doneTasks: [],
             gradeSubjects: [],
             tournaments: [],
+            physicalTests: [],
+            attendance: nil,
             hiddenGradeColumnCount: 0,
             hiddenTournamentCount: 0
         )
@@ -164,7 +198,8 @@ struct WebPortalStudentPreviewData: Equatable {
                         title: title,
                         typeLabel: typeLabel,
                         valueText: valText,
-                        levelText: act["nivel"] as? String
+                        levelText: act["nivel"] as? String,
+                        comment: act["comentario"] as? String
                     )
                 }
                 if !items.isEmpty {
@@ -233,6 +268,53 @@ struct WebPortalStudentPreviewData: Equatable {
             }
         }
 
+        var physicalTests: [PhysicalTestSummary] = []
+        if let fisica = root["fisica"] as? [String: Any],
+           let pruebas = fisica["pruebas"] as? [[String: Any]] {
+            let numFmt = NumberFormatter()
+            numFmt.locale = Locale(identifier: "es_ES")
+            numFmt.minimumFractionDigits = 0
+            numFmt.maximumFractionDigits = 1
+            for (idx, p) in pruebas.enumerated() {
+                let actual = p["actual"] as? [String: Any]
+                let anterior = p["anterior"] as? [String: Any]
+                let scoreText = (actual?["nota"] as? Double).flatMap { numFmt.string(from: NSNumber(value: $0)) }
+                physicalTests.append(PhysicalTestSummary(
+                    id: p["id"] as? String ?? "pe-\(idx)",
+                    name: p["nombre"] as? String ?? "Prueba",
+                    capacity: p["capacidad"] as? String ?? "",
+                    currentMark: actual?["marca"] as? String ?? "—",
+                    previousMark: anterior?["marca"] as? String,
+                    diffText: p["diferencia"] as? String,
+                    improved: (p["mejora"] as? Bool) == true,
+                    scoreText: scoreText
+                ))
+            }
+        }
+
+        var attendance: AttendanceSummary?
+        if let att = root["asistencia"] as? [String: Any],
+           let resumen = att["resumen"] as? [String: Any] {
+            let recRaw = att["recientes"] as? [[String: Any]] ?? []
+            let recent: [(String, String)] = recRaw.prefix(5).map { r in
+                let date = r["fecha"] as? String ?? ""
+                let label: String = switch (r["tipo"] as? String ?? "") {
+                case "retraso": "Retraso"
+                case "justificada": "Justificada"
+                case "sin_equipacion": "Sin equipación"
+                default: "Falta"
+                }
+                return (date, label)
+            }
+            attendance = AttendanceSummary(
+                absences: resumen["faltas"] as? Int ?? 0,
+                lates: resumen["retrasos"] as? Int ?? 0,
+                excused: resumen["justificadas"] as? Int ?? 0,
+                noKit: resumen["sinEquipacion"] as? Int ?? 0,
+                recent: recent
+            )
+        }
+
         return WebPortalStudentPreviewData(
             studentName: studentName,
             groupName: groupName,
@@ -241,6 +323,8 @@ struct WebPortalStudentPreviewData: Equatable {
             doneTasks: doneTasks,
             gradeSubjects: gradeSubjects,
             tournaments: tournaments,
+            physicalTests: physicalTests,
+            attendance: attendance,
             hiddenGradeColumnCount: hiddenGradeColumnCount,
             hiddenTournamentCount: hiddenTournamentCount
         )
@@ -311,12 +395,19 @@ extension KmpBridge {
         let visibleTournaments = tournamentOverview?.tournaments.filter { groupTournamentSettings.isVisible(tournamentId: $0.id) }.count ?? 0
         let hiddenTournaments = max(0, totalTournaments - visibleTournaments)
 
+        // 4. EF y asistencia visibles del grupo
+        let peBlocks = await portalPEBlocks(extraClassIds: [classId])
+        let fisica = peBlocks.fisica(for: student.id)
+        let asistencia = peBlocks.asistencia(for: student.id)
+
         let portalId = WebPortalStore.standard()?[student.id]?.portalId ?? "preview-\(student.id)"
         guard let boardData = try? WebPortalPublisher.buildBoard(
             portalId: portalId,
             forms: forms,
             notas: notas,
             torneos: torneos,
+            fisica: fisica,
+            asistencia: asistencia,
             now: now
         ) else {
             return .empty(studentName: student.fullName, groupName: groupName, accountStatus: status)
@@ -348,6 +439,7 @@ struct WebPortalStudentPreviewSheet: View {
     enum PreviewSection: String, CaseIterable, Identifiable {
         case hacer = "Para hacer"
         case notas = "Mis notas"
+        case ef = "Mi EF"
         case torneo = "Torneo"
         var id: String { rawValue }
     }
@@ -486,6 +578,9 @@ struct WebPortalStudentPreviewSheet: View {
             Picker("Sección del alumno", selection: $section) {
                 Text("Para hacer (\(data.pendingTasks.count))").tag(PreviewSection.hacer)
                 Text("Mis notas (\(data.totalVisibleGrades))").tag(PreviewSection.notas)
+                if data.hasPEData {
+                    Text("Mi EF (\(data.physicalTests.count))").tag(PreviewSection.ef)
+                }
                 Text("Torneo (\(data.tournaments.count))").tag(PreviewSection.torneo)
             }
             .pickerStyle(.segmented)
@@ -496,6 +591,7 @@ struct WebPortalStudentPreviewSheet: View {
                     switch section {
                     case .hacer: tasksSection(data)
                     case .notas: gradesSection(data)
+                    case .ef: peSection(data)
                     case .torneo: tournamentsSection(data)
                     }
                 }
@@ -572,26 +668,86 @@ struct WebPortalStudentPreviewSheet: View {
                     .background(pistaGreen, in: RoundedRectangle(cornerRadius: 12))
                 }
                 ForEach(subject.items) { item in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.title).font(.callout.weight(.semibold)).foregroundStyle(pistaGreen)
-                            Text([item.typeLabel, item.levelText].compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption).foregroundStyle(inkSecondary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(item.title).font(.callout.weight(.semibold)).foregroundStyle(pistaGreen)
+                                Text([item.typeLabel, item.levelText].compactMap { $0 }.joined(separator: " · "))
+                                    .font(.caption).foregroundStyle(inkSecondary)
+                            }
+                            Spacer()
+                            Text(item.valueText)
+                                .font(.headline.weight(.bold))
+                                .monospacedDigit()
+                                .foregroundStyle(pistaGreen)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(pistaGreen.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
                         }
-                        Spacer()
-                        Text(item.valueText)
-                            .font(.headline.weight(.bold))
-                            .monospacedDigit()
-                            .foregroundStyle(pistaGreen)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(pistaGreen.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                        if let comment = item.comment, !comment.isEmpty {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("COMENTARIO DEL DOCENTE")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(Color(red: 0.55, green: 0.28, blue: 0.06))
+                                Text(comment)
+                                    .font(.caption)
+                                    .foregroundStyle(Color(red: 0.40, green: 0.22, blue: 0.06))
+                            }
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(red: 1.0, green: 0.96, blue: 0.90), in: RoundedRectangle(cornerRadius: 8))
+                        }
                     }
                     .padding(12)
                     .background(paperCard, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(pistaGreen.opacity(0.14), lineWidth: 1))
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func peSection(_ data: WebPortalStudentPreviewData) -> some View {
+        ForEach(data.physicalTests) { test in
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(test.name).font(.callout.weight(.semibold)).foregroundStyle(pistaGreen)
+                    Text(test.capacity).font(.caption).foregroundStyle(inkSecondary)
+                    if let prev = test.previousMark {
+                        Text("Antes: \(prev) → \(test.currentMark)")
+                            .font(.caption2).foregroundStyle(inkSecondary)
+                    }
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(test.currentMark)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(pistaGreen)
+                    if let diff = test.diffText {
+                        Text(diff)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(test.improved ? Color(red: 0.05, green: 0.36, blue: 0.20) : inkSecondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background((test.improved ? Color.green : Color.gray).opacity(0.15), in: Capsule())
+                    }
+                }
+            }
+            .padding(12)
+            .background(paperCard, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(pistaGreen.opacity(0.14), lineWidth: 1))
+        }
+        if let att = data.attendance {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Mi asistencia").font(.callout.weight(.semibold)).foregroundStyle(pistaGreen)
+                Text("Faltas: \(att.absences) · Retrasos: \(att.lates) · Justificadas: \(att.excused) · Sin equipación: \(att.noKit)")
+                    .font(.caption)
+                    .foregroundStyle(inkSecondary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(paperCard, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(pistaGreen.opacity(0.14), lineWidth: 1))
         }
     }
 

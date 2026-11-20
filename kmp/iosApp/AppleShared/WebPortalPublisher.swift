@@ -58,12 +58,14 @@ enum WebPortalPublisher {
     }
 
     /// JSON del tablón v1. Las claves desconocidas las ignora la web.
-    /// `notas` (fase 2) y `torneos` (fase 3B) son opcionales: sin ellos queda como en la fase 1.
+    /// `notas` (fase 2), `torneos` (fase 3B), `fisica` y `asistencia` (fase 3C) son opcionales.
     static func buildBoard(
         portalId: String,
         forms: [WebPortalFormEntry],
         notas: [String: Any]? = nil,
         torneos: [String: Any]? = nil,
+        fisica: [String: Any]? = nil,
+        asistencia: [String: Any]? = nil,
         now: Date = Date()
     ) throws -> Data {
         let pending = forms
@@ -91,6 +93,8 @@ enum WebPortalPublisher {
         ]
         if let notas { board["notas"] = notas }
         if let torneos { board["torneos"] = torneos }
+        if let fisica { board["fisica"] = fisica }
+        if let asistencia { board["asistencia"] = asistencia }
         return try JSONSerialization.data(withJSONObject: board, options: [.sortedKeys])
     }
 
@@ -108,6 +112,10 @@ enum WebPortalPublisher {
         var notas: [String: Any]?
         /// Bloque «Torneos» ya filtrado por los interruptores. `nil`: sin torneos.
         var torneos: [String: Any]?
+        /// Bloque «Mi EF» (pruebas físicas) filtrado por los interruptores.
+        var fisica: [String: Any]? = nil
+        /// Bloque «Asistencia» filtrado por el interruptor.
+        var asistencia: [String: Any]? = nil
     }
 
     struct Outcome: Equatable {
@@ -157,6 +165,8 @@ enum WebPortalPublisher {
                     forms: input.forms,
                     notas: input.notas,
                     torneos: input.torneos,
+                    fisica: input.fisica,
+                    asistencia: input.asistencia,
                     now: now
                 )
                 guard json.count <= maxBoardBytes else {
@@ -256,6 +266,7 @@ extension KmpBridge {
         formInstanceIds: Set<String>?,
         gradeClassIds: Set<Int64> = [],
         tournamentClassIds: Set<Int64> = [],
+        peClassIds: Set<Int64> = [],
         onlyGrades: Bool = false,
         onlyDynamicBlocks: Bool = false
     ) async -> WebPortalGradesPublishStatus {
@@ -272,13 +283,17 @@ extension KmpBridge {
             return status
         }
 
-        // Notas y torneos vigentes (lectura suspend en `@MainActor`; cálculos en segundo plano).
+        // Notas, torneos y EF vigentes (lectura suspend en `@MainActor`; cálculos en segundo plano).
         let gradeBlocks = await portalGradeBlocks(extraClassIds: gradeClassIds)
         let tournamentBlocks = await portalTournamentBlocks(extraClassIds: tournamentClassIds)
+        let peBlocks = await portalPEBlocks(extraClassIds: peClassIds)
         let watcher = WebPortalGradesWatcher.shared
         let tournamentWatcher = WebPortalTournamentsWatcher.shared
+        let peWatcher = WebPortalPEWatcher.shared
         func notas(for studentId: Int64) -> [String: Any]? { gradeBlocks.notas(for: studentId) }
         func torneos(for studentId: Int64) -> [String: Any]? { tournamentBlocks.torneos(for: studentId) }
+        func fisica(for studentId: Int64) -> [String: Any]? { peBlocks.fisica(for: studentId) }
+        func asistencia(for studentId: Int64) -> [String: Any]? { peBlocks.asistencia(for: studentId) }
 
         var dynamicTargets = Set<Int64>()
         for (studentId, _) in store.entries {
@@ -288,6 +303,10 @@ extension KmpBridge {
             }
             if tournamentBlocks.known.contains(studentId),
                tournamentWatcher.summary.hasChanged(studentId: studentId, torneos: tournamentBlocks.torneos[studentId]) {
+                dynamicTargets.insert(studentId)
+            }
+            if peBlocks.known.contains(studentId),
+               peWatcher.summary.hasChanged(studentId: studentId, fisica: peBlocks.fisica[studentId], asistencia: peBlocks.asistencia[studentId]) {
                 dynamicTargets.insert(studentId)
             }
         }
@@ -329,7 +348,9 @@ extension KmpBridge {
                     studentId: $0,
                     forms: formsByStudent[$0] ?? [],
                     notas: notas(for: $0),
-                    torneos: torneos(for: $0)
+                    torneos: torneos(for: $0),
+                    fisica: fisica(for: $0),
+                    asistencia: asistencia(for: $0)
                 )
             },
             storeURL: storeURL,
@@ -340,12 +361,13 @@ extension KmpBridge {
         for studentId in outcome.publishedStudentIds {
             watcher.summary.record(studentId: studentId, notas: notas(for: studentId))
             tournamentWatcher.summary.record(studentId: studentId, torneos: torneos(for: studentId))
+            peWatcher.summary.record(studentId: studentId, fisica: fisica(for: studentId), asistencia: asistencia(for: studentId))
         }
         if outcome.published + outcome.failed > 0 {
             WebPortalPublisher.log.notice("Portal: \(outcome.published) tablones publicados, \(outcome.failed) con error")
         }
         // Demasiado grande y alumnos cerrados no se arreglan reintentando.
-        status.retry = outcome.retryableFailures > 0 || !gradeBlocks.failedClassIds.isEmpty || !tournamentBlocks.failedClassIds.isEmpty
+        status.retry = outcome.retryableFailures > 0 || !gradeBlocks.failedClassIds.isEmpty || !tournamentBlocks.failedClassIds.isEmpty || !peBlocks.failedClassIds.isEmpty
         status.tooLarge = !outcome.tooLargeStudentIds.isEmpty
         watcher.updatePublishedState(
             withNotes: gradeBlocks.classIdsWithNotes,
@@ -355,6 +377,11 @@ extension KmpBridge {
         tournamentWatcher.updatePublishedState(
             withTournaments: tournamentBlocks.classIdsWithTournaments,
             readClassIds: tournamentBlocks.readClassIds,
+            complete: !status.retry && !status.tooLarge
+        )
+        peWatcher.updatePublishedState(
+            withPE: peBlocks.classIdsWithPE,
+            readClassIds: peBlocks.readClassIds,
             complete: !status.retry && !status.tooLarge
         )
         return status

@@ -10,6 +10,10 @@ import Foundation
 struct WebPortalGroupGradeSettings: Codable, Equatable {
     /// «Mostrar la media» del grupo.
     var media = false
+    /// «Mostrar comentarios de celda» como feedback formativo del docente (apagado por defecto).
+    var mostrarComentarios = false
+    /// Ya pasó el aviso inicial «¿Mostrar tus comentarios de celda al alumnado?».
+    var comentariosConfirmados = false
     /// Interruptor de cada columna. Lo que falta está apagado.
     var columnas: [String: Bool] = [:]
     /// Columnas que ya pasaron el aviso «¿Mostrar esta nota al alumnado?».
@@ -17,6 +21,32 @@ struct WebPortalGroupGradeSettings: Codable, Equatable {
     /// Pestaña del Cuaderno cuya media y columnas se publican. Se fija al encender la primera
     /// columna: así la publicación no depende de la pestaña que el docente tenga abierta.
     var pestana: String?
+
+    init(
+        media: Bool = false,
+        mostrarComentarios: Bool = false,
+        comentariosConfirmados: Bool = false,
+        columnas: [String: Bool] = [:],
+        confirmadas: [String] = [],
+        pestana: String? = nil
+    ) {
+        self.media = media
+        self.mostrarComentarios = mostrarComentarios
+        self.comentariosConfirmados = comentariosConfirmados
+        self.columnas = columnas
+        self.confirmadas = confirmadas
+        self.pestana = pestana
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        media = try c.decodeIfPresent(Bool.self, forKey: .media) ?? false
+        mostrarComentarios = try c.decodeIfPresent(Bool.self, forKey: .mostrarComentarios) ?? false
+        comentariosConfirmados = try c.decodeIfPresent(Bool.self, forKey: .comentariosConfirmados) ?? false
+        columnas = try c.decodeIfPresent([String: Bool].self, forKey: .columnas) ?? [:]
+        confirmadas = try c.decodeIfPresent([String].self, forKey: .confirmadas) ?? []
+        pestana = try c.decodeIfPresent(String.self, forKey: .pestana)
+    }
 
     func isVisible(columnId: String) -> Bool { columnas[columnId] == true }
 

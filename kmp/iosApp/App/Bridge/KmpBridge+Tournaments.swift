@@ -156,6 +156,7 @@ extension KmpBridge {
                 "knockoutResultsJson": record.knockoutResultsJSON
             ]
         )
+        notifyPortalTournamentChanged(classId: record.classId)
         guard let saved = try await repository.getTournament(id: record.id) else { return record }
         return Self.tournamentRecord(from: saved)
     }
@@ -168,6 +169,7 @@ extension KmpBridge {
 
     /// Borra un torneo y propaga el borrado por SyncLAN.
     func deleteTournament(id: String) async throws {
+        let existingClassId = try? await container.learningSituationsRepository.getTournament(id: id)?.classId
         try await container.learningSituationsRepository.deleteTournament(id: id)
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         enqueueLocalChange(
@@ -177,6 +179,7 @@ extension KmpBridge {
             payload: ["id": id],
             op: "delete"
         )
+        notifyPortalTournamentChanged(classId: existingClassId)
     }
 
     /// Grupos de trabajo vinculados a la SdA (`learningSituationId`) con sus miembros y nombres de alumno.

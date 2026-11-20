@@ -13,6 +13,36 @@ struct WebPortalGroupPESettings: Codable, Equatable {
     var asistencia: Bool = false
     /// Ya pasó la confirmación inicial de asistencia.
     var asistenciaConfirmada: Bool = false
+    /// Mostrar sellos del pasaporte de EF (solo paradas selladas/pendientes, nunca respuestas).
+    var pasaporte: Bool = false
+    /// Ya pasó la confirmación inicial del pasaporte.
+    var pasaporteConfirmado: Bool = false
+
+    init(
+        pruebas: [String: Bool] = [:],
+        pruebasConfirmadas: [String] = [],
+        asistencia: Bool = false,
+        asistenciaConfirmada: Bool = false,
+        pasaporte: Bool = false,
+        pasaporteConfirmado: Bool = false
+    ) {
+        self.pruebas = pruebas
+        self.pruebasConfirmadas = pruebasConfirmadas
+        self.asistencia = asistencia
+        self.asistenciaConfirmada = asistenciaConfirmada
+        self.pasaporte = pasaporte
+        self.pasaporteConfirmado = pasaporteConfirmado
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pruebas = try c.decodeIfPresent([String: Bool].self, forKey: .pruebas) ?? [:]
+        pruebasConfirmadas = try c.decodeIfPresent([String].self, forKey: .pruebasConfirmadas) ?? []
+        asistencia = try c.decodeIfPresent(Bool.self, forKey: .asistencia) ?? false
+        asistenciaConfirmada = try c.decodeIfPresent(Bool.self, forKey: .asistenciaConfirmada) ?? false
+        pasaporte = try c.decodeIfPresent(Bool.self, forKey: .pasaporte) ?? false
+        pasaporteConfirmado = try c.decodeIfPresent(Bool.self, forKey: .pasaporteConfirmado) ?? false
+    }
 
     func isTestVisible(testId: String) -> Bool { pruebas[testId] == true }
 
@@ -20,7 +50,7 @@ struct WebPortalGroupPESettings: Codable, Equatable {
 
     var visibleTestIds: Set<String> { Set(pruebas.filter { $0.value }.map(\.key)) }
 
-    var hasAnythingActive: Bool { asistencia || pruebas.values.contains(true) }
+    var hasAnythingActive: Bool { asistencia || pasaporte || pruebas.values.contains(true) }
 }
 
 /// Estado persistido de grupos que llegaron a publicar bloques de EF/asistencia (`ef-publicado.json`).

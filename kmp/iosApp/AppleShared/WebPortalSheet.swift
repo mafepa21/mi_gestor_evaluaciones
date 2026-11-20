@@ -428,6 +428,8 @@ struct WebPortalSheet: View {
                 Button("Mostrar prueba") { pe.confirmPending() }
             case .showAttendance:
                 Button("Mostrar asistencia") { pe.confirmPending() }
+            case .showPassport:
+                Button("Mostrar sellos") { pe.confirmPending() }
             }
         } message: { pending in
             switch pending {
@@ -435,7 +437,21 @@ struct WebPortalSheet: View {
                 Text("Cada alumno de \(groupName) verá solo sus propias marcas y evolución en «\(row.name)» unos 10 minutos después. Nunca verá datos de otros compañeros.")
             case .showAttendance:
                 Text("Cada alumno de \(groupName) verá únicamente sus contadores y fechas de faltas, retrasos y equipación. Tus notas privadas e incidencias nunca salen.")
+            case .showPassport:
+                Text("Cada alumno de \(groupName) verá qué paradas de su pasaporte lleva selladas y cuántas le faltan. Sus respuestas escritas nunca se publican.")
             }
+        }
+        // Fase 3D · D1 · confirmación al activar una evaluación anterior en «Notas visibles».
+        .alert(
+            "¿Mostrar esta evaluación en el histórico?",
+            isPresented: Binding(get: { grades.pendingHistoricalTab != nil }, set: { if !$0 { grades.cancelHistoricalTab() } }),
+            presenting: grades.pendingHistoricalTab
+        ) { _ in
+            Button("Cancelar", role: .cancel) { grades.cancelHistoricalTab() }
+                .keyboardShortcut(.defaultAction)
+            Button("Mostrar en histórico") { grades.confirmHistoricalTab() }
+        } message: { tab in
+            Text("El alumnado de \(groupName) verá la media final de «\(tab.title)» en el bloque «Evolución del curso» unos 10 minutos después.")
         }
         // Fase 3C · A2 · confirmación al activar comentarios de celda en Notas visibles.
         .alert(
@@ -614,6 +630,7 @@ struct WebPortalSheet: View {
     private var peAlertTitle: String {
         switch pe.pendingConfirmation {
         case .showAttendance: return "¿Mostrar el resumen de asistencia?"
+        case .showPassport: return "¿Mostrar los sellos del pasaporte?"
         case .showTest, nil: return "¿Mostrar esta prueba física en el portal?"
         }
     }

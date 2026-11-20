@@ -52,6 +52,14 @@ struct WebPortalGradeColumnMeta: Equatable {
     let dateEpochMs: Int64?
 }
 
+/// Evaluación cerrada anterior mostrada en «Evolución del curso» (fase 3D).
+struct WebPortalHistoricalTerm: Equatable {
+    let tabId: String
+    let title: String
+    let value: Double
+    let levelLabel: String
+}
+
 /// Grupo y materia del bloque `notas`, más las columnas que pueden salir.
 struct WebPortalGradeContext {
     let classId: Int64
@@ -62,6 +70,8 @@ struct WebPortalGradeContext {
     /// Notas de celda por alumno y columna (`studentId -> [columnId: note]`).
     /// Solo se exportan si el docente activó explícitamente `mostrarComentarios`.
     var cellNotes: [Int64: [String: String]] = [:]
+    /// Evaluaciones anteriores activadas por alumno (`studentId -> [WebPortalHistoricalTerm]`).
+    var historicalByStudent: [Int64: [WebPortalHistoricalTerm]] = [:]
 }
 
 /// Informe completo de un grupo: contexto, informes por alumno y resumen para la hoja.
@@ -240,6 +250,7 @@ enum WebPortalGrades {
         groupName: String,
         subject: String?,
         preferredTabId: String?,
+        historicalTabIds: [String] = [],
         withReports: Bool
     ) async -> WebPortalGroupGrades? {
         guard let sheet = try? await container.notebookRepository.loadNotebookSnapshot(classId: classId) else { return nil }
@@ -260,8 +271,37 @@ enum WebPortalGrades {
                 rows: prepared.scope.rows
             )
             : []
+
+        var context = prepared.context
+        if withReports && !historicalTabIds.isEmpty {
+            let activeTabId = prepared.scope.tabId
+            let orderedTabs = sheet.tabs.filter { historicalTabIds.contains($0.id) && $0.id != activeTabId }
+            var historical: [Int64: [WebPortalHistoricalTerm]] = [:]
+            for tab in orderedTabs {
+                let tabScope = await Task.detached(priority: .utility) {
+                    WebPortalGrades.scope(sheet: sheet, preferredTabId: tab.id)
+                }.value
+                let tabReports = await KmpBridge.makeGradeReports(
+                    container: container,
+                    classId: classId,
+                    columns: tabScope.allColumns,
+                    rows: tabScope.rows
+                )
+                for rep in tabReports {
+                    guard let grade = rep.finalGrade, let level = rep.finalLevel else { continue }
+                    historical[rep.studentId, default: []].append(WebPortalHistoricalTerm(
+                        tabId: tab.id,
+                        title: tab.title,
+                        value: grade.doubleValue,
+                        levelLabel: level.label
+                    ))
+                }
+            }
+            context.historicalByStudent = historical
+        }
+
         return WebPortalGroupGrades(
-            context: prepared.context,
+            context: context,
             reports: reports,
             overview: prepared.overview,
             studentIds: prepared.studentIds
@@ -334,15 +374,26 @@ enum WebPortalGrades {
             }
             activities.append(item)
         }
-        guard !activities.isEmpty else { return nil }
+        let historical = (context.historicalByStudent[report.studentId] ?? []).filter {
+            settings.isHistoricalTabVisible(tabId: $0.tabId)
+        }
+        guard !activities.isEmpty || !historical.isEmpty else { return nil }
 
         var subject: [String: Any] = ["grupo": clip(context.groupName, shortTextLimit), "actividades": activities]
         // Sin asignatura se omite: nunca se inventa un texto.
         if let name = context.subject, !name.isEmpty { subject["materia"] = clip(name, shortTextLimit) }
         // La media es `finalGrade` del informe, sin recalcular: la misma del Cuaderno y del PDF.
-        if settings.media, mediaAllowed(report: report, context: context, settings: settings),
+        if !activities.isEmpty, settings.media, mediaAllowed(report: report, context: context, settings: settings),
            let grade = report.finalGrade, let level = report.finalLevel {
             subject["media"] = ["valor": grade.doubleValue, "nivel": level.label] as [String: Any]
+        }
+        if !historical.isEmpty {
+            subject["historico"] = historical.map { term -> [String: Any] in
+                [
+                    "titulo": clip(term.title, shortTextLimit),
+                    "media": ["valor": term.value, "nivel": clip(term.levelLabel, 60)] as [String: Any],
+                ]
+            }
         }
         return [
             "provisional": true,
@@ -454,6 +505,7 @@ extension KmpBridge {
                 groupName: name,
                 subject: subject,
                 preferredTabId: tab,
+                historicalTabIds: groupSettings.evaluacionesAnteriores,
                 withReports: wantsReports
             )
             guard let group else {

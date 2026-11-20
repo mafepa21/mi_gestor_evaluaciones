@@ -52,12 +52,34 @@ struct WebPortalStudentPreviewData: Equatable {
         }
     }
 
+    struct HistoricalTermSummary: Identifiable, Equatable {
+        let id: String
+        let title: String
+        let valueText: String
+        let levelText: String?
+    }
+
     struct GradeSubject: Identifiable, Equatable {
         let id: String
         let title: String
         let averageValue: String?
         let averageLevel: String?
         let items: [GradeItem]
+        let historical: [HistoricalTermSummary]
+    }
+
+    struct PassportStopSummary: Identifiable, Equatable {
+        let id: String
+        let title: String
+        let done: Bool
+    }
+
+    struct PassportSummary: Identifiable, Equatable {
+        let id: String
+        let title: String
+        let completed: Int
+        let total: Int
+        let stops: [PassportStopSummary]
     }
 
     struct TournamentSummary: Identifiable, Equatable {
@@ -79,6 +101,7 @@ struct WebPortalStudentPreviewData: Equatable {
     let tournaments: [TournamentSummary]
     let physicalTests: [PhysicalTestSummary]
     let attendance: AttendanceSummary?
+    let passports: [PassportSummary]
     let hiddenGradeColumnCount: Int
     let hiddenTournamentCount: Int
 
@@ -87,7 +110,7 @@ struct WebPortalStudentPreviewData: Equatable {
     }
 
     var hasPEData: Bool {
-        !physicalTests.isEmpty || attendance != nil
+        !physicalTests.isEmpty || attendance != nil || !passports.isEmpty
     }
 
     var isCompletelyEmpty: Bool {
@@ -109,6 +132,7 @@ struct WebPortalStudentPreviewData: Equatable {
             tournaments: [],
             physicalTests: [],
             attendance: nil,
+            passports: [],
             hiddenGradeColumnCount: 0,
             hiddenTournamentCount: 0
         )
@@ -202,13 +226,27 @@ struct WebPortalStudentPreviewData: Equatable {
                         comment: act["comentario"] as? String
                     )
                 }
-                if !items.isEmpty {
+                let histRaw = subject["historico"] as? [[String: Any]] ?? []
+                let historical: [HistoricalTermSummary] = histRaw.enumerated().compactMap { hIdx, h in
+                    guard let title = h["titulo"] as? String,
+                          let m = h["media"] as? [String: Any],
+                          let val = m["valor"] as? Double,
+                          let formatted = numFmt.string(from: NSNumber(value: val)) else { return nil }
+                    return HistoricalTermSummary(
+                        id: "h-\(mIdx)-\(hIdx)",
+                        title: title,
+                        valueText: formatted,
+                        levelText: m["nivel"] as? String
+                    )
+                }
+                if !items.isEmpty || !historical.isEmpty {
                     gradeSubjects.append(GradeSubject(
                         id: "m-\(mIdx)-\(subjectTitle)",
                         title: subjectTitle,
                         averageValue: avgValue,
                         averageLevel: avgLevel,
-                        items: items
+                        items: items,
+                        historical: historical
                     ))
                 }
             }
@@ -315,6 +353,30 @@ struct WebPortalStudentPreviewData: Equatable {
             )
         }
 
+        var passports: [PassportSummary] = []
+        if let pas = root["pasaporte"] as? [String: Any],
+           let lista = pas["lista"] as? [[String: Any]] {
+            for (pIdx, p) in lista.enumerated() {
+                let stopsRaw = p["paradas"] as? [[String: Any]] ?? []
+                let stops = stopsRaw.enumerated().map { sIdx, s in
+                    PassportStopSummary(
+                        id: "ps-\(pIdx)-\(sIdx)",
+                        title: s["titulo"] as? String ?? "Parada",
+                        done: (s["hecha"] as? Bool) == true
+                    )
+                }
+                if !stops.isEmpty {
+                    passports.append(PassportSummary(
+                        id: "p-\(pIdx)",
+                        title: p["titulo"] as? String ?? "Pasaporte",
+                        completed: p["completadas"] as? Int ?? stops.filter(\.done).count,
+                        total: p["total"] as? Int ?? stops.count,
+                        stops: stops
+                    ))
+                }
+            }
+        }
+
         return WebPortalStudentPreviewData(
             studentName: studentName,
             groupName: groupName,
@@ -325,6 +387,7 @@ struct WebPortalStudentPreviewData: Equatable {
             tournaments: tournaments,
             physicalTests: physicalTests,
             attendance: attendance,
+            passports: passports,
             hiddenGradeColumnCount: hiddenGradeColumnCount,
             hiddenTournamentCount: hiddenTournamentCount
         )
@@ -395,10 +458,11 @@ extension KmpBridge {
         let visibleTournaments = tournamentOverview?.tournaments.filter { groupTournamentSettings.isVisible(tournamentId: $0.id) }.count ?? 0
         let hiddenTournaments = max(0, totalTournaments - visibleTournaments)
 
-        // 4. EF y asistencia visibles del grupo
+        // 4. EF, asistencia y pasaporte visibles del grupo
         let peBlocks = await portalPEBlocks(extraClassIds: [classId])
         let fisica = peBlocks.fisica(for: student.id)
         let asistencia = peBlocks.asistencia(for: student.id)
+        let pasaporte = peBlocks.pasaporte(for: student.id)
 
         let portalId = WebPortalStore.standard()?[student.id]?.portalId ?? "preview-\(student.id)"
         guard let boardData = try? WebPortalPublisher.buildBoard(
@@ -408,6 +472,7 @@ extension KmpBridge {
             torneos: torneos,
             fisica: fisica,
             asistencia: asistencia,
+            pasaporte: pasaporte,
             now: now
         ) else {
             return .empty(studentName: student.fullName, groupName: groupName, accountStatus: status)
@@ -702,6 +767,25 @@ struct WebPortalStudentPreviewSheet: View {
                     .background(paperCard, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(pistaGreen.opacity(0.14), lineWidth: 1))
                 }
+                if !subject.historical.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Evolución del curso")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(pistaGreen)
+                        ForEach(subject.historical) { h in
+                            HStack {
+                                Text(h.title).font(.caption.weight(.semibold)).foregroundStyle(pistaGreen)
+                                Spacer()
+                                Text([h.valueText, h.levelText].compactMap { $0 }.joined(separator: " · "))
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(inkSecondary)
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .background(paperCard, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(pistaGreen.opacity(0.14), lineWidth: 1))
+                }
             }
         }
     }
@@ -743,6 +827,26 @@ struct WebPortalStudentPreviewSheet: View {
                 Text("Faltas: \(att.absences) · Retrasos: \(att.lates) · Justificadas: \(att.excused) · Sin equipación: \(att.noKit)")
                     .font(.caption)
                     .foregroundStyle(inkSecondary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(paperCard, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(pistaGreen.opacity(0.14), lineWidth: 1))
+        }
+        ForEach(data.passports) { passport in
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(passport.title).font(.callout.weight(.semibold)).foregroundStyle(pistaGreen)
+                    Spacer()
+                    Text("\(passport.completed) de \(passport.total) paradas")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(pistaGreen)
+                }
+                ForEach(passport.stops) { stop in
+                    Label(stop.title, systemImage: stop.done ? "checkmark.seal.fill" : "circle.dashed")
+                        .font(.caption)
+                        .foregroundStyle(stop.done ? pistaGreen : inkSecondary)
+                }
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)

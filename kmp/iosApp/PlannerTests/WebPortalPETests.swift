@@ -165,5 +165,51 @@ final class WebPortalPETests: XCTestCase {
         vm.requestAttendance(on: false)
         XCTAssertFalse(vm.settings.asistencia)
         XCTAssertEqual(calls.last?.1, true)
+
+        vm.requestPassport(on: true)
+        XCTAssertEqual(vm.pendingConfirmation, .showPassport)
+        vm.confirmPending()
+        XCTAssertTrue(vm.settings.pasaporte)
+        vm.requestPassport(on: false)
+        XCTAssertFalse(vm.settings.pasaporte)
+        XCTAssertEqual(calls.last?.1, true)
+    }
+
+    func testPasaporteBlockYPreviewIncluyenSellosEHistorico() throws {
+        let pasaporte = try XCTUnwrap(WebPortalPE.pasaporteBlock(entries: [
+            .init(title: "Pasaporte · Balonmano", stops: [
+                .init(title: "Punto de partida", done: true),
+                .init(title: "Ataque en equipo", done: true),
+                .init(title: "Reflexión final", done: false),
+            ]),
+        ]))
+        let notas: [String: Any] = [
+            "provisional": true,
+            "materias": [[
+                "grupo": "2º ESO B",
+                "actividades": [],
+                "historico": [
+                    ["titulo": "1.ª Evaluación", "media": ["valor": 7.8, "nivel": "Notable"]],
+                ],
+            ]],
+        ]
+        let board = try WebPortalPublisher.buildBoard(
+            portalId: "pid-3d",
+            forms: [],
+            notas: notas,
+            pasaporte: pasaporte
+        )
+        let preview = WebPortalStudentPreviewData.parse(
+            boardData: board,
+            studentName: "Ana",
+            groupName: "2º ESO B",
+            accountStatus: .activada
+        )
+        XCTAssertFalse(preview.isCompletelyEmpty)
+        XCTAssertTrue(preview.hasPEData)
+        XCTAssertEqual(preview.passports.first?.completed, 2)
+        XCTAssertEqual(preview.passports.first?.total, 3)
+        XCTAssertEqual(preview.gradeSubjects.first?.historical.first?.title, "1.ª Evaluación")
+        XCTAssertEqual(preview.gradeSubjects.first?.historical.first?.valueText, "7,8")
     }
 }

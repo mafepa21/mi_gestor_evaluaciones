@@ -19,6 +19,8 @@ final class WebPortalGradesViewModel: ObservableObject {
     @Published var pendingConfirmation: WebPortalGradeColumnRow?
     /// Primera activación de «Mostrar comentarios de celda» (maqueta 3C A2).
     @Published var pendingCommentsConfirmation = false
+    /// Evaluación anterior que se acaba de encender por primera vez (maqueta 3D D1).
+    @Published var pendingHistoricalTab: WebPortalGradeTab?
     /// Fallo al guardar los ajustes: se enseña en la hoja.
     @Published private(set) var saveError: String?
 
@@ -99,6 +101,44 @@ final class WebPortalGradesViewModel: ObservableObject {
 
     func cancelComments() {
         pendingCommentsConfirmation = false
+    }
+
+    var otherTabs: [WebPortalGradeTab] {
+        guard let overview else { return [] }
+        let current = overview.tabId ?? settings.pestana
+        return overview.tabs.filter { $0.id != current }
+    }
+
+    func isHistoricalOn(_ tab: WebPortalGradeTab) -> Bool {
+        settings.isHistoricalTabVisible(tabId: tab.id)
+    }
+
+    func requestHistoricalTab(_ tab: WebPortalGradeTab, on: Bool) {
+        guard canEdit else { return }
+        if on, settings.needsHistoricalTabConfirmation(tabId: tab.id) {
+            pendingHistoricalTab = tab
+            return
+        }
+        apply(immediately: !on) {
+            if on {
+                if !$0.evaluacionesAnteriores.contains(tab.id) { $0.evaluacionesAnteriores.append(tab.id) }
+            } else {
+                $0.evaluacionesAnteriores.removeAll { $0 == tab.id }
+            }
+        }
+    }
+
+    func confirmHistoricalTab() {
+        guard let tab = pendingHistoricalTab else { return }
+        pendingHistoricalTab = nil
+        apply(immediately: false) {
+            if !$0.evaluacionesAnteriores.contains(tab.id) { $0.evaluacionesAnteriores.append(tab.id) }
+            if !$0.evaluacionesConfirmadas.contains(tab.id) { $0.evaluacionesConfirmadas.append(tab.id) }
+        }
+    }
+
+    func cancelHistoricalTab() {
+        pendingHistoricalTab = nil
     }
 
     /// Pestaña de la que se publican media y notas.
@@ -214,6 +254,10 @@ struct WebPortalGradesPane: View {
                 commentsRow
                 Divider()
                 columnsList
+                if !model.otherTabs.isEmpty {
+                    Divider().padding(.vertical, 4)
+                    historicalTabsSection
+                }
             }
         }
     }
@@ -289,6 +333,32 @@ struct WebPortalGradesPane: View {
                 isOn: Binding(get: { model.settings.mostrarComentarios }, set: { model.requestComments($0) }),
                 enabled: true
             )
+        }
+    }
+
+    // Fase 3D · D1 · «Histórico de evaluaciones anteriores»
+    private var historicalTabsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("HISTÓRICO DE EVALUACIONES ANTERIORES")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(model.otherTabs) { tab in
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tab.title).font(.body.weight(.semibold))
+                        Text("Muestra su media final en el bloque «Evolución del curso».")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    switchView(
+                        label: "Mostrar \(tab.title) en el histórico",
+                        isOn: Binding(get: { model.isHistoricalOn(tab) }, set: { model.requestHistoricalTab(tab, on: $0) }),
+                        enabled: true
+                    )
+                }
+                .padding(.vertical, 4)
+            }
         }
     }
 

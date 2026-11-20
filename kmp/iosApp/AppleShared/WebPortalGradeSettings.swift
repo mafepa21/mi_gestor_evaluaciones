@@ -21,6 +21,10 @@ struct WebPortalGroupGradeSettings: Codable, Equatable {
     /// Pestaña del Cuaderno cuya media y columnas se publican. Se fija al encender la primera
     /// columna: así la publicación no depende de la pestaña que el docente tenga abierta.
     var pestana: String?
+    /// Evaluaciones anteriores del Cuaderno visibles en «Evolución del curso» (fase 3D).
+    var evaluacionesAnteriores: [String] = []
+    /// Evaluaciones anteriores que ya pasaron la confirmación inicial.
+    var evaluacionesConfirmadas: [String] = []
 
     init(
         media: Bool = false,
@@ -28,7 +32,9 @@ struct WebPortalGroupGradeSettings: Codable, Equatable {
         comentariosConfirmados: Bool = false,
         columnas: [String: Bool] = [:],
         confirmadas: [String] = [],
-        pestana: String? = nil
+        pestana: String? = nil,
+        evaluacionesAnteriores: [String] = [],
+        evaluacionesConfirmadas: [String] = []
     ) {
         self.media = media
         self.mostrarComentarios = mostrarComentarios
@@ -36,6 +42,8 @@ struct WebPortalGroupGradeSettings: Codable, Equatable {
         self.columnas = columnas
         self.confirmadas = confirmadas
         self.pestana = pestana
+        self.evaluacionesAnteriores = evaluacionesAnteriores
+        self.evaluacionesConfirmadas = evaluacionesConfirmadas
     }
 
     init(from decoder: Decoder) throws {
@@ -46,14 +54,20 @@ struct WebPortalGroupGradeSettings: Codable, Equatable {
         columnas = try c.decodeIfPresent([String: Bool].self, forKey: .columnas) ?? [:]
         confirmadas = try c.decodeIfPresent([String].self, forKey: .confirmadas) ?? []
         pestana = try c.decodeIfPresent(String.self, forKey: .pestana)
+        evaluacionesAnteriores = try c.decodeIfPresent([String].self, forKey: .evaluacionesAnteriores) ?? []
+        evaluacionesConfirmadas = try c.decodeIfPresent([String].self, forKey: .evaluacionesConfirmadas) ?? []
     }
 
     func isVisible(columnId: String) -> Bool { columnas[columnId] == true }
 
     func needsConfirmation(columnId: String) -> Bool { !confirmadas.contains(columnId) }
 
-    /// Alguna columna encendida: solo estos grupos se vigilan.
-    var hasActiveColumns: Bool { columnas.values.contains(true) }
+    func isHistoricalTabVisible(tabId: String) -> Bool { evaluacionesAnteriores.contains(tabId) }
+
+    func needsHistoricalTabConfirmation(tabId: String) -> Bool { !evaluacionesConfirmadas.contains(tabId) }
+
+    /// Alguna columna encendida o alguna evaluación anterior visible: solo estos grupos se vigilan.
+    var hasActiveColumns: Bool { columnas.values.contains(true) || !evaluacionesAnteriores.isEmpty }
 
     var visibleColumnIds: Set<String> { Set(columnas.filter { $0.value }.map(\.key)) }
 }

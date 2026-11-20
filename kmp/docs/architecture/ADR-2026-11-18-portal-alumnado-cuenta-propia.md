@@ -61,3 +61,8 @@ Cada formulario web generaba un enlace nuevo por alumno que el docente mandaba p
 - **Bloques `fisica` y `asistencia` en el tablón v1**: opcionales, todo apagado por defecto (`ef-visible.json` local en Mac, solo lectura en iPad, cola de 10 min y retirada inmediata al apagar). `fisica` solo incluye intentos y evolución personal del propio alumno (nunca rankings ni comparativas); `asistencia` solo incluye contadores y fecha+tipo recientes (nunca `Attendance.note`, `hasIncident` ni `followUpRequired`).
 - **Comentarios formativos en «Mis notas»**: interruptor opcional `mostrarComentarios` (apagado por defecto, confirmación con Cancelar por defecto) que añade `comentario` desde `PersistedNotebookCell.annotation?.note` solo en columnas visibles.
 - **Privacidad en navegador**: en la web (`entregas-alumnado`, PR #22), la pestaña «Mi EF» solo aparece si hay datos visibles y `sobreParaCopia` elimina `fisica` y `asistencia` antes de guardar en `localStorage`.
+
+## Anexo · Fase 3D: Evaluación completa — histórico y pasaporte (2026-11-20)
+
+- **Histórico de evaluaciones (`notas.materias[].historico`)**: pestañas anteriores del Cuaderno opt-in en `notas-visibles.json` (`evaluacionesAnteriores`), con la media final calculada por `KmpBridge.makeGradeReports` sin recálculo en la web.
+- **Sellos del pasaporte (`pasaporte`)**: opt-in en `ef-visible.json` (`pasaporte`), lee `WebPassportStore` y `snapshot.manifest.sections`, exportando solo título de parada y estado binario `hecha` (nunca respuestas escritas). En la web (`entregas-alumnado`, PR #23) se integra dentro de «Mi EF» (4 pestañas en total) y `sobreParaCopia` lo elimina de `localStorage`.

@@ -1,6 +1,6 @@
 # Ticket · Portal del alumnado · Fase 3C: Educación Física y evaluación formativa
 
-- **Estado**: Borrador pendiente de `APROBADO` (no se toca código de producción hasta aprobación)
+- **Estado**: Implementado y verificado (56/56 tests Swift + 156 tests web + `vite build` + macOS/iOS builds)
 - **Fecha**: 2026-11-20
 - **Ramas previstas**:
   - App: `codex/portal-alumnado-fase3c-ef-formativa` (`mafepa21/mi_gestor_evaluaciones`)
@@ -144,8 +144,8 @@ Se añaden dos bloques opcionales en el JSON cifrado del tablón (`schemaVersion
 
 ## 6. Criterios de aceptación
 
-- [ ] Todo empieza **apagado por defecto** (pruebas físicas, asistencia y comentarios de celda); encender la primera vez pide confirmación con **Cancelar** como acción por defecto.
-- [ ] En la web del alumno, la pestaña «Mi EF» solo aparece si hay pruebas físicas o asistencia visibles; nunca se muestran notas privadas de asistencia, incidencias ni comparativas con otros alumnos.
-- [ ] `sobreParaCopia` excluye `fisica` y `asistencia` de `localStorage` incluso con «Recordarme».
-- [ ] «Ver como este alumno…» refleja fielmente pruebas físicas, asistencia y comentarios antes de publicar.
-- [ ] Tests Swift (`WebPortal*Tests`), tests web (`npm test`), `vite build`, compilación `MiGestorKMPMac` y `MiGestorKMPiOS` pasan en verde.
+- [x] Todo empieza **apagado por defecto** (pruebas físicas, asistencia y comentarios de celda); encender la primera vez pide confirmación con **Cancelar** como acción por defecto.
+- [x] En la web del alumno, la pestaña «Mi EF» solo aparece si hay pruebas físicas o asistencia visibles; nunca se muestran notas privadas de asistencia, incidencias ni comparativas con otros alumnos.
+- [x] `sobreParaCopia` excluye `fisica` y `asistencia` de `localStorage` incluso con «Recordarme».
+- [x] «Ver como este alumno…» refleja fielmente pruebas físicas, asistencia y comentarios antes de publicar.
+- [x] Tests Swift (`WebPortal*Tests`), tests web (`npm test`), `vite build`, compilación `MiGestorKMPMac` y `MiGestorKMPiOS` pasan en verde.

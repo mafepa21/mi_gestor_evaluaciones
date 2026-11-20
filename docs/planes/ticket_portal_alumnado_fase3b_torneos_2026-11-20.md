@@ -1,6 +1,6 @@
 # Ticket L · Portal del alumnado, fase 3B: «Torneos»
 
-Estado: **borrador, pendiente de APROBADO**. No se toca código hasta entonces.
+Estado: **aprobado e implementado** (2026-11-20).
 Depende de: fase 2 fusionada (PR app #420, PR web #19). Rama: `codex/portal-alumnado-fase3b-torneos`.
 Maqueta: `docs/maquetas/portal_alumnado_fase3b_torneos_2026-11-20.html` (estados T1-T5 web, A1-A4 app). Si choca con el ticket, manda el ticket.
 Base: contrato `contrato_portal_v1_2026-11-18.md`, `ADR-2026-11-18` y modelo de proyección `TournamentProjectionModel.swift` / `BracketTreeLayout.swift`.

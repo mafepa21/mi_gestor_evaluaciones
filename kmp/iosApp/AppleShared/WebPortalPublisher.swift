@@ -300,6 +300,35 @@ extension WebPortalPublisher {
     }
 }
 
+extension WebPortalPublisher {
+    /// Anota como publicado lo último que se subió de cada alumno (3 huellas por alumno).
+    /// Los resúmenes de notas y torneos son valores: se mutan las copias recibidas. El de EF es
+    /// una clase y se muta en sitio; solo lo toca `republishPortalBoards`, que va en cola de una
+    /// en una, y mientras este cálculo corre el hilo principal espera su resultado.
+    static func recordPublished(
+        studentIds: [Int64],
+        gradeBlocks: WebPortalGradeBlocks,
+        gradeSummary: inout WebPortalGradesSummary,
+        tournamentBlocks: WebPortalTournamentBlocks,
+        tournamentSummary: inout WebPortalTournamentsSummary,
+        peBlocks: WebPortalPEBlocks,
+        peSummary: WebPortalPESummary
+    ) {
+        PerfLog.measureSync("Portal: registrar huellas", detail: "\(studentIds.count) alumnos", thresholdMs: frameBudgetMs) {
+            for studentId in studentIds {
+                gradeSummary.record(studentId: studentId, notas: gradeBlocks.notas(for: studentId))
+                tournamentSummary.record(studentId: studentId, torneos: tournamentBlocks.torneos(for: studentId))
+                peSummary.record(
+                    studentId: studentId,
+                    fisica: peBlocks.fisica(for: studentId),
+                    asistencia: peBlocks.asistencia(for: studentId),
+                    pasaporte: peBlocks.pasaporte(for: studentId)
+                )
+            }
+        }
+    }
+}
+
 // MARK: - Cola
 
 /// Las publicaciones en segundo plano van de una en una: dos a la vez se pisarían
@@ -370,15 +399,23 @@ extension KmpBridge {
         func asistencia(for studentId: Int64) -> [String: Any]? { peBlocks.asistencia(for: studentId) }
         func pasaporte(for studentId: Int64) -> [String: Any]? { peBlocks.pasaporte(for: studentId) }
 
-        let dynamicTargets = WebPortalPublisher.changedStudents(
-            studentIds: Array(store.entries.keys),
-            gradeBlocks: gradeBlocks,
-            gradeSummary: watcher.summary,
-            tournamentBlocks: tournamentBlocks,
-            tournamentSummary: tournamentWatcher.summary,
-            peBlocks: peBlocks,
-            peSummary: peWatcher.summary
-        )
+        // Serializar a JSON y calcular SHA-256 de 3 bloques por alumno tarda más de un fotograma con
+        // un grupo grande: va en segundo plano. Son cálculos síncronos (sin `suspend` de Kotlin).
+        let studentIdsToCheck = Array(store.entries.keys)
+        let gradeSummary = watcher.summary
+        let tournamentSummary = tournamentWatcher.summary
+        let peSummary = peWatcher.summary
+        let dynamicTargets = await Task.detached(priority: .utility) {
+            WebPortalPublisher.changedStudents(
+                studentIds: studentIdsToCheck,
+                gradeBlocks: gradeBlocks,
+                gradeSummary: gradeSummary,
+                tournamentBlocks: tournamentBlocks,
+                tournamentSummary: tournamentSummary,
+                peBlocks: peBlocks,
+                peSummary: peSummary
+            )
+        }.value
 
         let skipUnrelatedForms = onlyGrades || onlyDynamicBlocks
         var formsByStudent: [Int64: [WebPortalFormEntry]] = [:]
@@ -428,13 +465,26 @@ extension KmpBridge {
             accountKey: accountKey,
             now: ahora
         )
-        PerfLog.measureSync("Portal: registrar huellas", detail: "\(outcome.publishedStudentIds.count) alumnos", thresholdMs: WebPortalPublisher.frameBudgetMs) {
-            for studentId in outcome.publishedStudentIds {
-                watcher.summary.record(studentId: studentId, notas: notas(for: studentId))
-                tournamentWatcher.summary.record(studentId: studentId, torneos: torneos(for: studentId))
-                peWatcher.summary.record(studentId: studentId, fisica: fisica(for: studentId), asistencia: asistencia(for: studentId), pasaporte: pasaporte(for: studentId))
-            }
-        }
+        let publishedIds = outcome.publishedStudentIds
+        // Copias frescas: la publicación ha tardado y no se pisa nada que haya cambiado entretanto.
+        let gradeSummaryNow = watcher.summary
+        let tournamentSummaryNow = tournamentWatcher.summary
+        let recorded = await Task.detached(priority: .utility) { () -> (WebPortalGradesSummary, WebPortalTournamentsSummary) in
+            var gradeSummary = gradeSummaryNow
+            var tournamentSummary = tournamentSummaryNow
+            WebPortalPublisher.recordPublished(
+                studentIds: publishedIds,
+                gradeBlocks: gradeBlocks,
+                gradeSummary: &gradeSummary,
+                tournamentBlocks: tournamentBlocks,
+                tournamentSummary: &tournamentSummary,
+                peBlocks: peBlocks,
+                peSummary: peSummary
+            )
+            return (gradeSummary, tournamentSummary)
+        }.value
+        watcher.summary = recorded.0
+        tournamentWatcher.summary = recorded.1
         if outcome.published + outcome.failed > 0 {
             WebPortalPublisher.log.notice("Portal: \(outcome.published) tablones publicados, \(outcome.failed) con error")
         }

@@ -761,6 +761,7 @@
 		C0C03EC5C394E3592FA171D9 /* WeightEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CAE8A67112E3157FC3FFECE /* WeightEditorSheet.swift */; };
 		C0C679220300C227A477781F /* AppSettingsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75BBE6314E371EFE7E28E853 /* AppSettingsModels.swift */; };
 		C0D1E0A1CC2C4596E44B2D34 /* PageRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BA24E6C15505A50A23ABC4C /* PageRenderer.swift */; };
+		C0DA83B98DA806B8904D399C /* WebPortalRepublishPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD45D88404E7B68053AEEC95 /* WebPortalRepublishPerformanceTests.swift */; };
 		C0EBFC447749D7A95BC78FDA /* TournamentProjectionModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EF7171B95E5EE6C1D99BB89 /* TournamentProjectionModelTests.swift */; };
 		C0F3F85AFC82CC3FCD3EEB38 /* EvaluationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8AD3A2E943A41407A974460 /* EvaluationSettingsView.swift */; };
 		C193D2C208233ECEE9B0BDB5 /* BackupHistoryList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EA2D2AD055252AE33611496 /* BackupHistoryList.swift */; };
@@ -1526,6 +1527,7 @@
 		BCEFDC7491D7A57C26257F65 /* WebPortalPE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPortalPE.swift; sourceTree = "<group>"; };
 		BCF119E0DE892DBACD7073A3 /* DashboardDispatchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardDispatchView.swift; sourceTree = "<group>"; };
 		BD165C28F5CF6FD5F43B44DF /* NotebookDataGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookDataGrid.swift; sourceTree = "<group>"; };
+		BD45D88404E7B68053AEEC95 /* WebPortalRepublishPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPortalRepublishPerformanceTests.swift; sourceTree = "<group>"; };
 		BEBB2CA87CBCB3E4059CF73F /* KmpBridge+Planner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+Planner.swift"; sourceTree = "<group>"; };
 		BED0F0EA701EC156014EDCC9 /* EvaluationSessionActaPDF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationSessionActaPDF.swift; sourceTree = "<group>"; };
 		BEDCFD595DED76EBE8EEA615 /* WebPortalGradesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPortalGradesTests.swift; sourceTree = "<group>"; };
@@ -1805,6 +1807,7 @@
 				31AECB606F5DCBC0812F1018 /* WebPortalCardsPDFRendererTests.swift */,
 				BEDCFD595DED76EBE8EEA615 /* WebPortalGradesTests.swift */,
 				2A68B8DB96509C6E7112E574 /* WebPortalPETests.swift */,
+				BD45D88404E7B68053AEEC95 /* WebPortalRepublishPerformanceTests.swift */,
 				76A9249EDAAA0784954CEC9C /* WebPortalStudentPreviewTests.swift */,
 				175B5FDF38C1A27B10791B10 /* WebPortalTests.swift */,
 				A3C5BDF260D45EF7BC6C8C33 /* WebPortalTournamentsTests.swift */,
@@ -2734,6 +2737,7 @@
 				DB18A2394B4EEDB96537C481 /* WebPortalCardsPDFRendererTests.swift in Sources */,
 				DC5AB73C38D0DB392A0C9A43 /* WebPortalGradesTests.swift in Sources */,
 				C47DAB28523254AFCC5011A8 /* WebPortalPETests.swift in Sources */,
+				C0DA83B98DA806B8904D399C /* WebPortalRepublishPerformanceTests.swift in Sources */,
 				11C78597E9B0E1705097DE2F /* WebPortalStudentPreviewTests.swift in Sources */,
 				7EA2024978752BD0C33D1E44 /* WebPortalTests.swift in Sources */,
 				56941D23D5A126DEAF18FE87 /* WebPortalTournamentsTests.swift in Sources */,

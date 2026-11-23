@@ -146,6 +146,14 @@ object LomloeCommentEvidenceBuilder {
     const val AI_COLUMN_ICON = "apple.intelligence"
 
     /**
+     * Icono de la columna «Comentario de evaluación» del Cuaderno (lo que va al boletín).
+     * Su texto es la salida final, no una observación: si entrara como evidencia, la IA
+     * reescribiría el comentario anterior en lugar de partir de lo observado.
+     * Debe coincidir con `KmpBridge.evaluationCommentColumnIcon` en Swift.
+     */
+    const val EVALUATION_COMMENT_ICON = "text.bubble"
+
+    /**
      * Fechas del trimestre a partir de los periodos de evaluación del horario docente.
      * `T1` es el primer periodo por orden, `T2` el segundo... Devuelve `null` si no hay
      * periodo para esa clave o sus fechas no se pueden leer: entonces no se filtra.
@@ -282,7 +290,7 @@ object LomloeCommentEvidenceBuilder {
             .filter { it.studentId == input.studentId }
             .flatMap { cell ->
                 val column = columnById[cell.columnId] ?: return@flatMap emptyList()
-                if (isAiGeneratedColumn(column)) return@flatMap emptyList()
+                if (isGeneratedCommentColumn(column)) return@flatMap emptyList()
                 val date = cell.observedAtEpochMs ?: column.dateEpochMs ?: cell.trace.updatedAt.toEpochMilliseconds()
                 if (!inPeriod(date)) return@flatMap emptyList()
                 // Una celda con contenido en el periodo cuenta como competencia trabajada.
@@ -355,10 +363,11 @@ object LomloeCommentEvidenceBuilder {
         return (firstPerCriterion + rest).take(max)
     }
 
-    private fun isAiGeneratedColumn(column: NotebookColumnDefinition): Boolean =
+    /** Columnas de comentario final (generado por IA o de evaluación): no son evidencia. */
+    private fun isGeneratedCommentColumn(column: NotebookColumnDefinition): Boolean =
         column.type == NotebookColumnType.TEXT &&
             column.instrumentKind == NotebookInstrumentKind.PRIVATE_COMMENT &&
-            column.iconName == AI_COLUMN_ICON
+            (column.iconName == AI_COLUMN_ICON || column.iconName == EVALUATION_COMMENT_ICON)
 
     private fun cellHasContent(cell: PersistedNotebookCell): Boolean =
         !cell.textValue.isNullOrBlank() || cell.boolValue != null || !cell.iconValue.isNullOrBlank() ||

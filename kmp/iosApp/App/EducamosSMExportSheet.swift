@@ -86,6 +86,8 @@ struct EducamosSMExportSheet: View {
         let educamosStudent: EducamosSMStudent
         var appStudent: Student?
         var grades: [StudentGradeEntry] = []
+        /// No se encontró por nombre y se tomó el alumno con el mismo número de orden.
+        var matchedByOrder = false
 
         var hasMatch: Bool { appStudent != nil }
         var hasGrades: Bool { !grades.isEmpty }
@@ -104,15 +106,11 @@ struct EducamosSMExportSheet: View {
                     exportView
                 }
             }
-            .navigationTitle("Exportar a Educamos")
+            .navigationTitle(navigationTitle)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cerrar") { dismiss() }
-                }
-            }
+            .toolbar { toolbar }
             .fileImporter(
                 isPresented: $isFileImporterPresented,
                 allowedContentTypes: [.xlsx],
@@ -121,6 +119,65 @@ struct EducamosSMExportSheet: View {
                 Task { await handleFileImport(result) }
             }
         }
+        .interactiveDismissDisabled(isProcessing)
+        .appOnChange(of: errorMessage) { _ in
+            if let errorMessage { AccessibilityNotification.Announcement(errorMessage).post() }
+        }
+    }
+
+    private var navigationTitle: String {
+        switch step {
+        case .selectFile: return "Exportar a Educamos"
+        case .reviewMatching: return "Revisar exportación"
+        case .export: return "Archivo listo"
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        switch step {
+        case .selectFile:
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancelar") { dismiss() }
+            }
+        case .reviewMatching:
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancelar") { dismiss() }
+                    .disabled(isProcessing)
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button {
+                    Task { await generateExport() }
+                } label: {
+                    Text("Generar")
+                        .opacity(isProcessing ? 0 : 1)
+                        .overlay {
+                            if isProcessing { ProgressView().controlSize(.small) }
+                        }
+                }
+                .disabled(!canGenerate)
+                .accessibilityLabel(isProcessing ? "Generando archivo" : "Generar archivo con \(exportSummary)")
+            }
+        case .export:
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Hecho") { dismiss() }
+            }
+        }
+    }
+
+    private var canGenerate: Bool {
+        (totalGradesToExport > 0 || totalCommentsToExport > 0) && !isProcessing
+    }
+
+    /// Error visible: icono en rojo y texto en el color principal, para que se lea bien.
+    private func errorLabel(_ message: String) -> some View {
+        Label {
+            Text(message)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+        }
+        .font(.callout)
     }
 
     // MARK: - Step 1: Select file
@@ -155,9 +212,7 @@ struct EducamosSMExportSheet: View {
             .padding(.horizontal, 40)
 
             if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
-                    .font(.caption)
+                errorLabel(errorMessage)
                     .padding(.horizontal, 32)
             }
 
@@ -169,137 +224,179 @@ struct EducamosSMExportSheet: View {
 
     // MARK: - Step 2: Review matching
 
+    private var orderMatchedCount: Int { matchedStudents.filter(\.matchedByOrder).count }
+    private var unmatchedCount: Int { matchedStudents.filter { !$0.hasMatch }.count }
+
     private var reviewMatchingView: some View {
         List {
+            if let errorMessage {
+                Section { errorLabel(errorMessage) }
+            }
             if let template {
                 Section {
                     LabeledContent("Materia", value: template.metadata.materia)
                     LabeledContent("Evaluación", value: template.metadata.evaluacion)
                     LabeledContent("Curso", value: template.metadata.cursoEscolar)
-                    LabeledContent("Alumnos Educamos", value: "\(template.students.count)")
-                    LabeledContent("Alumnos cuaderno", value: "\(filteredAppStudents.count)")
+                    LabeledContent("Alumnos en Educamos", value: "\(template.students.count)")
+                    LabeledContent("Alumnos en el Cuaderno", value: "\(filteredAppStudents.count)")
+                    Button("Cambiar archivo") { isFileImporterPresented = true }
+                        .disabled(isProcessing)
                 } header: {
-                    Text("Plantilla Educamos")
+                    Text("Plantilla de Educamos")
+                }
+
+                if orderMatchedCount > 0 || unmatchedCount > 0 {
+                    Section("Avisos") {
+                        if orderMatchedCount > 0 {
+                            Label {
+                                Text(orderMatchedCount == 1
+                                     ? "1 alumno se ha emparejado por su número de orden, no por su nombre. Comprueba que es la misma persona."
+                                     : "\(orderMatchedCount) alumnos se han emparejado por su número de orden, no por su nombre. Comprueba que son las mismas personas.")
+                            } icon: {
+                                Image(systemName: "list.number").foregroundStyle(.orange)
+                            }
+                        }
+                        if unmatchedCount > 0 {
+                            Label {
+                                Text(unmatchedCount == 1
+                                     ? "1 alumno de Educamos no está en el Cuaderno. Su fila quedará sin rellenar."
+                                     : "\(unmatchedCount) alumnos de Educamos no están en el Cuaderno. Sus filas quedarán sin rellenar.")
+                            } icon: {
+                                Image(systemName: "person.crop.circle.badge.questionmark").foregroundStyle(.red)
+                            }
+                        }
+                    }
                 }
 
                 Section {
                     ForEach(matchedColumns) { col in
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text("\(col.educamosElement.shortName)")
-                                        .font(.subheadline.weight(.semibold))
-                                    Text("Columna \(col.id)")
-                                        .font(.caption.monospaced())
-                                        .foregroundStyle(.secondary)
-                                }
-                                Text(col.kindDescription)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 16) {
+                                columnTitleBlock(col)
+                                Spacer(minLength: 8)
+                                columnSourceView(col)
                             }
-
-                            Spacer()
-
-                            if col.educamosElement.isInstrumento || col.educamosElement.isComentarios {
-                                columnPicker(for: col)
-                            } else if col.isMatched {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.green)
-                                    Text(col.sourceTitle)
-                                        .font(.caption.weight(.medium))
-                                        .foregroundStyle(.primary)
-                                }
-                            } else {
-                                Text("Sin columna en cuaderno")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 8) {
+                                columnTitleBlock(col)
+                                columnSourceView(col)
                             }
                         }
+                        .frame(minHeight: 44)
                     }
                 } header: {
                     Text("Columnas detectadas")
                 } footer: {
                     let matchedCount = matchedColumns.filter(\.isMatched).count
-                    Text("\(matchedCount) de \(matchedColumns.count) columnas emparejadas con el cuaderno. Toca una columna para elegirla a mano; la app recordará tu elección en este grupo.")
+                    Text("\(matchedCount) de \(matchedColumns.count) columnas emparejadas con el Cuaderno. Toca una columna para elegirla a mano; la app recordará tu elección en este grupo.")
                 }
 
                 Section {
                     ForEach(matchedStudents) { match in
-                        HStack(spacing: 10) {
-                            Text("\(match.educamosStudent.orderNumber)")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                                .frame(width: 24, alignment: .trailing)
-
-                            VStack(alignment: .leading, spacing: 3) {
-                                if !match.educamosStudent.rawName.isEmpty && match.educamosStudent.rawName != "\(match.educamosStudent.orderNumber)" {
-                                    Text(match.educamosStudent.rawName)
-                                        .font(.subheadline.weight(.medium))
-                                }
-
-                                if let student = match.appStudent {
-                                    HStack(spacing: 4) {
-                                        Text("\(student.lastName), \(student.firstName)")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    if !match.grades.isEmpty {
-                                        Text(match.grades.map(\.displayLabel).joined(separator: " · "))
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(.blue)
-                                    } else {
-                                        Text("Sin calificaciones registradas")
-                                            .font(.caption)
-                                            .foregroundStyle(.orange)
-                                    }
-                                } else {
-                                    Text("Sin coincidencia en el grupo")
-                                        .font(.caption)
-                                        .foregroundStyle(.red)
-                                }
-                            }
-
-                            Spacer()
-
-                            Image(systemName: match.hasMatch ? (match.hasGrades ? "checkmark.circle.fill" : "exclamationmark.triangle.fill") : "xmark.circle")
-                                .foregroundStyle(match.hasMatch ? (match.hasGrades ? .green : .orange) : .red)
-                        }
+                        studentRow(match)
                     }
                 } header: {
-                    Text("Matching de alumnos")
+                    Text("Emparejamiento de alumnos")
                 } footer: {
                     let matchCount = matchedStudents.filter(\.hasMatch).count
-                    let withGradesCount = matchedStudents.filter(\.hasGrades).count
-                    Text("\(matchCount) alumnos emparejados · \(withGradesCount) con notas registradas (\(exportSummary) a escribir)")
+                    Text("\(matchCount) de \(matchedStudents.count) alumnos emparejados. Se escribirán \(exportSummary).")
                 }
             }
-        }
-        .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 12) {
-                Button {
-                    Task { await generateExport() }
-                } label: {
-                    if isProcessing {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        Label(
-                            "Generar archivo (\(exportSummary))",
-                            systemImage: "doc.badge.arrow.up"
-                        )
-                        .frame(maxWidth: .infinity)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled((totalGradesToExport == 0 && totalCommentsToExport == 0) || isProcessing)
-            }
-            .padding()
-            .background(.bar)
         }
     }
+
+    private func columnTitleBlock(_ col: MatchedColumn) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(col.educamosElement.shortName)
+                    .font(.body.weight(.semibold))
+                Text("Columna \(col.id)")
+                    .font(.footnote.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+            Text(col.kindDescription)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func columnSourceView(_ col: MatchedColumn) -> some View {
+        if col.educamosElement.isInstrumento || col.educamosElement.isComentarios {
+            columnPicker(for: col)
+        } else if col.isMatched {
+            Label {
+                Text(col.sourceTitle)
+            } icon: {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            }
+            .font(.footnote)
+        } else {
+            Text("Sin columna en el Cuaderno")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func studentRow(_ match: StudentMatch) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(match.educamosStudent.orderNumber)")
+                .font(.footnote.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 24, alignment: .trailing)
+
+            VStack(alignment: .leading, spacing: 4) {
+                if !match.educamosStudent.rawName.isEmpty && match.educamosStudent.rawName != "\(match.educamosStudent.orderNumber)" {
+                    Text(match.educamosStudent.rawName)
+                        .font(.body)
+                }
+                if let student = match.appStudent {
+                    Text("Cuaderno: \(student.lastName), \(student.firstName)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    if match.matchedByOrder {
+                        Label {
+                            Text("Emparejado por número de orden")
+                        } icon: {
+                            Image(systemName: "list.number").foregroundStyle(.orange)
+                        }
+                        .font(.footnote.weight(.semibold))
+                    }
+                    Text(match.grades.isEmpty ? "Sin notas ni comentario registrados" : match.grades.map(\.displayLabel).joined(separator: " · "))
+                        .font(.footnote)
+                } else {
+                    Text("No está en el Cuaderno")
+                        .font(.footnote)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: studentStatusIcon(match))
+                .foregroundStyle(studentStatusColor(match))
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(studentStatusText(match))
+    }
+
+    private func studentStatusIcon(_ match: StudentMatch) -> String {
+        guard match.hasMatch else { return "xmark.circle" }
+        if match.matchedByOrder || !match.hasGrades { return "exclamationmark.triangle.fill" }
+        return "checkmark.circle.fill"
+    }
+
+    private func studentStatusColor(_ match: StudentMatch) -> Color {
+        guard match.hasMatch else { return .red }
+        return match.matchedByOrder || !match.hasGrades ? .orange : .green
+    }
+
+    private func studentStatusText(_ match: StudentMatch) -> String {
+        guard match.hasMatch else { return "Sin coincidencia" }
+        if match.matchedByOrder { return "Emparejado por orden, compruébalo" }
+        return match.hasGrades ? "Emparejado con datos" : "Emparejado sin datos"
+    }
+
 
     /// Menú para elegir a mano la columna del cuaderno de un instrumento de Educamos.
     private func columnPicker(for col: MatchedColumn) -> some View {
@@ -333,18 +430,21 @@ struct EducamosSMExportSheet: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                     Text(col.sourceTitle)
-                        .font(.caption.weight(.medium))
+                        .font(.footnote.weight(.medium))
                         .foregroundStyle(.primary)
-                        .lineLimit(1)
+                        .multilineTextAlignment(.trailing)
                 } else {
                     Text("Elegir columna")
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption2)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
@@ -355,106 +455,92 @@ struct EducamosSMExportSheet: View {
     // MARK: - Step 3: Export result
 
     private var exportView: some View {
-        VStack(spacing: 24) {
-            Spacer()
+        ScrollView {
+            VStack(spacing: 24) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 56))
+                    .foregroundStyle(.green)
+                    .accessibilityHidden(true)
 
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.green)
+                VStack(spacing: 8) {
+                    Text("Archivo generado")
+                        .font(.title2.weight(.semibold))
+                    Text("Se han escrito \(exportSummary) en la plantilla de Educamos.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
 
-            VStack(spacing: 8) {
-                Text("Archivo generado con éxito")
-                    .font(.headline)
-
-                Text("Se han rellenado \(totalGradesToExport) calificaciones en las columnas de instrumentos, Situación de Aprendizaje y nota final del archivo de Educamos.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                #if os(iOS) && !targetEnvironment(macCatalyst)
+                Text("Usa «Compartir archivo» para guardarlo en Archivos o enviarlo al ordenador desde el que usas Educamos.")
+                    .font(.callout)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            }
+                #endif
 
-            if let savedPath = savedToDownloadsPath {
-                HStack(spacing: 12) {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.green)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Guardado en Descargas")
-                            .font(.subheadline.weight(.semibold))
-                        Text(URL(fileURLWithPath: savedPath).lastPathComponent)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                if let savedPath = savedToDownloadsPath {
+                    LabeledContent {
+                        #if os(macOS)
+                        Button("Mostrar en Finder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: savedPath)])
+                        }
+                        #endif
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Guardado en Descargas")
+                                Text(URL(fileURLWithPath: savedPath).lastPathComponent)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "arrow.down.circle.fill").foregroundStyle(.green)
+                        }
                     }
-
-                    Spacer()
-
-                    #if os(macOS)
-                    Button("Mostrar") {
-                        let url = URL(fileURLWithPath: savedPath)
-                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    .padding(16)
+                    .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                } else {
+                    #if os(macOS) || targetEnvironment(macCatalyst)
+                    if let url = generatedFileURL {
+                        Button {
+                            saveToDownloads(sourceURL: url)
+                        } label: {
+                            Label("Guardar en Descargas", systemImage: "arrow.down.circle")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
                     #endif
                 }
-                .padding()
-                .background(Color.green.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .padding(.horizontal, 32)
-            } else {
-                #if os(macOS) || targetEnvironment(macCatalyst)
-                if let url = generatedFileURL {
-                    Button {
-                        saveToDownloads(sourceURL: url)
-                    } label: {
-                        Label("Guardar en Descargas", systemImage: "arrow.down.circle")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .padding(.horizontal, 40)
-                }
-                #endif
-            }
 
-            if let url = generatedFileURL {
-                if savedToDownloadsPath != nil {
+                if let url = generatedFileURL {
                     ShareLink(item: url) {
                         Label("Compartir archivo", systemImage: "square.and.arrow.up")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
-                    .padding(.horizontal, 40)
-                } else {
-                    ShareLink(item: url) {
-                        Label("Compartir archivo", systemImage: "square.and.arrow.up")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .padding(.horizontal, 40)
                 }
-            }
 
-            Button {
-                dismiss()
-            } label: {
-                Text("Cerrar")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .padding(.horizontal, 40)
+                if let errorMessage { errorLabel(errorMessage) }
 
-            Spacer()
-            Spacer()
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Siguiente paso: subirlo a Educamos")
+                        .font(.headline)
+                    Label("Súbelo en la misma evaluación de Educamos de la que descargaste la plantilla.", systemImage: "1.circle")
+                    Label("No le cambies el nombre ni lo abras para editarlo en Excel: lleva dentro los datos de esa evaluación.", systemImage: "2.circle")
+                    Label("Revisa en Educamos que las notas y los comentarios aparecen en cada alumno.", systemImage: "3.circle")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .padding(24)
+            .frame(maxWidth: 560)
+            .frame(maxWidth: .infinity)
         }
-        .padding()
     }
+
 
     // MARK: - Data helpers
 
@@ -631,10 +717,12 @@ struct EducamosSMExportSheet: View {
                 }
             }
 
+            var matchedByOrder = false
             if matchedAppStudent == nil {
                 let index = educamosStudent.orderNumber - 1
                 if index >= 0 && index < appStudents.count {
                     matchedAppStudent = appStudents[index]
+                    matchedByOrder = true
                 }
             }
 
@@ -711,7 +799,8 @@ struct EducamosSMExportSheet: View {
                 id: educamosStudent.personaId,
                 educamosStudent: educamosStudent,
                 appStudent: matchedAppStudent,
-                grades: studentGrades
+                grades: studentGrades,
+                matchedByOrder: matchedByOrder
             )
         }
 
@@ -789,7 +878,9 @@ struct EducamosSMExportSheet: View {
             saveToDownloads(sourceURL: outputURL)
             #endif
 
+            errorMessage = nil
             withAnimation { step = .export }
+            AccessibilityNotification.Announcement("Archivo generado con \(exportSummary)").post()
 
         } catch {
             errorMessage = error.localizedDescription
@@ -798,6 +889,7 @@ struct EducamosSMExportSheet: View {
 
     private func saveToDownloads(sourceURL: URL) {
         guard let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
+            errorMessage = "No se encontró la carpeta Descargas. Usa «Compartir archivo»."
             return
         }
         let destURL = downloadsURL.appendingPathComponent(sourceURL.lastPathComponent)
@@ -810,7 +902,7 @@ struct EducamosSMExportSheet: View {
                 savedToDownloadsPath = destURL.path
             }
         } catch {
-            print("EducamosSM: no se pudo guardar en Descargas: \(error.localizedDescription)")
+            errorMessage = "No se pudo guardar en Descargas: \(error.localizedDescription). Usa «Compartir archivo»."
         }
     }
 }

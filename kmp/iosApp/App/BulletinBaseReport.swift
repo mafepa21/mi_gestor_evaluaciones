@@ -12,14 +12,19 @@ struct BulletinBaseAttendance: Equatable {
     var absent = 0
     var late = 0
     var justified = 0
+    /// Vino a clase sin equipación: está presente, pero es un dato a tener en cuenta en EF.
+    var noMaterial = 0
+    /// Exento de la práctica: está presente.
+    var exempt = 0
+    /// Estados que no se reconocen: no cuentan ni como presencia ni como falta.
     var other = 0
 
-    var total: Int { present + absent + late + justified + other }
+    var total: Int { present + absent + late + justified + noMaterial + exempt }
 
-    /// Porcentaje de sesiones con presencia (un retraso cuenta como presente).
+    /// Porcentaje de sesiones con presencia (retraso, sin material y exento cuentan como presente).
     var presenceRate: Int? {
         guard total > 0 else { return nil }
-        return Int((Double(present + late) / Double(total) * 100).rounded())
+        return Int((Double(present + late + noMaterial + exempt) / Double(total) * 100).rounded())
     }
 }
 
@@ -205,6 +210,12 @@ enum BulletinBaseReportBuilder {
                 : "\(missed) \(label)")
         }
         parts.append("\(attendance.late) retraso\(attendance.late == 1 ? "" : "s")")
+        if attendance.noMaterial > 0 {
+            parts.append("\(attendance.noMaterial) día\(attendance.noMaterial == 1 ? "" : "s") sin material")
+        }
+        if attendance.exempt > 0 {
+            parts.append("\(attendance.exempt) día\(attendance.exempt == 1 ? "" : "s") exento")
+        }
         return "Asistencia: " + parts.joined(separator: " · ")
     }
 

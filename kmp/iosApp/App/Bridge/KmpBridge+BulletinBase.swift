@@ -49,6 +49,8 @@ extension KmpBridge {
             case NotebookAttendanceStatus.absent: inputs[record.studentId]?.attendance.absent += 1
             case NotebookAttendanceStatus.late: inputs[record.studentId]?.attendance.late += 1
             case NotebookAttendanceStatus.justified: inputs[record.studentId]?.attendance.justified += 1
+            case NotebookAttendanceStatus.noMaterial: inputs[record.studentId]?.attendance.noMaterial += 1
+            case NotebookAttendanceStatus.exempt: inputs[record.studentId]?.attendance.exempt += 1
             default: inputs[record.studentId]?.attendance.other += 1
             }
             let note = record.note.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -6,6 +6,9 @@ import MiGestorKit
 // se edita como cualquier celda y viaja por SyncLAN con el resto del Cuaderno.
 extension KmpBridge {
     static let evaluationCommentColumnTitle = "Comentario de evaluación"
+    /// Igual que `LomloeCommentEvidenceBuilder.EVALUATION_COMMENT_ICON` en KMP: con este icono
+    /// la columna no vuelve a entrar como evidencia cuando la IA redacta el comentario.
+    static let evaluationCommentColumnIcon = "text.bubble"
 
     /// Columna de comentario de la pestaña, si ya existe en el Cuaderno cargado.
     func evaluationCommentColumn(in data: NotebookUiStateData, tabId: String?) -> NotebookColumnDefinition? {
@@ -64,7 +67,7 @@ extension KmpBridge {
             sessions: [],
             sharedAcrossTabs: false,
             colorHex: nil,
-            iconName: "text.bubble",
+            iconName: Self.evaluationCommentColumnIcon,
             order: -1,
             widthDp: 320,
             categoryId: nil,

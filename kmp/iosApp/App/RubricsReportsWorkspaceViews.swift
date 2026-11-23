@@ -2162,6 +2162,11 @@ struct BulkLOMLOEGenerationSheet: View {
     @State var onlyEmptyCells = true
     @State var columnName: String
     @State var targetColumnId: String?
+    /// Pestañas de evaluación del Cuaderno del grupo, para guardar en su «Comentario de evaluación».
+    @State var notebookTabs: [(id: String, title: String)] = []
+    /// Id de pestaña, o `legacyDestination` para la columna propia «LOMLOE IA».
+    @State var destination = BulkLOMLOEGenerationSheet.legacyDestination
+    static let legacyDestination = "__lomloe_ia__"
     @State var isGenerating = false
     @State var isSaving = false
     @State var feedbackMessage: String?
@@ -2202,17 +2207,18 @@ struct BulkLOMLOEGenerationSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cerrar") { dismiss() }
                 }
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button {
                         Task { await saveApprovedDrafts() }
                     } label: {
-                        if isSaving {
-                            ProgressView()
-                        } else {
-                            Label("Guardar", systemImage: "square.and.arrow.down")
-                        }
+                        Text("Guardar")
+                            .opacity(isSaving ? 0 : 1)
+                            .overlay {
+                                if isSaving { ProgressView().controlSize(.small) }
+                            }
                     }
                     .disabled(isSaving || isGenerating || rows.allSatisfy { !$0.isApproved || $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+                    .accessibilityLabel(isSaving ? "Guardando" : "Guardar comentarios aprobados")
                 }
             }
             .task {
@@ -2221,6 +2227,7 @@ struct BulkLOMLOEGenerationSheet: View {
                 if rows.isEmpty {
                     await loadStudents()
                 }
+                await loadNotebookTabs()
             }
             .onDisappear {
                 Task { await saveChangedTeacherNotes() }
@@ -2230,8 +2237,14 @@ struct BulkLOMLOEGenerationSheet: View {
 
     var configBar: some View {
         VStack(alignment: .leading, spacing: 12) {
-            TextField("Columna destino", text: $columnName)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
+            Picker("Guardar en", selection: $destination) {
+                ForEach(notebookTabs, id: \.id) { tab in
+                    Text("\(KmpBridge.evaluationCommentColumnTitle) · \(tab.title)").tag(tab.id)
+                }
+                Text("Columna propia: \(columnName)").tag(Self.legacyDestination)
+            }
+            .pickerStyle(.menu)
+            .accessibilityHint("La columna «Comentario de evaluación» es la que se exporta a Educamos")
             Toggle("Rellenar solo celdas vacías", isOn: $onlyEmptyCells)
             AppleAIStatusBadge(state: generationMetadata?.state ?? aiAvailability.generationState, message: generationMetadata?.availabilityMessage ?? aiAvailability.message)
             HStack(spacing: 12) {
@@ -2250,6 +2263,9 @@ struct BulkLOMLOEGenerationSheet: View {
                 Text(feedbackMessage ?? "\(rows.count) alumnos preparados")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .appOnChange(of: feedbackMessage) { _ in
+                        if let feedbackMessage { AccessibilityNotification.Announcement(feedbackMessage).post() }
+                    }
             }
             if generationMetadata != nil {
                 AppleAIAuditSummaryView(metadata: generationMetadata)
@@ -2268,6 +2284,8 @@ struct BulkLOMLOEGenerationSheet: View {
                 statusLabel(row.wrappedValue.status)
                 Toggle("", isOn: row.isApproved)
                     .labelsHidden()
+                    .frame(minHeight: 44)
+                    .accessibilityLabel("Aprobar comentario de \(row.wrappedValue.student.fullName)")
             }
             if case .omitted(let reason) = row.wrappedValue.status {
                 Text(reason)
@@ -2282,6 +2300,7 @@ struct BulkLOMLOEGenerationSheet: View {
                 .accessibilityLabel("Tu valoración de \(row.wrappedValue.student.fullName)")
             TextEditor(text: row.text)
                 .frame(minHeight: 96)
+                .accessibilityLabel("Comentario de \(row.wrappedValue.student.fullName)")
                 .padding(8)
                 .background(NotebookStyle.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
@@ -2407,8 +2426,23 @@ struct BulkLOMLOEGenerationSheet: View {
             : "Generación completada. Revisa y guarda los comentarios aprobados."
     }
 
+    /// Propone la última pestaña usada del Cuaderno de este grupo, o la primera.
+    @MainActor
+    func loadNotebookTabs() async {
+        guard notebookTabs.isEmpty,
+              let tabs = try? await bridge.container.notebookConfigRepository.listTabs(classId: classId),
+              !tabs.isEmpty else { return }
+        notebookTabs = tabs.map { ($0.id, $0.title) }
+        let remembered = bridge.restoredSelectedNotebookTab(forClassId: classId)
+        destination = tabs.first { $0.id == remembered }?.id ?? tabs[0].id
+    }
+
     @MainActor
     func saveApprovedDrafts() async {
+        if destination != Self.legacyDestination {
+            await saveApprovedDraftsToEvaluationComment(tabId: destination)
+            return
+        }
         isSaving = true
         feedbackMessage = nil
         defer { isSaving = false }
@@ -2441,6 +2475,43 @@ struct BulkLOMLOEGenerationSheet: View {
                 saved += 1
             }
             feedbackMessage = "Guardados: \(saved). Omitidos: \(skipped)."
+        } catch {
+            feedbackMessage = error.localizedDescription
+        }
+    }
+
+    /// Guarda en «Comentario de evaluación» de la pestaña: la misma columna que importa
+    /// comentarios y que «Exportar a Educamos» empareja sola. Recarga el Cuaderno y sincroniza.
+    @MainActor
+    func saveApprovedDraftsToEvaluationComment(tabId: String) async {
+        isSaving = true
+        feedbackMessage = nil
+        defer { isSaving = false }
+
+        do {
+            let column = try await bridge.ensureEvaluationCommentColumn(classId: classId, tabId: tabId)
+            var comments: [(studentId: Int64, text: String)] = []
+            var skipped = 0
+            for row in rows where row.isApproved {
+                let text = row.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else {
+                    skipped += 1
+                    continue
+                }
+                if onlyEmptyCells {
+                    let existing = try await bridge.notebookTextCell(classId: classId, studentId: row.student.id, columnId: column.id)
+                    if !existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        skipped += 1
+                        continue
+                    }
+                }
+                comments.append((row.student.id, text))
+            }
+            if !comments.isEmpty {
+                try await bridge.saveEvaluationComments(classId: classId, columnId: column.id, comments: comments)
+            }
+            let tabTitle = notebookTabs.first { $0.id == tabId }?.title ?? ""
+            feedbackMessage = "Guardados en «\(column.title)» de \(tabTitle): \(comments.count). Omitidos: \(skipped)."
         } catch {
             feedbackMessage = error.localizedDescription
         }

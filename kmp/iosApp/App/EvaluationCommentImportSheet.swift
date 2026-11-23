@@ -277,7 +277,9 @@ struct EvaluationCommentImportSheet: View {
                         } icon: {
                             Image(systemName: "questionmark.circle")
                                 .foregroundStyle(.orange)
+                                .accessibilityHidden(true)
                         }
+                        .accessibilityElement(children: .combine)
                     }
                     if plan.countsDiffer {
                         Label {

@@ -21,3 +21,6 @@
 - Notas evaluables = columna que cuenta para la media, no oculta, tipo numérico/rúbrica/calculada y valor entre 0 y 10. Así quedan fuera los datos brutos (metros, segundos).
 - La nota de diario guarda `studentName`: no se usa nunca en este informe.
 - Trimestres: `ReportTerm.rawValue` coincide con `AttendanceMatrixRange`, que da las fechas del curso actual.
+- «Generar lote» (LOMLOE por lotes) guarda por defecto en «Comentario de evaluación» de una pestaña del Cuaderno (`saveApprovedDraftsToEvaluationComment`). La pestaña propuesta es la última usada del grupo (`restoredSelectedNotebookTab`), no la del trimestre: los títulos de pestaña («1.ª Eval») no coinciden con los trimestres («1er Trimestre»).
+- El icono `text.bubble` de «Comentario de evaluación» es contrato con KMP (`LomloeCommentEvidenceBuilder.EVALUATION_COMMENT_ICON`): si cambia en Swift, la IA volverá a leer el comentario como observación.
+- Asistencia del informe anónimo: «sin material» y «exento» son presencia. Un estado no reconocido no cuenta en el porcentaje.

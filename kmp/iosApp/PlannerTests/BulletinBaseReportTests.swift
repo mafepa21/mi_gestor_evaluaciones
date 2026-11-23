@@ -94,6 +94,19 @@ final class BulletinBaseReportTests: XCTestCase {
         XCTAssertEqual(scrubber.scrub("Lucíana analiza"), "Lucíana analiza")
     }
 
+    func testNoMaterialAndExemptCountAsPresentAndAreShown() {
+        // 8 presentes, 1 sin material, 1 exento: el 100 % vino a clase.
+        let attendance = BulletinBaseAttendance(present: 8, absent: 0, late: 0, justified: 0, noMaterial: 1, exempt: 1, other: 0)
+        XCTAssertEqual(attendance.presenceRate, 100)
+        XCTAssertEqual(
+            BulletinBaseReportBuilder.attendanceLine(attendance),
+            "Asistencia: 100 % presente · 0 faltas · 0 retrasos · 1 día sin material · 1 día exento"
+        )
+        // Un estado desconocido no cuenta como falta.
+        let unknown = BulletinBaseAttendance(present: 4, other: 1)
+        XCTAssertEqual(unknown.presenceRate, 100)
+    }
+
     func testCodesAreStableBetweenBuilds() {
         let first = build()
         let second = build()

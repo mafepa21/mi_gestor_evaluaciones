@@ -2256,6 +2256,9 @@ extension KmpBridge {
         let classicText = String(data: data(from: bytes), encoding: .utf8) ?? "Vista previa no disponible para este informe."
 
         switch kind {
+        case .bulletinBase:
+            // Este informe no usa el contexto narrativo: se construye con buildBulletinBaseReport.
+            throw NSError(domain: "KmpBridge", code: 400, userInfo: [NSLocalizedDescriptionKey: "La base para boletín se genera con buildBulletinBaseReport."])
         case .groupOverview:
             let summary = try await loadCourseSummary(classId: classId)
             let strengths = compactSuggestions(

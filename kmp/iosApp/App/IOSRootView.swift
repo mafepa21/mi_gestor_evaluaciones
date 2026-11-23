@@ -534,6 +534,14 @@ struct IOSRootView: View {
                     }
                 }
 
+                if layoutState.notebookImportCommentsAction != nil {
+                    Button {
+                        layoutState.notebookImportComments()
+                    } label: {
+                        Label("Importar comentarios…", systemImage: "text.bubble")
+                    }
+                }
+
                 Button {
                     layoutState.notebookUndo()
                 } label: {

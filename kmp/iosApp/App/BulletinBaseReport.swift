@@ -150,6 +150,15 @@ enum BulletinBaseReportBuilder {
         }
     }
 
+    /// Clave número de código → alumno, idéntica a la del informe: «Alumno 07» → 7 → id.
+    /// La usa la importación de comentarios para devolver cada texto a su alumno real.
+    static func codeNumbers(studentIds: [Int64], classId: Int64) -> [Int: Int64] {
+        let inputs = studentIds.map { BulletinBaseStudentInput(studentId: $0, firstName: "", lastName: "") }
+        return Dictionary(
+            uniqueKeysWithValues: codeOrder(students: inputs, classId: classId).enumerated().map { ($0.offset + 1, $0.element.studentId) }
+        )
+    }
+
     static func code(for number: Int, width: Int) -> String {
         let digits = String(number)
         return "Alumno " + String(repeating: "0", count: max(0, width - digits.count)) + digits

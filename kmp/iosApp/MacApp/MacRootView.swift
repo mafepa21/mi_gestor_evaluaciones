@@ -830,6 +830,14 @@ struct MacRootView: View {
                 }
             }
 
+            if notebookToolbarActions.importCommentsAction != nil {
+                Button {
+                    notebookToolbarActions.importComments()
+                } label: {
+                    Label("Importar comentarios…", systemImage: "text.bubble")
+                }
+            }
+
             Button {
                 notebookToolbarActions.undo()
             } label: {

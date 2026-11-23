@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta · Comentario de evaluación (Cuaderno + Educamos)</title>
+<style>
+:root{--bg:#f5f5f7;--card:#fff;--fg:#1d1d1f;--mut:#6e6e73;--line:#e5e5ea;--acc:#0066cc;--ok:#1a7f37;--warn:#9a5b00;--err:#c41e3a;--fill:#f2f2f7}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--card:#1c1c1e;--fg:#f5f5f7;--mut:#a1a1a6;--line:#38383a;--acc:#4da3ff;--ok:#4cd964;--warn:#ffb340;--err:#ff6961;--fill:#2c2c2e}}
+*{box-sizing:border-box}
+body{margin:0;font:1rem/1.45 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header.tabs{display:flex;gap:8px;padding:16px 24px;flex-wrap:wrap;align-items:center}
+header.tabs b{margin-right:8px}
+header.tabs button{min-height:32px;padding:0 16px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;font:inherit;font-size:.875rem}
+header.tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.state{display:none;padding:0 24px 32px}.state.on{display:block}
+.note{color:var(--mut);font-size:.875rem;margin:0 0 16px;max-width:760px}
+/* Cuaderno */
+.nb{background:var(--card);border:1px solid var(--line);border-radius:24px;overflow:hidden;max-width:1100px}
+.nbbar{display:flex;align-items:center;gap:8px;padding:16px 24px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.nbbar .t{font-weight:600;font-size:1.125rem;margin-right:auto}
+.seg{display:inline-flex;background:var(--fill);border-radius:8px;padding:2px}
+.seg span{padding:4px 16px;border-radius:6px;font-size:.875rem}
+.seg .on{background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.12);font-weight:600}
+.btn{min-height:44px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.btn.pri{background:var(--acc);color:#fff;border-color:var(--acc)}
+.btn.sm{min-height:32px;font-size:.875rem;border-radius:8px}
+.btn[disabled]{opacity:.4;cursor:default}
+table{border-collapse:collapse;width:100%}
+th,td{border-bottom:1px solid var(--line);padding:8px 16px;text-align:left;font-size:.9375rem;vertical-align:top}
+th{font-size:.8125rem;color:var(--mut);font-weight:600;background:var(--fill)}
+td.num{font-variant-numeric:tabular-nums;text-align:center;width:72px}
+th.cm,td.cm{min-width:280px;border-left:2px solid var(--line)}
+td.cm{color:var(--fg)}
+td.cm .clip{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+td.cm.empty{color:var(--mut)}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:.75rem;color:var(--mut)}
+.menu{position:absolute;right:24px;top:64px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.18);padding:8px;min-width:300px;z-index:2}
+.menu div{padding:8px 16px;border-radius:8px;min-height:40px;display:flex;align-items:center;gap:8px}
+.menu div.hl{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+.menu hr{border:none;border-top:1px solid var(--line);margin:8px 0}
+.rel{position:relative}
+/* Hoja */
+.sheet{background:var(--card);border:1px solid var(--line);border-radius:24px;max-width:720px;overflow:hidden}
+.sheethead{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--line)}
+.sheethead h2{margin:0;font-size:1.0625rem}
+.link{color:var(--acc);background:none;border:none;font:inherit;min-height:44px;cursor:pointer}
+.sec{padding:16px 24px}
+.sec h3{margin:0 0 8px;font-size:.8125rem;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
+.group{background:var(--fill);border-radius:12px;overflow:hidden}
+.group .r{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:8px 16px;min-height:44px;border-bottom:1px solid var(--line)}
+.group .r:last-child{border-bottom:none}
+.group .r small{color:var(--mut)}
+.foot{color:var(--mut);font-size:.8125rem;margin-top:8px}
+.center{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:48px 32px}
+.center .big{font-size:3rem}
+.center h2{margin:8px 0 0;font-size:1.25rem}
+.center p{margin:0;color:var(--mut);max-width:440px}
+.warn{border-radius:12px;padding:16px;margin-bottom:8px;font-size:.9375rem;background:color-mix(in srgb,var(--warn) 12%,transparent)}
+.warn b{color:var(--warn)}
+.errbox{border-radius:12px;padding:16px;font-size:.9375rem;background:color-mix(in srgb,var(--err) 10%,transparent)}
+.errbox b{color:var(--err)}
+.pr{display:grid;grid-template-columns:32px 200px 1fr;gap:16px;padding:8px 16px;border-bottom:1px solid var(--line);min-height:44px;align-items:start}
+.pr:last-child{border-bottom:none}
+.pr .n{color:var(--mut);font-variant-numeric:tabular-nums;text-align:right}
+.pr .c{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pr .c .tag{display:block;color:var(--warn);font-weight:600;font-size:.875rem}
+@media(max-width:640px){.pr{grid-template-columns:32px 1fr}.pr .c{grid-column:2}}
+.pr.miss .c{color:var(--mut)}
+.bar{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:16px 24px}
+.bar .btn{width:100%;justify-content:center}
+.toast{display:inline-flex;align-items:center;gap:8px;background:var(--fg);color:var(--bg);padding:16px;border-radius:16px;margin-top:16px}
+.sk{height:16px;margin:16px 0;border-radius:8px;background:var(--line);animation:p 1.2s infinite alternate}
+@keyframes p{to{opacity:.4}}
+@media(prefers-reduced-motion:reduce){.sk{animation:none}}
+.ok{color:var(--ok)}.mut{color:var(--mut)}
+code{font-size:.875rem}
+</style></head><body>
+
+<header class="tabs"><b>Estados</b>
+<button data-s="cuaderno" class="on">1 · Cuaderno</button>
+<button data-s="menu">2 · Menú</button>
+<button data-s="elegir">3 · Elegir archivo</button>
+<button data-s="leyendo">4 · Leyendo</button>
+<button data-s="revisar">5 · Revisar</button>
+<button data-s="error">6 · Error</button>
+<button data-s="hecho">7 · Importado</button>
+<button data-s="educamos">8 · Exportar a Educamos</button>
+</header>
+
+<!-- 1 CUADERNO -->
+<section class="state on" id="cuaderno">
+<p class="note">La columna «Comentario de evaluación» va fijada al final de la pestaña de evaluación. No cuenta para la media. Se edita como cualquier celda de texto (toque o doble clic abre el editor de celda que ya existe).</p>
+<div class="nb">
+  <div class="nbbar"><span class="t">2º ESO B (inventado)</span><span class="seg"><span class="on">1.ª Eval</span><span>2.ª Eval</span><span>3.ª Eval</span></span><button class="btn" aria-label="Más acciones">⋯ Más</button></div>
+  <table>
+    <thead><tr><th>Alumno</th><th class="num">Circuito</th><th class="num">Voleibol</th><th class="num">Media</th><th class="cm">Comentario de evaluación <span class="pill" aria-hidden="true">📌</span><span class="pill">· no cuenta en la media</span></th></tr></thead>
+    <tbody>
+      <tr><td>Prueba Uno, Lucía</td><td class="num">8,5</td><td class="num">9,0</td><td class="num"><b>8,8</b></td><td class="cm"><span class="clip">Lucía ha mostrado una gran implicación en las sesiones de condición física y ayuda a sus compañeros a organizarse. Debe cuidar el material.</span></td></tr>
+      <tr><td>Prueba Dos, Mateo</td><td class="num">6,0</td><td class="num">5,5</td><td class="num"><b>5,8</b></td><td class="cm"><span class="clip">Progresa en voleibol cuando trabaja en grupos pequeños. Conviene reforzar la constancia.</span></td></tr>
+      <tr><td>Ejemplo Tres, Nora</td><td class="num">7,0</td><td class="num">—</td><td class="num"><b>7,0</b></td><td class="cm empty">Sin comentario</td></tr>
+    </tbody>
+  </table>
+</div>
+</section>
+
+<!-- 2 MENU -->
+<section class="state" id="menu">
+<p class="note">Dos entradas nuevas en el menú «Más» del Cuaderno, junto a «Exportar a Educamos SM». «Añadir comentario de evaluación» solo aparece si la pestaña aún no tiene la columna.</p>
+<div class="nb rel">
+  <div class="nbbar"><span class="t">2º ESO B (inventado)</span><span class="seg"><span class="on">1.ª Eval</span><span>2.ª Eval</span></span><button class="btn" aria-label="Más acciones" aria-expanded="true">⋯ Más</button></div>
+  <div class="menu" role="menu">
+    <div role="menuitem"><span aria-hidden="true">↑</span> Exportar cuaderno</div>
+    <div role="menuitem"><span aria-hidden="true">📄</span> Exportar a Educamos SM</div>
+    <hr>
+    <div role="menuitem" class="hl"><span aria-hidden="true">💬</span> Importar comentarios…</div>
+    <div role="menuitem"><span aria-hidden="true">＋</span> Añadir comentario de evaluación</div>
+  </div>
+  <table><thead><tr><th>Alumno</th><th class="num">Circuito</th><th class="num">Media</th></tr></thead>
+  <tbody><tr><td>Prueba Uno, Lucía</td><td class="num">8,5</td><td class="num">8,5</td></tr><tr><td>Prueba Dos, Mateo</td><td class="num">6,0</td><td class="num">6,0</td></tr><tr><td>&nbsp;</td><td></td><td></td></tr><tr><td>&nbsp;</td><td></td><td></td></tr></tbody></table>
+</div>
+</section>
+
+<!-- 3 ELEGIR -->
+<section class="state" id="elegir">
+<div class="sheet">
+  <div class="sheethead"><button class="link">Cancelar</button><h2>Importar comentarios</h2><span style="width:72px"></span></div>
+  <div class="center">
+    <div class="big" aria-hidden="true">💬</div>
+    <h2>Comentarios de 1.ª Eval</h2>
+    <p>Elige un Excel con un comentario por fila. La primera fila con comentario va al primer alumno del Cuaderno, la segunda al segundo, y así con todos.</p>
+    <button class="btn pri" style="margin-top:16px">Elegir archivo .xlsx</button>
+    <p class="foot">Sirve también el Excel de Educamos: la app encuentra sola su columna de comentarios.</p>
+  </div>
+</div>
+</section>
+
+<!-- 4 LEYENDO -->
+<section class="state" id="leyendo" aria-busy="true">
+<div class="sheet">
+  <div class="sheethead"><button class="link">Cancelar</button><h2>Importar comentarios</h2><span style="width:72px"></span></div>
+  <div class="sec"><p><progress aria-label="Leyendo archivo"></progress> Leyendo «comentarios_1eval.xlsx»…</p><div class="sk" style="width:60%"></div><div class="sk"></div><div class="sk" style="width:80%"></div></div>
+</div>
+</section>
+
+<!-- 5 REVISAR -->
+<section class="state" id="revisar">
+<div class="sheet">
+  <div class="sheethead"><button class="link">Cancelar</button><h2>Revisar comentarios</h2><button class="link" style="font-weight:600" onclick="cf.showModal()">Importar (23)</button></div>
+
+  <div class="sec">
+    <h3>Origen</h3>
+    <div class="group">
+      <div class="r"><span>Archivo</span><span><small>comentarios_1eval.xlsx</small> <button class="link">Cambiar</button></span></div>
+      <div class="r"><label for="col">Columna</label><select id="col" class="btn sm"><option>X · Comentarios (Educamos)</option><option>B · Nombre</option><option>C · Observaciones</option></select></div>
+      <div class="r"><label for="hdr">La primera fila es un título</label><input id="hdr" type="checkbox" role="switch" checked style="width:44px;height:24px"></div>
+      <div class="r"><span>Destino</span><small>Comentario de evaluación · 1.ª Eval</small></div>
+    </div>
+    <p class="foot">La app propone la columna con más texto. Si el archivo es de Educamos, propone la de comentarios.</p>
+  </div>
+
+  <div class="sec" style="padding-top:0">
+    <div class="warn" role="status"><span aria-hidden="true">⚠︎ </span><b>Hay 25 comentarios y 24 alumnos.</b> El comentario 25 no se importará. Revisa que el orden del Excel sea el mismo que el del Cuaderno.</div>
+    <div class="warn" role="status"><span aria-hidden="true">⚠︎ </span><b>2 alumnos ya tienen comentario.</b> Se sustituirá por el del Excel.</div>
+  </div>
+
+  <div class="sec" style="padding-top:0">
+    <h3>Alumno ← comentario</h3>
+    <div class="group" role="list">
+      <div class="pr" role="listitem"><span class="n">1</span><span>Prueba Uno, Lucía</span><span class="c"><span class="tag">Sustituirá el comentario actual</span>Ha mostrado una gran implicación en las sesiones de condición física y ayuda a sus compañeros.</span></div>
+      <div class="pr" role="listitem"><span class="n">2</span><span>Prueba Dos, Mateo</span><span class="c">Progresa en voleibol cuando trabaja en grupos pequeños. Conviene reforzar la constancia.</span></div>
+      <div class="pr" role="listitem"><span class="n">3</span><span>Ejemplo Tres, Nora</span><span class="c">Trabaja con autonomía y aplica bien las normas de seguridad.</span></div>
+      <div class="pr miss" role="listitem"><span class="n">4</span><span>Ejemplo Cuatro, Hugo</span><span class="c">Fila vacía: queda sin comentario</span></div>
+      <div class="pr" role="listitem"><span class="n">…</span><span class="mut">20 alumnos más</span><span></span></div>
+    </div>
+  </div>
+
+</div>
+<dialog id="cf" aria-labelledby="cft" style="border:none;border-radius:16px;padding:24px;max-width:360px;background:var(--card);color:var(--fg)"><h2 id="cft" style="margin:0 0 8px;font-size:1.0625rem">¿Sustituir 2 comentarios?</h2><p class="mut" style="margin:0 0 16px">Lucía Prueba Uno y otro alumno ya tienen comentario. Se cambiará por el del Excel. Podrás deshacerlo justo después.</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="cf.close()">Cancelar</button><button class="btn" style="color:var(--err)" onclick="cf.close()">Sustituir e importar</button></div></dialog>
+</section>
+
+<!-- 6 ERROR -->
+<section class="state" id="error">
+<div class="sheet">
+  <div class="sheethead"><button class="link">Cancelar</button><h2>Importar comentarios</h2><span style="width:72px"></span></div>
+  <div class="center" role="alert">
+    <div class="big" aria-hidden="true">⚠️</div>
+    <h2>No se pudo leer el archivo</h2>
+    <p>No se ha importado nada. El archivo debe ser .xlsx y tener al menos una columna con texto, un comentario por fila.</p>
+    <button class="btn pri" style="margin-top:16px">Elegir otro archivo</button>
+  </div>
+</div>
+</section>
+
+<!-- 7 HECHO -->
+<section class="state" id="hecho">
+<p class="note">La hoja se cierra y el Cuaderno muestra la columna rellena. Aviso breve, anunciado a VoiceOver.</p>
+<div class="nb">
+  <div class="nbbar"><span class="t">2º ESO B (inventado)</span><span class="seg"><span class="on">1.ª Eval</span><span>2.ª Eval</span></span></div>
+  <table><thead><tr><th>Alumno</th><th class="num">Media</th><th class="cm">Comentario de evaluación</th></tr></thead>
+  <tbody><tr><td>Prueba Uno, Lucía</td><td class="num">8,8</td><td class="cm"><span class="clip">Ha mostrado una gran implicación en las sesiones de condición física…</span></td></tr>
+  <tr><td>Prueba Dos, Mateo</td><td class="num">5,8</td><td class="cm"><span class="clip">Progresa en voleibol cuando trabaja en grupos pequeños…</span></td></tr></tbody></table>
+</div>
+<div class="toast" role="status" aria-live="polite"><span aria-hidden="true">✓</span> 23 comentarios importados en 1.ª Eval <button class="link" style="color:inherit;text-decoration:underline">Deshacer</button></div>
+</section>
+
+<!-- 8 EDUCAMOS -->
+<section class="state" id="educamos">
+<p class="note">Hoja «Exportar a Educamos» que ya existe. Solo cambia: la fila nueva «Comentarios» en Columnas detectadas, una marca por alumno y el texto del botón.</p>
+<div class="sheet">
+  <div class="sheethead"><button class="link">Cerrar</button><h2>Exportar a Educamos</h2><span style="width:72px"></span></div>
+  <div class="sec">
+    <h3>Columnas detectadas</h3>
+    <div class="group">
+      <div class="r"><span><b>Circuito</b> <code class="mut">Columna G</code><br><small>Instrumento de evaluación</small></span><select class="btn" aria-label="Columna del Cuaderno para Circuito"><option>Circuito</option></select></div>
+      <div class="r"><span><b>Nota</b> <code class="mut">Columna W</code><br><small>Nota final evaluación</small></span><span class="ok">✓ Media evaluación</span></div>
+      <div class="r" style="background:color-mix(in srgb,var(--acc) 8%,transparent)"><span><b>Comentarios</b> <code class="mut">Columna X</code><br><small>Comentario del profesor</small></span><select class="btn" aria-label="Columna del Cuaderno para Comentarios"><option>Comentario de evaluación</option><option>Observaciones</option><option>No exportar</option></select></div>
+    </div>
+    <p class="foot">Se empareja sola con «Comentario de evaluación» de la pestaña activa. Puedes elegir otra columna de texto o «No exportar».</p>
+  </div>
+  <div class="sec" style="padding-top:0">
+    <h3>Matching de alumnos</h3>
+    <div class="group">
+      <div class="r"><span>1 · PRUEBA UNO, LUCÍA<br><small>Circuito: 8,5 · Nota: 9 · Comentario</small></span></div>
+      <div class="r"><span>2 · PRUEBA DOS, MATEO<br><small>Circuito: 6 · Nota: 6 · sin comentario</small></span></div>
+    </div>
+    <p class="foot">24 alumnos emparejados · 48 calificaciones y 23 comentarios a escribir.</p>
+  </div>
+  <div class="bar"><button class="btn pri">Generar archivo (48 notas y 23 comentarios)</button></div>
+</div>
+</section>
+
+<script>const cf=document.getElementById("cf");
+document.querySelectorAll('header button[data-s]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('header button[data-s]').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.state').forEach(s=>s.classList.toggle('on',s.id===b.dataset.s));
+});
+</script>
+</body></html>

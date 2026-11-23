@@ -57,6 +57,7 @@ final class WorkspaceLayoutState: ObservableObject {
     var notebookRefreshAction: (() -> Void)?
     var notebookGenerateSummaryAction: (() -> Void)?
     var notebookExportSMAction: (() -> Void)?
+    var notebookImportCommentsAction: (() -> Void)?
     /// Sin publicar: el texto de exportación se calcula al pulsar, no en cada toque.
     var notebookExportTextProvider: (@MainActor () -> String)?
 
@@ -120,7 +121,8 @@ final class WorkspaceLayoutState: ObservableObject {
         onMarkAllPresent: (() -> Void)? = nil,
         onRefresh: (() -> Void)? = nil,
         onGenerateSummary: (() -> Void)? = nil,
-        onExportSM: (() -> Void)? = nil
+        onExportSM: (() -> Void)? = nil,
+        onImportComments: (() -> Void)? = nil
     ) {
         publishDeferred {
             self.notebookInspectorAvailable = inspectorAvailable
@@ -153,6 +155,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookRefreshAction = onRefresh
             self.notebookGenerateSummaryAction = onGenerateSummary
             self.notebookExportSMAction = onExportSM
+            self.notebookImportCommentsAction = onImportComments
         }
     }
 
@@ -220,6 +223,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookRefreshAction = nil
             self.notebookGenerateSummaryAction = nil
             self.notebookExportSMAction = nil
+            self.notebookImportCommentsAction = nil
         }
     }
 
@@ -253,6 +257,10 @@ final class WorkspaceLayoutState: ObservableObject {
 
     func notebookExportSM() {
         notebookExportSMAction?()
+    }
+
+    func notebookImportComments() {
+        notebookImportCommentsAction?()
     }
 
     func setNotebookSearchText(_ value: String) {
@@ -1849,6 +1857,14 @@ struct AppWorkspaceShell: View {
                 }
             }
 
+            if layoutState.notebookImportCommentsAction != nil {
+                Button {
+                    layoutState.notebookImportComments()
+                } label: {
+                    Label("Importar comentarios…", systemImage: "text.bubble")
+                }
+            }
+
             Button {
                 layoutState.notebookUndo()
             } label: {
@@ -2016,6 +2032,14 @@ struct AppWorkspaceShell: View {
                         layoutState.notebookExportSM()
                     } label: {
                         Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+                    }
+                }
+
+                if layoutState.notebookImportCommentsAction != nil {
+                    Button {
+                        layoutState.notebookImportComments()
+                    } label: {
+                        Label("Importar comentarios…", systemImage: "text.bubble")
                     }
                 }
 

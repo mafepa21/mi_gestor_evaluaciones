@@ -139,6 +139,7 @@ struct NotebookModuleView: View {
     @State var isAverageConfigurationPresented = false
     @State private var averageSheetSeed = UUID()
     @State var isEducamosSMExportPresented = false
+    @State var isEvaluationCommentImportPresented = false
     @State var averageExplanationRow: NotebookTableRow? = nil
     @State var currentSelectionAuditEvents: [NotebookCellAuditEvent] = []
     @State var auditObservationTask: Task<Void, Never>? = nil
@@ -968,6 +969,12 @@ struct NotebookModuleView: View {
         } label: {
             Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
         }
+
+        Button {
+            isEvaluationCommentImportPresented = true
+        } label: {
+            Label("Importar comentarios…", systemImage: "text.bubble")
+        }
     }
 
     @ViewBuilder
@@ -1583,6 +1590,19 @@ struct NotebookModuleView: View {
                 .appOnChange(of: isAverageConfigurationPresented) { isOpen in
                     if isOpen { averageSheetSeed = UUID() }
                 }
+                .sheet(isPresented: $isEvaluationCommentImportPresented) {
+                    EvaluationCommentImportSheet(
+                        data: data,
+                        bridge: bridge,
+                        tabId: bridge.selectedNotebookTabId,
+                        tabTitle: data.sheet.tabs.first { $0.id == bridge.selectedNotebookTabId }?.title
+                    )
+                    #if os(macOS)
+                    .frame(width: 600, height: 680)
+                    #else
+                    .presentationDetents([.large])
+                    #endif
+                }
                 .sheet(isPresented: $isEducamosSMExportPresented) {
                     EducamosSMExportSheet(data: data, bridge: bridge)
                         #if os(macOS)
@@ -1845,6 +1865,12 @@ struct NotebookModuleView: View {
                                     isEducamosSMExportPresented = true
                                 } label: {
                                     Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+                                }
+
+                                Button {
+                                    isEvaluationCommentImportPresented = true
+                                } label: {
+                                    Label("Importar comentarios…", systemImage: "text.bubble")
                                 }
 
                                 // 9. Configuración de media

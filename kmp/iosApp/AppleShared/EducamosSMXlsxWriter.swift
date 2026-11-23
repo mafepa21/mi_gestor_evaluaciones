@@ -52,7 +52,8 @@ enum EducamosSMCellValue {
             return "<v>\(clean)</v>"
         case .text(let value):
             let escaped = value.xmlEscaped
-            return "<is><t>\(escaped)</t></is>"
+            // `xml:space="preserve"` mantiene saltos de línea y espacios del comentario.
+            return "<is><t xml:space=\"preserve\">\(escaped)</t></is>"
         }
     }
 

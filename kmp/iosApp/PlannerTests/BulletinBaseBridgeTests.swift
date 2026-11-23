@@ -13,6 +13,8 @@ final class BulletinBaseBridgeTests: XCTestCase {
         let now = Date()
         let nowMs = Int64(now.timeIntervalSince1970 * 1000)
         let suffix = String(nowMs)
+        // Un trimestre sin periodo en el horario: así manda el periodo de la prueba, no el de la base compartida.
+        let termLabel = "Prueba sin periodo \(suffix)"
 
         let classId = try await container.classesRepository.saveClass(
             id: nil, name: "Grupo prueba boletín \(suffix)", course: 2, description: nil,
@@ -66,6 +68,15 @@ final class BulletinBaseBridgeTests: XCTestCase {
         _ = try await container.notebookRepository.saveGrade(classId: classId, studentId: olivia, columnId: evaluable, evaluationId: nil, value: KotlinDouble(value: 8.5))
         _ = try await container.notebookRepository.saveGrade(classId: classId, studentId: olivia, columnId: raw, evaluationId: nil, value: KotlinDouble(value: 2300))
 
+        // Sello «Cooperación» en la celda evaluable y «Tu valoración» que nombra a Bruno.
+        try await container.notebookRepository.saveCell(
+            classId: classId, studentId: olivia, columnId: evaluable,
+            textValue: nil, boolValue: nil, iconValue: "person.2.fill", ordinalValue: nil,
+            note: "Mejoró la salida", colorHex: nil, attachmentUris: [],
+            authorUserId: nil, associatedGroupId: nil
+        )
+        _ = try await bridge.saveTeacherTermNote(studentId: olivia, classId: classId, termLabel: termLabel, text: "Fortaleza: Ayuda a Bruno.")
+
         _ = try await container.incidentsRepository.saveIncident(
             id: nil, classId: classId, studentId: KotlinLong(value: bruno),
             title: "Discusión", detail: "Discute con Olivia Inventada Ruiz. Teléfono 600 111 222",
@@ -75,7 +86,7 @@ final class BulletinBaseBridgeTests: XCTestCase {
 
         let report = try await bridge.buildBulletinBaseReport(
             classId: classId,
-            termLabel: "1er Trimestre",
+            termLabel: termLabel,
             period: (now.addingTimeInterval(-86_400 * 2), now.addingTimeInterval(86_400))
         )
 
@@ -92,6 +103,9 @@ final class BulletinBaseBridgeTests: XCTestCase {
         XCTAssertTrue(report.text.contains("Notas: media 8,5 (1 nota)"), report.text)
         XCTAssertTrue(report.text.contains("Se quedó con \(brunoCode) en la biblioteca"), report.text)
         XCTAssertTrue(report.text.contains("Discusión: Discute con \(oliviaCode). Teléfono [teléfono]"), report.text)
+        XCTAssertTrue(report.text.contains("Sellos: Cooperación ×1"), report.text)
+        XCTAssertTrue(report.text.contains("Valoración del docente: Fortaleza: Ayuda a \(brunoCode)."), report.text)
+        XCTAssertTrue(report.text.contains("Circuito: Mejoró la salida"), report.text)
 
         try? await container.classesRepository.deleteClass(classId: classId)
     }

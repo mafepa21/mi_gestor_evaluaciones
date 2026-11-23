@@ -2157,6 +2157,8 @@ struct BulkLOMLOEGenerationSheet: View {
     let termLabel: String
     let audience: AIReportAudience
     let tone: AIReportTone
+    /// Pestaña del Cuaderno que se propone en «Guardar en» (desde «Cerrar evaluación»).
+    let preferredTabId: String?
 
     @State var rows: [DraftRow] = []
     @State var onlyEmptyCells = true
@@ -2180,9 +2182,11 @@ struct BulkLOMLOEGenerationSheet: View {
         classId: Int64,
         termLabel: String,
         audience: AIReportAudience,
-        tone: AIReportTone
+        tone: AIReportTone,
+        preferredTabId: String? = nil
     ) {
         self.bridge = bridge
+        self.preferredTabId = preferredTabId
         self.classId = classId
         self.termLabel = termLabel
         self.audience = audience
@@ -2433,7 +2437,7 @@ struct BulkLOMLOEGenerationSheet: View {
               let tabs = try? await bridge.container.notebookConfigRepository.listTabs(classId: classId),
               !tabs.isEmpty else { return }
         notebookTabs = tabs.map { ($0.id, $0.title) }
-        let remembered = bridge.restoredSelectedNotebookTab(forClassId: classId)
+        let remembered = preferredTabId ?? bridge.restoredSelectedNotebookTab(forClassId: classId)
         destination = tabs.first { $0.id == remembered }?.id ?? tabs[0].id
     }
 

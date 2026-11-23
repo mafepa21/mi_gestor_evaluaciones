@@ -13,6 +13,8 @@ import AppKit
 struct EducamosSMExportSheet: View {
     let data: NotebookUiStateData
     let bridge: KmpBridge
+    /// Archivo generado: resumen («N notas y M comentarios») y dónde quedó. Lo usa «Cerrar evaluación».
+    var onExported: ((String, URL) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     @State private var step: ExportStep = .selectFile
@@ -879,6 +881,7 @@ struct EducamosSMExportSheet: View {
             #endif
 
             errorMessage = nil
+            onExported?(exportSummary, savedToDownloadsPath.map { URL(fileURLWithPath: $0) } ?? outputURL)
             withAnimation { step = .export }
             AccessibilityNotification.Announcement("Archivo generado con \(exportSummary)").post()
 

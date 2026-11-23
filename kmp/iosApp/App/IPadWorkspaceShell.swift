@@ -1916,7 +1916,7 @@ struct AppWorkspaceShell: View {
             Button {
                 layoutState.openNotebookClosingReview()
             } label: {
-                Label("Revisar cierre…", systemImage: "checklist")
+                Label("Cerrar evaluación…", systemImage: "checklist")
             }
             .disabled(!layoutState.notebookOrganizationMenuAvailable)
 

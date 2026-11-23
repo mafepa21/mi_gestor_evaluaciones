@@ -285,6 +285,7 @@ extension KmpBridge {
         case evaluationDigest
         case operationsSnapshot
         case lomloeEvaluationComment
+        case bulletinBase
 
         var id: String { rawValue }
 
@@ -295,6 +296,7 @@ extension KmpBridge {
             case .evaluationDigest: return "Resumen de evaluación"
             case .operationsSnapshot: return "Resumen operativo"
             case .lomloeEvaluationComment: return "Comentario LOMLOE"
+            case .bulletinBase: return "Base para boletín"
             }
         }
 
@@ -305,6 +307,7 @@ extension KmpBridge {
             case .evaluationDigest: return "Instrumentos, rúbricas y carga activa"
             case .operationsSnapshot: return "Asistencia, incidencias y estado docente"
             case .lomloeEvaluationComment: return "Comentario trimestral listo para informe"
+            case .bulletinBase: return "Datos anónimos de todo el grupo"
             }
         }
 
@@ -315,6 +318,7 @@ extension KmpBridge {
             case .evaluationDigest: return "chart.bar.doc.horizontal"
             case .operationsSnapshot: return "bolt.badge.clock.fill"
             case .lomloeEvaluationComment: return "text.badge.star"
+            case .bulletinBase: return "checkmark.shield"
             }
         }
 

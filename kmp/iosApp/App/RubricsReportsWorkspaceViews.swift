@@ -777,6 +777,8 @@ struct ReportsWorkspaceView: View {
     /// "Tu valoración" del alumno y trimestre seleccionados (Comentario LOMLOE).
     @StateObject var teacherNoteStore = TeacherTermNoteStore()
     @State var isWeeklyEmailSheetPresented = false
+    /// Sube cuando hay que recargar la base para boletín (cambio de datos o sincronización).
+    @State var bulletinReloadToken = 0
 
     @State var analyticsMode: AnalyticsMode = .dashboards
     @State var analyticsAvailability: AIAnalyticsAvailabilityState = .unavailable("Comprobando disponibilidad…")
@@ -998,6 +1000,24 @@ struct ReportsWorkspaceView: View {
             currentContextSection
         }
 
+        if selectedReportKind == .bulletinBase {
+            Section("Periodo") {
+                Picker("Trimestre", selection: $selectedReportTerm) {
+                    ForEach(ReportTerm.allCases) { term in
+                        Text(term.rawValue).tag(term)
+                    }
+                }
+                Text("Este informe usa toda la clase y no necesita la redacción IA: por eso esos ajustes no aparecen.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            reportsAIDraftSection
+        }
+    }
+
+    @ViewBuilder
+    var reportsAIDraftSection: some View {
         Section("Redacción IA") {
             LabeledContent("Estado") {
                 Text(reportGenerationState.title)
@@ -1118,6 +1138,17 @@ struct ReportsWorkspaceView: View {
 
     var detail: AnyView {
         if activeSurface == .reports {
+            if selectedReportKind == .bulletinBase {
+                return AnyView(
+                    BulletinBaseReportView(
+                        bridge: bridge,
+                        classId: selectedClassId,
+                        className: selectedClass?.name,
+                        termLabel: selectedReportTerm.rawValue,
+                        reloadToken: bulletinReloadToken
+                    )
+                )
+            }
             return AnyView(reportsDetail)
         } else {
             return AnyView(analyticsDetail)
@@ -1443,6 +1474,8 @@ struct ReportsWorkspaceView: View {
             return "Salida operativa para asistencia, incidencias y estado del trabajo reciente."
         case .lomloeEvaluationComment:
             return "Comentario trimestral breve y competencial, apoyado en tu valoración, los criterios de rúbrica y tus observaciones."
+        case .bulletinBase:
+            return "Texto anónimo con asistencia, notas, autoevaluaciones y observaciones de todo el grupo, para redactar los comentarios del boletín con una IA."
         }
     }
 
@@ -1583,6 +1616,14 @@ struct ReportsWorkspaceView: View {
     @MainActor
     func reloadPreview() async {
         guard let selectedClassId else { return }
+        if selectedReportKind == .bulletinBase {
+            // Este informe carga sus propios datos en BulletinBaseReportView.
+            await syncTeacherNoteStore()
+            reportContext = nil
+            preview = nil
+            bulletinReloadToken += 1
+            return
+        }
         // Primero la casilla: guarda lo pendiente del alumno anterior antes de leer el nuevo contexto.
         await syncTeacherNoteStore()
         aiDraft = nil

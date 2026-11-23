@@ -45,6 +45,8 @@ struct MacReportsView: View {
     @State private var isExporting = false
     @State private var isWeeklyEmailSheetPresented = false
     @SceneStorage("mac.reports.exportPanelVisible") private var isExportPanelVisible = true
+    /// Sube cuando hay que recargar la base para boletín (cambio de datos o recarga del módulo).
+    @State private var bulletinReloadToken = 0
 
     private let reportService = AppleFoundationReportService()
     private let draftStore = MacReportDraftStore()
@@ -171,7 +173,24 @@ struct MacReportsView: View {
 
     @ViewBuilder
     private func reportsLayout(isCompact: Bool) -> some View {
-        if isCompact {
+        if selectedReportKind == .bulletinBase {
+            // Base para boletín: sin panel de exportación ni redacción IA; el texto ya es la salida.
+            HStack(spacing: 0) {
+                reportsSidebar
+                    .frame(minWidth: 224, idealWidth: isCompact ? 240 : 310, maxWidth: isCompact ? 280 : 360)
+
+                Divider()
+
+                BulletinBaseReportView(
+                    bridge: bridge,
+                    classId: selectedClassId,
+                    className: selectedClass?.name,
+                    termLabel: selectedTerm.rawValue,
+                    reloadToken: bulletinReloadToken
+                )
+                .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+            }
+        } else if isCompact {
             HStack(spacing: 0) {
                 reportsSidebar
                     .frame(minWidth: 224, idealWidth: 240, maxWidth: 280)
@@ -260,25 +279,27 @@ struct MacReportsView: View {
                     .pickerStyle(.segmented)
                 }
 
-                MacReportPanelCard(title: "Alumnado") {
-                    Picker("Alumno", selection: $selectedStudentId) {
-                        Text(requiresStudent ? "Seleccionar alumno" : "Grupo completo").tag(Optional<Int64>.none)
-                        ForEach(studentOptions, id: \.id) { student in
-                            Text(student.fullName).tag(Optional(student.id))
+                if selectedReportKind != .bulletinBase {
+                    MacReportPanelCard(title: "Alumnado") {
+                        Picker("Alumno", selection: $selectedStudentId) {
+                            Text(requiresStudent ? "Seleccionar alumno" : "Grupo completo").tag(Optional<Int64>.none)
+                            ForEach(studentOptions, id: \.id) { student in
+                                Text(student.fullName).tag(Optional(student.id))
+                            }
                         }
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity)
+
+                        Text(requiresStudent ? "Este informe necesita un alumno activo." : "Este informe se genera para el grupo completo.")
+                            .font(.caption)
+                            .foregroundStyle(requiresStudent && selectedStudentId == nil ? MacAppStyle.warningTint : .secondary)
                     }
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity)
 
-                    Text(requiresStudent ? "Este informe necesita un alumno activo." : "Este informe se genera para el grupo completo.")
-                        .font(.caption)
-                        .foregroundStyle(requiresStudent && selectedStudentId == nil ? MacAppStyle.warningTint : .secondary)
-                }
-
-                MacReportPanelCard(title: "Filtros") {
-                    Toggle("Incluir hechos verificables", isOn: $includeFactLines)
-                    Toggle("Incluir próximos pasos", isOn: $includeRecommendations)
-                    Toggle("Anexar vista clásica", isOn: $includeClassicAppendix)
+                    MacReportPanelCard(title: "Filtros") {
+                        Toggle("Incluir hechos verificables", isOn: $includeFactLines)
+                        Toggle("Incluir próximos pasos", isOn: $includeRecommendations)
+                        Toggle("Anexar vista clásica", isOn: $includeClassicAppendix)
+                    }
                 }
             }
             .padding(MacAppStyle.pagePadding)
@@ -655,6 +676,7 @@ struct MacReportsView: View {
     @discardableResult
     private func refreshReportContextOnly() async -> KmpBridge.ReportGenerationContext? {
         guard let selectedClassId, !(requiresStudent && selectedStudentId == nil) else { return reportContext }
+        guard selectedReportKind != .bulletinBase else { return nil }
         guard let context = try? await bridge.buildReportGenerationContext(
             classId: selectedClassId,
             studentId: selectedStudentId,
@@ -684,6 +706,16 @@ struct MacReportsView: View {
             preview = nil
             editableDraftText = ""
             aiDraft = nil
+            return
+        }
+        if selectedReportKind == .bulletinBase {
+            // Este informe carga sus propios datos en BulletinBaseReportView.
+            reportContext = nil
+            preview = nil
+            editableDraftText = ""
+            aiDraft = nil
+            feedbackMessage = nil
+            bulletinReloadToken += 1
             return
         }
 

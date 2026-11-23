@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta · Base para boletín (anónimo)</title>
+<style>
+:root{--bg:#f5f5f7;--card:#fff;--fg:#1d1d1f;--mut:#6e6e73;--line:#e5e5ea;--acc:#0066cc;--warn:#c27c00;--err:#d70015;--side:#fbfbfd}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--card:#1c1c1e;--fg:#f5f5f7;--mut:#98989d;--line:#38383a;--side:#151517;--warn:#ffb340;--err:#ff453a}}
+*{box-sizing:border-box}
+body{margin:0;font:0.9375rem/1.45 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header.tabs{display:flex;gap:8px;padding:16px 24px;flex-wrap:wrap;align-items:center}
+header.tabs b{margin-right:8px}
+header.tabs button{min-height:32px;padding:0 12px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+header.tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.frame{margin:0 24px 24px;display:grid;grid-template-columns:320px 1fr;border:1px solid var(--line);border-radius:24px;overflow:hidden;background:var(--card);min-height:760px}
+@media(max-width:860px){.frame{grid-template-columns:1fr}}
+aside{background:var(--side);border-right:1px solid var(--line);padding:24px 16px}
+aside h3{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin:24px 8px 8px}
+aside h3:first-child{margin-top:0}
+.row{display:flex;gap:8px;align-items:center;padding:8px;border-radius:12px;min-height:44px}
+.row .ic{width:24px;text-align:center}
+.row small{display:block;color:var(--mut);font-size:12px}
+.row.sel{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+.row.new::after{content:"Nuevo";margin-left:auto;font-size:0.75rem;color:var(--acc);border:1px solid var(--acc);border-radius:8px;padding:0 6px}
+.lc{display:flex;justify-content:space-between;padding:8px;min-height:44px;align-items:center}
+.lc span:last-child{color:var(--mut)}
+select{font:inherit;color:var(--fg);background:transparent;border:none;text-align:right}
+main{padding:32px;max-width:900px}
+.hero{display:flex;align-items:flex-start;gap:16px;margin-bottom:8px}
+.hero h1{font-size:28px;margin:0;letter-spacing:-.01em}
+.hero p{margin:4px 0 0;color:var(--mut)}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:#146c38;background:color-mix(in srgb,#34c759 16%,transparent);padding:4px 8px;border-radius:8px;margin-left:8px;vertical-align:middle}
+.actions{display:flex;gap:8px;margin:24px 0 32px;flex-wrap:wrap}
+.btn{min-height:44px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.btn.pri{background:var(--acc);color:#fff;border-color:var(--acc)}
+.btn.plain{border:none;color:var(--acc);background:none}
+.btn[disabled]{opacity:.4;cursor:default}
+.meta{display:flex;gap:24px;color:var(--mut);font-size:14px;margin-bottom:16px;flex-wrap:wrap}
+.meta b{color:var(--fg)}
+.notice{border-radius:16px;padding:16px;background:color-mix(in srgb,var(--warn) 12%,transparent);margin-bottom:24px;font-size:14px}
+.notice b{color:var(--warn)}
+.doc{border:1px solid var(--line);border-radius:16px;padding:24px;background:var(--bg);font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;max-height:520px;overflow:auto}
+.doc .h{color:var(--mut)}
+.foot{color:var(--mut);font-size:13px;margin-top:16px}
+.sk{height:16px;margin:16px 0;border-radius:8px;background:var(--line);animation:p 1.2s infinite alternate}
+@keyframes p{to{opacity:.4}}
+.center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:520px;gap:8px}
+.center .big{font-size:40px}
+.center h2{margin:8px 0 0;font-size:20px}
+.center p{margin:0;color:var(--mut);max-width:380px}
+.err{color:var(--err)}
+.i{font-size:12px;color:var(--mut);cursor:help;border-bottom:1px dotted var(--mut)}
+dialog{border:none;border-radius:24px;padding:0;width:min(440px,92vw);background:var(--card);color:var(--fg);box-shadow:0 24px 64px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+.sh{padding:24px}
+.sh h2{margin:0;font-size:20px}
+.sh p{margin:8px 0 16px;color:var(--mut);font-size:14px}
+.key{max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:12px}
+.key div{display:flex;justify-content:space-between;padding:8px 16px;min-height:44px;align-items:center;border-bottom:1px solid var(--line)}
+.key div:last-child{border:none}
+.key code{color:var(--mut)}
+.shf{display:flex;justify-content:flex-end;padding:16px 24px;border-top:1px solid var(--line)}
+.state{display:none}.state.on{display:block}
+</style></head><body>
+
+<header class="tabs"><b>Estados</b>
+<button data-s="datos" class="on">Con datos</button>
+<button data-s="cargando">Cargando</button>
+<button data-s="vacio">Sin alumnado</button>
+<button data-s="sinclase">Sin clase</button>
+<button data-s="error">Error</button>
+<button onclick="k.showModal()">Clave (modal)</button>
+<button onclick="toast()">Copiado (aviso)</button>
+</header>
+
+<div class="frame">
+<aside>
+  <h3>Informes disponibles</h3>
+  <div class="row"><span class="ic" aria-hidden="true">👥</span><div>Informe de grupo<small>Medias y pulso general del grupo</small></div></div>
+  <div class="row"><span class="ic" aria-hidden="true">🪪</span><div>Informe individual<small>Seguimiento sintético para tutoría</small></div></div>
+  <div class="row"><span class="ic" aria-hidden="true">📊</span><div>Resumen de evaluación<small>Instrumentos, rúbricas y carga activa</small></div></div>
+  <div class="row"><span class="ic" aria-hidden="true">⚡️</span><div>Resumen operativo<small>Asistencia, incidencias y estado docente</small></div></div>
+  <div class="row"><span class="ic" aria-hidden="true">⭐️</span><div>Comentario LOMLOE<small>Comentario trimestral de EF</small></div></div>
+  <div class="row sel new"><span class="ic" aria-hidden="true">🛡️</span><div>Base para boletín<small>Datos anónimos de todo el grupo</small></div></div>
+
+  <h3>Contexto actual</h3>
+  <div class="lc"><span>Clase</span><span>2º ESO B (inventada)</span></div>
+  <div class="lc"><span>Trimestre</span><select><option>1er Trimestre</option><option>2º Trimestre</option><option>3er Trimestre</option></select></div>
+  <p style="margin:8px;color:var(--mut);font-size:12px">Este informe usa toda la clase y no necesita la redacción IA: por eso esos ajustes no aparecen.</p>
+</aside>
+
+<main>
+  <!-- CON DATOS -->
+  <section class="state on" id="datos">
+    <div class="hero"><div>
+      <h1>Base para boletín <span class="badge"><span aria-hidden="true">🛡️</span> Anónimo</span></h1>
+      <p>2º ESO B · 1er Trimestre</p>
+    </div></div>
+
+    <div class="actions">
+      <button class="btn pri" onclick="toast()"><span aria-hidden="true">⧉</span> Copiar texto</button>
+      <button class="btn"><span aria-hidden="true">⬆︎</span> Compartir</button>
+      <button class="btn" onclick="k.showModal()" aria-describedby="hint"><span aria-hidden="true">🔑</span> Ver clave</button><span id="hint" hidden>Muestra los nombres reales, solo en pantalla</span>
+    </div>
+
+    <div class="meta"><span><b>24</b> alumnos</span><span><b>18</b> columnas evaluables</span><span><b>2</b> autoevaluaciones</span><span>Generado hoy, 10:42</span></div>
+
+    <div class="notice"><b>2 alumnos con pocos datos:</b> Alumno 07 y Alumno 19. Saldrán marcados en el texto. «Pocos datos» = menos de 3 notas o menos de 5 días de asistencia en el trimestre.</div>
+
+    <div class="doc" tabindex="0" role="region" aria-label="Texto del informe"><span class="h">INSTRUCCIONES PARA LA IA
+Redacta un comentario de boletín (60-90 palabras) para cada alumno.
+Tono cercano y profesional, dirigido a la familia. Marco LOMLOE.
+Empieza por un logro, señala un aspecto a mejorar y una orientación.
+No inventes datos. Si una ficha dice «pocos datos», dilo con prudencia.
+Usa solo el código del alumno; no supongas su género.</span>
+
+═══ Alumno 01 ═══
+Asistencia: 96 % presente · 1 falta (justificada) · 0 retrasos
+Notas: media 7,8 · tendencia: sube
+  · Condición física: Test Cooper 7,5 · Flexibilidad 8,0
+  · Deportes colectivos: Rúbrica voleibol 8,2
+Autoevaluación (Voleibol): media 3,4 / 4
+  · «Me ha costado el saque, pero ahora lo hago mejor.»
+Observaciones:
+  · Ayuda a Alumno 12 a organizar los calentamientos.
+  · Olvida el material deportivo en dos sesiones.
+
+═══ Alumno 02 ═══
+Asistencia: 88 % presente · 3 faltas (1 justificada) · 2 retrasos
+Notas: media 5,6 · tendencia: estable
+  · Condición física: Test Cooper 5,0 · Flexibilidad 6,1
+  · Deportes colectivos: Rúbrica voleibol 5,8
+Autoevaluación (Voleibol): sin respuesta
+Observaciones:
+  · Participa más cuando trabaja en grupos pequeños.
+
+═══ Alumno 07 · pocos datos ═══
+Asistencia: 70 % presente · 6 faltas · 0 retrasos
+Notas: media 6,0 (2 notas)
+…</div>
+    <p class="foot">Lo que ves es exactamente lo que se copia. Sin nombres, correos, teléfonos ni datos de inclusión o salud.</p>
+  </section>
+
+  <!-- CARGANDO -->
+  <section class="state" id="cargando" aria-busy="true">
+    <div class="hero"><div><h1>Base para boletín <span class="badge"><span aria-hidden="true">🛡️</span> Anónimo</span></h1><p>2º ESO B · 1er Trimestre</p></div></div>
+    <div class="actions"><button class="btn pri" disabled>⧉ Copiar texto</button><button class="btn" disabled>⬆︎ Compartir</button><button class="btn" disabled>Ver clave</button></div>
+    <p style="color:var(--mut)"><progress></progress> Reuniendo datos de 24 alumnos…</p>
+    <div class="doc"><div class="sk" style="width:60%"></div><div class="sk"></div><div class="sk" style="width:80%"></div><div class="sk" style="width:40%"></div><div class="sk" style="width:70%"></div></div>
+  </section>
+
+  <!-- VACIO -->
+  <section class="state" id="vacio">
+    <div class="center"><div class="big" aria-hidden="true">👥</div><h2>Esta clase no tiene alumnado</h2><p>Añade alumnos en Alumnado para poder preparar la base del boletín.</p></div>
+  </section>
+
+  <!-- SIN CLASE -->
+  <section class="state" id="sinclase">
+    <div class="center"><div class="big" aria-hidden="true">🗂️</div><h2>Elige una clase</h2><p>El informe se prepara para todo el alumnado de la clase que elijas.</p></div>
+  </section>
+
+  <!-- ERROR -->
+  <section class="state" id="error">
+    <div class="center" role="alert"><div class="big" aria-hidden="true">⚠️</div><h2 class="err">No se pudieron leer los datos</h2><p>No se ha copiado nada. Prueba otra vez; si sigue fallando, cambia de clase y vuelve.</p><button class="btn pri" style="margin-top:16px">Reintentar</button></div>
+  </section>
+</main>
+</div>
+
+<dialog id="k" aria-labelledby="kt"><div class="sh">
+  <h2 id="kt">Clave del informe</h2>
+  <p>Contiene nombres reales: datos personales. Úsala para saber a quién es cada comentario. No se puede copiar ni se comparte.</p>
+  <div class="key" style="user-select:none">
+    <div><code>Alumno 01</code><span>Lucía Prueba Uno</span></div>
+    <div><code>Alumno 02</code><span>Mateo Prueba Dos</span></div>
+    <div><code>Alumno 03</code><span>Nora Prueba Tres</span></div>
+    <div><code>Alumno 04</code><span>Hugo Prueba Cuatro</span></div>
+    <div><code>Alumno 05</code><span>Vera Prueba Cinco</span></div>
+    <div><code>Alumno 06</code><span>Nombre Prueba 6</span></div>
+    <div><code>Alumno 07</code><span>Nombre Prueba 7</span></div>
+    <div><code>Alumno 08</code><span>Nombre Prueba 8</span></div>
+    <div><code>Alumno 09</code><span>Nombre Prueba 9</span></div>
+    <div><code>Alumno 10</code><span>Nombre Prueba 10</span></div>
+    <div><code>Alumno 11</code><span>Nombre Prueba 11</span></div>
+    <div><code>Alumno 12</code><span>Nombre Prueba 12</span></div>
+    <div><code>Alumno 13</code><span>Nombre Prueba 13</span></div>
+    <div><code>Alumno 14</code><span>Nombre Prueba 14</span></div>
+    <div><code>Alumno 15</code><span>Nombre Prueba 15</span></div>
+    <div><code>Alumno 16</code><span>Nombre Prueba 16</span></div>
+    <div><code>Alumno 17</code><span>Nombre Prueba 17</span></div>
+    <div><code>Alumno 18</code><span>Nombre Prueba 18</span></div>
+    <div><code>Alumno 19</code><span>Nombre Prueba 19</span></div>
+    <div><code>Alumno 20</code><span>Nombre Prueba 20</span></div>
+    <div><code>Alumno 21</code><span>Nombre Prueba 21</span></div>
+    <div><code>Alumno 22</code><span>Nombre Prueba 22</span></div>
+    <div><code>Alumno 23</code><span>Nombre Prueba 23</span></div>
+    <div><code>Alumno 24</code><span>Nombre Prueba 24</span></div>
+
+  </div>
+</div><div class="shf"><button class="btn pri" onclick="k.close()">Hecho</button></div></dialog>
+
+<div id="t" role="status" aria-live="polite" style="position:fixed;left:50%;bottom:32px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:16px;border-radius:16px;display:none">✓ Copiado. Sin nombres.</div>
+
+<script>
+const k=document.getElementById('k');
+document.querySelectorAll('header button[data-s]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('header button[data-s]').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.state').forEach(s=>s.classList.toggle('on',s.id===b.dataset.s));
+});
+function toast(){const t=document.getElementById('t');t.style.display='block';setTimeout(()=>t.style.display='none',3000)}
+</script>
+</body></html>

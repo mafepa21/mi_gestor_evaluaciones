@@ -135,6 +135,8 @@ Prioridad: media-alta.
   Deuda explícita: la revocación local no puede cambiar un manifiesto público ya firmado y desplegado; para bloqueo remoto inmediato hace falta retirar/republicar el manifiesto o añadir un registro de revocación consultable por la web.
 - Exportaciones: informes utiles y reproducibles.
   Avance: Informes Apple IA dispone de `StudentReportSummary` estructurado como base para renderizar informes nativos y PDFs sin depender de texto libre como contrato principal.
+  Avance: Informes › «Base para boletín» genera un texto anónimo por grupo y trimestre (asistencia, notas evaluables, autoevaluaciones y observaciones) para redactar comentarios del boletín con una IA externa; la clave código → nombre solo se ve en la app.
+  Pendiente: redactar esos comentarios con la IA local de Apple dentro de la app y volver a pegarlos usando la clave.
 - Privacidad: mantener `PRIVACY.md` y `docs/04_legal_comercial/datos_personales.md` como base operativa pendiente de revision juridica.
 
 ## Fase 4 - Preparacion comercial

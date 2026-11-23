@@ -51,6 +51,7 @@ final class NotebookMacToolbarActions: ObservableObject {
     private var summaryAction: (() -> Void)?
     private var refreshAction: (() -> Void)?
     private(set) var exportSMAction: (() -> Void)?
+    private(set) var importCommentsAction: (() -> Void)?
 
     private func publishDeferred(_ mutation: @escaping @MainActor () -> Void) {
         Task { @MainActor in
@@ -81,7 +82,8 @@ final class NotebookMacToolbarActions: ObservableObject {
         onOpenAdvancedMenu: @escaping () -> Void,
         onGenerateSummary: @escaping () -> Void,
         onRefresh: @escaping () -> Void,
-        onExportSM: (() -> Void)? = nil
+        onExportSM: (() -> Void)? = nil,
+        onImportComments: (() -> Void)? = nil
     ) {
         publishDeferred {
             self.canMarkAllPresent = canMarkAllPresent
@@ -110,6 +112,7 @@ final class NotebookMacToolbarActions: ObservableObject {
             self.summaryAction = onGenerateSummary
             self.refreshAction = onRefresh
             self.exportSMAction = onExportSM
+            self.importCommentsAction = onImportComments
         }
     }
 
@@ -138,6 +141,7 @@ final class NotebookMacToolbarActions: ObservableObject {
             self.summaryAction = nil
             self.refreshAction = nil
             self.exportSMAction = nil
+            self.importCommentsAction = nil
         }
     }
 
@@ -153,6 +157,7 @@ final class NotebookMacToolbarActions: ObservableObject {
     func generateSummary() { summaryAction?() }
     func refresh() { refreshAction?() }
     func exportSM() { exportSMAction?() }
+    func importComments() { importCommentsAction?() }
 
     /// Elemento para `ShareLink`: el texto se pide al exportar, no al montar el menú.
     var exportItem: NotebookExportTextItem? {

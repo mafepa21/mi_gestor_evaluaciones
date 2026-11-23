@@ -20,6 +20,7 @@ struct EducamosSMExportSheet: View {
     @State private var matchedColumns: [MatchedColumn] = []
     @State private var matchedStudents: [StudentMatch] = []
     @State private var totalGradesToExport: Int = 0
+    @State private var totalCommentsToExport: Int = 0
     @State private var isFileImporterPresented = false
     @State private var errorMessage: String?
     @State private var isProcessing = false
@@ -55,6 +56,9 @@ struct EducamosSMExportSheet: View {
         }
 
         var kindDescription: String {
+            if educamosElement.isComentarios {
+                return "Comentario del profesor"
+            }
             if educamosElement.isNotaFinal {
                 return "Nota final evaluación"
             } else if isCategorySA {
@@ -70,6 +74,11 @@ struct EducamosSMExportSheet: View {
         let columnLetter: String
         let value: EducamosSMCellValue
         let displayLabel: String
+
+        var isComment: Bool {
+            if case .text = value { return true }
+            return false
+        }
     }
 
     struct StudentMatch: Identifiable {
@@ -80,6 +89,7 @@ struct EducamosSMExportSheet: View {
 
         var hasMatch: Bool { appStudent != nil }
         var hasGrades: Bool { !grades.isEmpty }
+        var hasComment: Bool { grades.contains { $0.isComment } }
     }
 
     var body: some View {
@@ -127,7 +137,7 @@ struct EducamosSMExportSheet: View {
                 Text("Exportar notas a Educamos SM")
                     .font(.headline)
 
-                Text("Selecciona el archivo .xlsx descargado de Educamos. La app completará las columnas de instrumentos, la media de la Situación de Aprendizaje y la nota final.")
+                Text("Selecciona el archivo .xlsx descargado de Educamos. La app completará las columnas de instrumentos, la media de la Situación de Aprendizaje, la nota final y el comentario de evaluación.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -190,7 +200,7 @@ struct EducamosSMExportSheet: View {
 
                             Spacer()
 
-                            if col.educamosElement.isInstrumento {
+                            if col.educamosElement.isInstrumento || col.educamosElement.isComentarios {
                                 columnPicker(for: col)
                             } else if col.isMatched {
                                 HStack(spacing: 4) {
@@ -262,7 +272,7 @@ struct EducamosSMExportSheet: View {
                 } footer: {
                     let matchCount = matchedStudents.filter(\.hasMatch).count
                     let withGradesCount = matchedStudents.filter(\.hasGrades).count
-                    Text("\(matchCount) alumnos emparejados · \(withGradesCount) con notas registradas (\(totalGradesToExport) calificaciones a escribir)")
+                    Text("\(matchCount) alumnos emparejados · \(withGradesCount) con notas registradas (\(exportSummary) a escribir)")
                 }
             }
         }
@@ -276,7 +286,7 @@ struct EducamosSMExportSheet: View {
                             .frame(maxWidth: .infinity)
                     } else {
                         Label(
-                            "Generar archivo (\(totalGradesToExport) calificaciones)",
+                            "Generar archivo (\(exportSummary))",
                             systemImage: "doc.badge.arrow.up"
                         )
                         .frame(maxWidth: .infinity)
@@ -284,7 +294,7 @@ struct EducamosSMExportSheet: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(totalGradesToExport == 0 || isProcessing)
+                .disabled((totalGradesToExport == 0 && totalCommentsToExport == 0) || isProcessing)
             }
             .padding()
             .background(.bar)
@@ -306,7 +316,7 @@ struct EducamosSMExportSheet: View {
 
             Divider()
 
-            ForEach(selectableAppColumns, id: \.id) { appCol in
+            ForEach(pickerColumns(for: col), id: \.id) { appCol in
                 Button {
                     chooseColumn(appCol, for: col)
                 } label: {
@@ -561,6 +571,25 @@ struct EducamosSMExportSheet: View {
                     isCategorySA: true,
                     appTabTitle: matchedTab?.title
                 ))
+            } else if element.isComentarios {
+                // Comentario del profesor: la elección guardada o «Comentario de evaluación» de la pestaña activa.
+                let textColumns = candidates.filter { $0.type == .text }
+                let matchedCol: NotebookColumnDefinition?
+                if let savedId = saved[mappingKey(for: element)],
+                   savedId.isEmpty || textColumns.contains(where: { $0.id == savedId }) {
+                    matchedCol = textColumns.first { $0.id == savedId }
+                } else {
+                    matchedCol = KmpBridge.evaluationCommentColumn(in: textColumns, tabId: bridge.selectedNotebookTabId)
+                        ?? KmpBridge.evaluationCommentColumn(in: textColumns, tabId: nil)
+                }
+
+                columnMatches.append(MatchedColumn(
+                    id: element.columnLetter,
+                    educamosElement: element,
+                    appColumn: matchedCol,
+                    isCategorySA: false,
+                    appTabTitle: nil
+                ))
             } else if element.isNotaFinal {
                 columnMatches.append(MatchedColumn(
                     id: element.columnLetter,
@@ -618,8 +647,22 @@ struct EducamosSMExportSheet: View {
                 for colMatch in columnMatches {
                     let el = colMatch.educamosElement
 
+                    // Comentario del profesor: texto tal cual.
+                    if el.isComentarios {
+                        if let appCol = colMatch.appColumn {
+                            let text = bridge.cellText(studentId: student.id, columnId: appCol.id)
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !text.isEmpty {
+                                studentGrades.append(StudentGradeEntry(
+                                    columnLetter: el.columnLetter,
+                                    value: .text(text),
+                                    displayLabel: "Comentario"
+                                ))
+                            }
+                        }
+                    }
                     // A) Instrumento individual
-                    if let appCol = colMatch.appColumn {
+                    else if let appCol = colMatch.appColumn {
                         let raw: String = {
                             switch appCol.type {
                             case .rubric:
@@ -672,7 +715,22 @@ struct EducamosSMExportSheet: View {
             )
         }
 
-        totalGradesToExport = matchedStudents.reduce(0) { $0 + $1.grades.count }
+        totalGradesToExport = matchedStudents.reduce(0) { $0 + $1.grades.filter { !$0.isComment }.count }
+        totalCommentsToExport = matchedStudents.filter(\.hasComment).count
+    }
+
+    /// Columnas que se pueden elegir: de texto para el comentario, todas para los instrumentos.
+    private func pickerColumns(for col: MatchedColumn) -> [NotebookColumnDefinition] {
+        col.educamosElement.isComentarios
+            ? selectableAppColumns.filter { $0.type == .text }
+            : selectableAppColumns
+    }
+
+    private var exportSummary: String {
+        let grades = totalGradesToExport == 1 ? "1 nota" : "\(totalGradesToExport) notas"
+        guard totalCommentsToExport > 0 else { return grades }
+        let comments = totalCommentsToExport == 1 ? "1 comentario" : "\(totalCommentsToExport) comentarios"
+        return totalGradesToExport > 0 ? "\(grades) y \(comments)" : comments
     }
 
     /// Parsea una calificación numérica admitiendo formato decimal con coma o punto,

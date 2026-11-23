@@ -285,6 +285,9 @@ extension NotebookModuleView {
             },
             onExportSM: {
                 isEducamosSMExportPresented = true
+            },
+            onImportComments: {
+                isEvaluationCommentImportPresented = true
             }
         )
 
@@ -346,6 +349,9 @@ extension NotebookModuleView {
             },
             onExportSM: {
                 isEducamosSMExportPresented = true
+            },
+            onImportComments: {
+                isEvaluationCommentImportPresented = true
             }
         )
     }

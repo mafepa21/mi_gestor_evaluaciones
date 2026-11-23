@@ -56,6 +56,16 @@ data class LomloeCommentEvidence(
     val isEmpty: Boolean get() = criterionResults.isEmpty() && observations.isEmpty() && competencies.isEmpty()
 }
 
+/**
+ * Evidencia de un alumno dentro de [BuildLomloeCommentEvidenceUseCase.invokeForClass].
+ * Es una lista y no un mapa: un `Map<Long, …>` llega a Swift con claves `NSNumber` que no se
+ * pueden convertir a `KotlinLong` y la app se cierra al recorrerlo.
+ */
+data class LomloeStudentEvidence(
+    val studentId: Long,
+    val evidence: LomloeCommentEvidence,
+)
+
 /** Nivel logrado en un criterio de rúbrica. [points] y [maxPoints] sitúan el nivel, no son una nota. */
 data class LomloeCriterionResult(
     val evaluationName: String,
@@ -144,6 +154,14 @@ object LomloeCommentEvidenceBuilder {
 
     /** Icono que marca las columnas de texto generadas por IA (Comentario IA, Síntesis pedagógica). */
     const val AI_COLUMN_ICON = "apple.intelligence"
+
+    /**
+     * Icono de la columna «Comentario de evaluación» del Cuaderno (lo que va al boletín).
+     * Su texto es la salida final, no una observación: si entrara como evidencia, la IA
+     * reescribiría el comentario anterior en lugar de partir de lo observado.
+     * Debe coincidir con `KmpBridge.evaluationCommentColumnIcon` en Swift.
+     */
+    const val EVALUATION_COMMENT_ICON = "text.bubble"
 
     /**
      * Fechas del trimestre a partir de los periodos de evaluación del horario docente.
@@ -282,7 +300,7 @@ object LomloeCommentEvidenceBuilder {
             .filter { it.studentId == input.studentId }
             .flatMap { cell ->
                 val column = columnById[cell.columnId] ?: return@flatMap emptyList()
-                if (isAiGeneratedColumn(column)) return@flatMap emptyList()
+                if (isGeneratedCommentColumn(column)) return@flatMap emptyList()
                 val date = cell.observedAtEpochMs ?: column.dateEpochMs ?: cell.trace.updatedAt.toEpochMilliseconds()
                 if (!inPeriod(date)) return@flatMap emptyList()
                 // Una celda con contenido en el periodo cuenta como competencia trabajada.
@@ -355,10 +373,11 @@ object LomloeCommentEvidenceBuilder {
         return (firstPerCriterion + rest).take(max)
     }
 
-    private fun isAiGeneratedColumn(column: NotebookColumnDefinition): Boolean =
+    /** Columnas de comentario final (generado por IA o de evaluación): no son evidencia. */
+    private fun isGeneratedCommentColumn(column: NotebookColumnDefinition): Boolean =
         column.type == NotebookColumnType.TEXT &&
             column.instrumentKind == NotebookInstrumentKind.PRIVATE_COMMENT &&
-            column.iconName == AI_COLUMN_ICON
+            (column.iconName == AI_COLUMN_ICON || column.iconName == EVALUATION_COMMENT_ICON)
 
     private fun cellHasContent(cell: PersistedNotebookCell): Boolean =
         !cell.textValue.isNullOrBlank() || cell.boolValue != null || !cell.iconValue.isNullOrBlank() ||
@@ -433,6 +452,71 @@ class BuildLomloeCommentEvidenceUseCase(
             maxObservations = maxObservations,
             termAverage = period?.let { termAverage(classId, studentId, input, it) },
         )
+    }
+
+    /**
+     * Fechas del trimestre según los periodos de evaluación del horario docente, o `null`
+     * si no hay horario o periodo para esa clave. Es el mismo periodo que usa [invoke].
+     */
+    @Throws(Throwable::class)
+    suspend fun resolveTermPeriod(termKey: String): LomloePeriod? =
+        schedules.findExistingSchedule()
+            ?.let { schedules.listEvaluationPeriods(it.id) }
+            ?.let { LomloeCommentEvidenceBuilder.resolvePeriod(it, termKey) }
+
+    /**
+     * Evidencia de todo el alumnado del grupo de una vez: los datos del grupo se cargan
+     * una sola vez (no una por alumno). No calcula la media del trimestre, que es lo caro
+     * y no hace falta para el informe del grupo. Un elemento por alumno, en el orden del grupo.
+     */
+    @Throws(Throwable::class)
+    suspend fun invokeForClass(
+        classId: Long,
+        termKey: String,
+        maxCriterionResults: Int = LomloeCommentEvidenceBuilder.DEFAULT_MAX_CRITERION_RESULTS,
+        maxObservations: Int = LomloeCommentEvidenceBuilder.DEFAULT_MAX_OBSERVATIONS,
+    ): List<LomloeStudentEvidence> {
+        val students = classes.listStudentsInClass(classId)
+        if (students.isEmpty()) return emptyList()
+        val classEvaluations = evaluations.listClassEvaluations(classId).map { evaluation ->
+            evaluation.copy(competencyLinks = evaluations.listEvaluationCompetencyLinks(evaluation.id))
+        }
+        val rubricIds = classEvaluations.mapNotNull { it.rubricId }.toSet()
+        val classRubrics = if (rubricIds.isEmpty()) emptyList() else rubrics.listRubrics().filter { it.rubric.id in rubricIds }
+        val rubricEvaluations = classEvaluations.filter { it.rubricId != null }
+        val period = resolveTermPeriod(termKey)
+        val gradesByStudent = grades.listGradesForClass(classId).groupBy { it.studentId }
+        val cellsByStudent = notebookCells.listClassCells(classId).groupBy { it.studentId }
+        val columns = notebookConfig.listColumns(classId)
+        val allCompetencies = competencies.listCompetencies()
+        val incidentsByStudent = incidents.listIncidents(classId).groupBy { it.studentId }
+        val attendanceByStudent = attendance.listAttendance(classId).groupBy { it.studentId }
+
+        return students.map { student ->
+            val input = LomloeEvidenceInput(
+                studentId = student.id,
+                evaluations = classEvaluations,
+                rubrics = classRubrics,
+                assessments = rubricEvaluations.flatMap { rubrics.listRubricAssessments(student.id, it.id) },
+                grades = gradesByStudent[student.id].orEmpty(),
+                competencies = allCompetencies,
+                columns = columns,
+                cells = cellsByStudent[student.id].orEmpty(),
+                incidents = incidentsByStudent[student.id].orEmpty(),
+                tutoringSessions = tutoring.listByStudent(student.id),
+                attendance = attendanceByStudent[student.id].orEmpty(),
+            )
+            LomloeStudentEvidence(
+                studentId = student.id,
+                evidence = LomloeCommentEvidenceBuilder.build(
+                    input = input,
+                    period = period,
+                    maxCriterionResults = maxCriterionResults,
+                    maxObservations = maxObservations,
+                    termAverage = null,
+                ),
+            )
+        }
     }
 
     /** Media del Cuaderno del alumno, calculada solo con las columnas del trimestre. */

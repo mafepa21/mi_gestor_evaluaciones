@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta · Cerrar evaluación</title>
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--fg:#1d1d1f;--mut:#6e6e73;--line:#e5e5ea;--acc:#0066cc;--ok:#1a7f37;--warn:#9a5b00;--err:#c41e3a;--fill:#f2f2f7;--chip:#e9e9ee}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--card:#1c1c1e;--fg:#f5f5f7;--mut:#a1a1a6;--line:#38383a;--acc:#4da3ff;--ok:#4cd964;--warn:#ffb340;--err:#ff6961;--fill:#2c2c2e;--chip:#3a3a3c}}
+*{box-sizing:border-box}
+body{margin:0;font:1rem/1.45 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header.tabs{display:flex;gap:8px;padding:16px 24px;flex-wrap:wrap;align-items:center;background:var(--card);border-bottom:1px solid var(--line)}
+header.tabs b{margin-right:8px}
+header.tabs button{min-height:32px;padding:0 16px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;font:inherit;font-size:.875rem}
+header.tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.state{display:none;padding:24px}.state.on{display:block}
+.note{color:var(--mut);font-size:.875rem;margin:0 0 16px;max-width:720px}
+.sheet{background:var(--bg);border:1px solid var(--line);border-radius:24px;max-width:640px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.12)}
+.nav{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;min-height:56px;background:var(--card);border-bottom:1px solid var(--line)}
+.nav h2{margin:0;font-size:1.0625rem}
+.link{color:var(--acc);background:none;border:none;font:inherit;min-height:44px;cursor:pointer;padding:0 8px}
+.link.b{font-weight:600}
+.body{padding:16px}
+.ctx{color:var(--mut);font-size:.875rem;margin:0 0 16px;padding:0 8px}
+.sec{margin-bottom:24px}
+.sec h3{margin:0 0 8px;padding:0 16px;font-size:.8125rem;color:var(--mut);font-weight:500}
+.group{background:var(--card);border-radius:12px;overflow:hidden}
+.row{display:flex;align-items:center;gap:16px;padding:8px 16px;min-height:56px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:none}
+.row .ic{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--acc);background:var(--chip);font-size:1rem;flex:none}
+.row .t{flex:1}
+.row .t small{display:block;color:var(--mut);font-size:.875rem}
+.row .chev{color:var(--mut)}
+.badge{font-size:.875rem;color:var(--mut)}
+.st{display:inline-flex;align-items:center;gap:4px;font-size:.875rem}
+.foot{color:var(--mut);font-size:.875rem;padding:8px 16px 0}
+.btn{min-height:44px;padding:0 16px;border-radius:12px;border:none;background:var(--chip);color:var(--acc);font:inherit;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.btn.pri{background:var(--acc);color:#fff}
+.btn.w{width:100%;justify-content:center}
+.chips{display:flex;flex-wrap:wrap;gap:8px;padding:8px 16px 16px}
+.chip{min-height:44px;padding:0 16px;border-radius:22px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;font-size:.9375rem;cursor:pointer}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.chip.on::before{content:"✓ "}
+.chip .from{font-size:.875rem}
+textarea{width:100%;min-height:96px;border:none;background:transparent;color:var(--fg);font:inherit;padding:16px;resize:vertical}
+.sk{height:16px;margin:16px;border-radius:8px;background:var(--line);animation:p 1.2s infinite alternate}
+@keyframes p{to{opacity:.4}}
+@media(prefers-reduced-motion:reduce){.sk{animation:none}}
+.center{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:48px 24px}
+.center .big{font-size:3rem}
+.center p{margin:0;color:var(--mut);max-width:420px}
+.doc{border-radius:12px;padding:16px;background:var(--card);font:13px/1.55 ui-monospace,Menlo,monospace;white-space:pre-wrap}
+.new{background:color-mix(in srgb,var(--acc) 14%,transparent);border-radius:4px}
+.seg{display:flex;background:var(--chip);border-radius:9px;padding:2px;margin:0 0 16px}
+.seg span{flex:1;text-align:center;padding:8px;border-radius:7px;font-size:.875rem;min-height:32px}
+.seg .on{background:var(--card);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.mut{color:var(--mut)}
+</style></head><body>
+
+<header class="tabs"><b>Estados</b>
+<button data-s="hub" class="on">1 · Resumen</button>
+<button data-s="hubok">2 · Todo listo</button>
+<button data-s="cargando">3 · Cargando</button>
+<button data-s="comentarios">4 · Comentarios</button>
+<button data-s="valoracion">5 · Valoración rápida</button>
+<button data-s="subir">6 · Subir a Educamos</button>
+<button data-s="error">7 · Error</button>
+<button data-s="informe">8 · Informe anónimo ampliado</button>
+</header>
+
+<!-- 1 HUB -->
+<section class="state on" id="hub">
+<p class="note">Cuaderno › Más › «Cerrar evaluación…» (sustituye a «Revisar cierre»). Una lista de 4 pasos con su estado. Cada fila abre su paso. El trimestre se deduce de la pestaña («1.ª Eval» → 1er Trimestre) y se puede cambiar.</p>
+<div class="sheet">
+  <div class="nav"><span style="width:72px"></span><h2>Cerrar evaluación</h2><button class="link b">Hecho</button></div>
+  <div class="body">
+    <p class="ctx">2º ESO B (inventado) · pestaña 1.ª Eval</p>
+    <div class="seg" role="radiogroup" aria-label="Trimestre"><span class="on" role="radio" aria-checked="true">1.º</span><span role="radio">2.º</span><span role="radio">3.º</span></div>
+    <div class="sec">
+      <div class="group" role="list">
+        <div class="row" role="listitem"><span class="ic" aria-hidden="true">#</span><span class="t">1 · Notas<small>3 avisos: 2 notas vacías, 1 columna oculta</small></span><span class="st warn">3 avisos</span><span class="chev" aria-hidden="true">›</span></div>
+        <div class="row" role="listitem"><span class="ic" aria-hidden="true">✎</span><span class="t">2 · Comentarios<small>24 de 30 alumnos · 2 con pocos datos</small></span><span class="st warn">6 sin comentario</span><span class="chev" aria-hidden="true">›</span></div>
+        <div class="row" role="listitem"><span class="ic" aria-hidden="true">⇪</span><span class="t">3 · Excel de Educamos<small>Rellena notas y comentarios en la plantilla</small></span><span class="st mut">Pendiente</span><span class="chev" aria-hidden="true">›</span></div>
+        <div class="row" role="listitem"><span class="ic" aria-hidden="true">↑</span><span class="t">4 · Subir a Educamos<small>Pasos para terminar en la web de Educamos</small></span><span class="st mut">Pendiente</span><span class="chev" aria-hidden="true">›</span></div>
+      </div>
+      <p class="foot">Puedes hacerlos en cualquier orden. Nada se envía a ningún sitio hasta que subas el archivo tú.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- 2 HUB OK -->
+<section class="state" id="hubok">
+<div class="sheet">
+  <div class="nav"><span style="width:72px"></span><h2>Cerrar evaluación</h2><button class="link b">Hecho</button></div>
+  <div class="body">
+    <p class="ctx">2º ESO B (inventado) · pestaña 1.ª Eval · 1er Trimestre</p>
+    <div class="group" role="list">
+      <div class="row"><span class="ic" aria-hidden="true">#</span><span class="t">1 · Notas<small>Todas las notas que cuentan están puestas</small></span><span class="st ok">Listo</span><span class="chev">›</span></div>
+      <div class="row"><span class="ic" aria-hidden="true">✎</span><span class="t">2 · Comentarios<small>30 de 30 alumnos</small></span><span class="st ok">Listo</span><span class="chev">›</span></div>
+      <div class="row"><span class="ic" aria-hidden="true">⇪</span><span class="t">3 · Excel de Educamos<small>Generado hoy, 18:40 · 60 notas y 30 comentarios</small></span><span class="st ok">Listo</span><span class="chev">›</span></div>
+      <div class="row"><span class="ic" aria-hidden="true">↑</span><span class="t">4 · Subir a Educamos<small>Marcado como subido hoy</small></span><span class="st ok">Subido</span><span class="chev">›</span></div>
+    </div>
+    <div class="center" style="padding:24px"><div class="big" aria-hidden="true">✔︎</div><b>Evaluación cerrada</b><p>Puedes volver a abrir cualquier paso si cambias algo.</p></div>
+  </div>
+</div>
+</section>
+
+<!-- 3 CARGANDO -->
+<section class="state" id="cargando" aria-busy="true">
+<div class="sheet">
+  <div class="nav"><span style="width:72px"></span><h2>Cerrar evaluación</h2><button class="link b">Hecho</button></div>
+  <div class="body"><p class="ctx"><progress aria-label="Revisando el grupo"></progress> Revisando el grupo…</p>
+  <div class="group"><div class="sk" style="width:60%"></div><div class="sk"></div><div class="sk" style="width:70%"></div><div class="sk" style="width:50%"></div></div></div>
+</div>
+</section>
+
+<!-- 4 COMENTARIOS -->
+<section class="state" id="comentarios">
+<p class="note">El «‹ Cerrar evaluación» de arriba es el botón Atrás del sistema (NavigationStack), no un botón propio. Paso 2. Arriba, las tres formas de rellenar los comentarios; la primera es la recomendada (no sale nada del dispositivo). Abajo, quién falta. Tocar un alumno abre «Valoración rápida».</p>
+<div class="sheet">
+  <div class="nav"><button class="link">‹ Cerrar evaluación</button><h2>Comentarios</h2><span style="width:120px"></span></div>
+  <div class="body">
+    <div class="sec">
+      <div class="group">
+        <div class="row" style="flex-direction:column;align-items:stretch;gap:8px;padding:16px">
+          <button class="btn pri w"> Redactar con la IA del dispositivo</button>
+          <small class="mut">Usa notas, rúbricas, sellos y tu valoración. Lo guarda en «Comentario de evaluación» para que lo revises.</small>
+          <small class="mut">Si Apple Intelligence no está disponible, el botón se desactiva y aquí se explica el motivo.</small>
+        </div>
+        <div class="row"><span class="t">Preparar texto anónimo para otra IA<small>Abre «Base para boletín» con este grupo y trimestre</small></span><span class="chev">›</span></div>
+        <div class="row"><span class="t">Importar comentarios…<small>Desde un Excel, por orden o por código «Alumno NN»</small></span><span class="chev">›</span></div>
+      </div>
+    </div>
+    <div class="seg" role="radiogroup" aria-label="Mostrar"><span class="on" role="radio" aria-checked="true">Sin comentario</span><span role="radio">Pocos datos</span><span role="radio">Todos</span></div>
+    <div class="sec">
+      <h3>Alumnos sin comentario · 6</h3>
+      <div class="group" role="list">
+        <div class="row" role="listitem"><span class="t">Ejemplo Tres, Nora<small>Sin comentario · Tu valoración: —</small></span><span class="st warn">Valorar</span><span class="chev">›</span></div>
+        <div class="row" role="listitem"><span class="t">Ejemplo Cuatro, Hugo<small>Sin comentario · pocos datos (2 notas)</small></span><span class="st warn">Valorar</span><span class="chev">›</span></div>
+        <div class="row" role="listitem"><span class="t">Prueba Cinco, Vera<small>Sin comentario · Tu valoración: «Gran implicación…»</small></span><span class="st mut">Valorada</span><span class="chev">›</span></div>
+      </div>
+      <p class="foot">«Tu valoración» es privada: solo la usa la IA para redactar. No se exporta a Educamos.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- 5 VALORACION RAPIDA -->
+<section class="state" id="valoracion">
+<p class="note">Hoja pequeña por alumno. Tres filas de fichas; las primeras salen de lo que ya registraste (sellos, rúbricas), marcadas con su origen. Un toque añade la frase. 3 toques y listo; el texto se puede editar.</p>
+<div class="sheet">
+  <div class="nav"><button class="link">Cancelar</button><h2>Valoración · Nora</h2><button class="link b">Guardar</button></div>
+  <div class="body">
+    <div class="sec"><h3>Fortaleza</h3>
+      <div class="group"><div class="chips">
+        <button class="chip on" aria-pressed="true">Coopera con el grupo <span class="from">· sello ×3</span></button>
+        <button class="chip" aria-pressed="false">Resistencia: nivel alto <span class="from">· rúbrica</span></button>
+        <button class="chip" aria-pressed="false">Constancia</button>
+        <button class="chip" aria-pressed="false">Actitud positiva</button>
+      </div></div></div>
+    <div class="sec"><h3>A mejorar</h3>
+      <div class="group"><div class="chips">
+        <button class="chip" aria-pressed="false">Trae el material <span class="from">· 2 días sin material</span></button>
+        <button class="chip on" aria-pressed="true">Velocidad: en progreso <span class="from">· rúbrica</span></button>
+        <button class="chip" aria-pressed="false">Participación en juegos colectivos</button>
+      </div></div></div>
+    <div class="sec"><h3>Orientación</h3>
+      <div class="group"><div class="chips">
+        <button class="chip" aria-pressed="false">Practicar en casa con juegos de carrera</button>
+        <button class="chip on" aria-pressed="true">Mantener la constancia</button>
+        <button class="chip" aria-pressed="false">Revisar la agenda de material</button>
+      </div></div></div>
+    <div class="sec"><h3>Tu valoración (privada)</h3>
+      <div class="group"><textarea aria-label="Tu valoración de Nora">Coopera con el grupo. A mejorar: velocidad (en progreso). Mantener la constancia.</textarea></div>
+      <p class="foot">Puedes dictar con el micrófono del teclado.</p></div>
+  </div>
+</div>
+</section>
+
+<!-- 6 SUBIR -->
+<section class="state" id="subir">
+<div class="sheet">
+  <div class="nav"><button class="link">‹ Cerrar evaluación</button><h2>Subir a Educamos</h2><span style="width:120px"></span></div>
+  <div class="body">
+    <div class="sec"><h3>Archivo</h3>
+      <div class="group">
+        <div class="row"><span class="t">EFI2_2ESOB_EVA1.xlsx<small>Generado hoy, 18:40 · 60 notas y 30 comentarios · en Descargas</small></span><button class="btn">Mostrar en Finder</button><span class="mut" style="font-size:.875rem">(iPad: Compartir)</span></div>
+      </div></div>
+    <div class="sec"><h3>Pasos en Educamos</h3>
+      <div class="group">
+        <div class="row"><span class="t">1. Abre la misma evaluación de la que descargaste la plantilla.</span></div>
+        <div class="row"><span class="t">2. Sube este archivo sin cambiarle el nombre ni abrirlo en Excel.</span></div>
+        <div class="row"><span class="t">3. Comprueba en Educamos que cada alumno tiene su nota y su comentario.</span></div>
+      </div></div>
+    <div class="sec"><div class="group"><div class="row"><label for="up" class="t">Ya lo he subido a Educamos</label><input id="up" type="checkbox" role="switch" style="width:44px;height:24px"></div></div>
+      <p class="foot">Marca la evaluación como cerrada en este grupo y dispositivo. La app no puede comprobar si Educamos lo aceptó: es solo tu recordatorio.</p></div>
+  </div>
+</div>
+</section>
+
+<!-- 7 ERROR -->
+<section class="state" id="error">
+<div class="sheet">
+  <div class="nav"><span style="width:72px"></span><h2>Cerrar evaluación</h2><button class="link b">Hecho</button></div>
+  <div class="center" role="alert"><div class="big" aria-hidden="true">⚠️</div><b>No se pudo revisar el grupo</b><p>Tus notas y comentarios no han cambiado. Prueba otra vez.</p><button class="btn pri" style="margin-top:16px">Reintentar</button></div>
+</div>
+</section>
+
+<!-- 8 INFORME -->
+<section class="state" id="informe">
+<p class="note">«Base para boletín» con los datos nuevos (resaltados). Los saca de la misma función que usa la IA del dispositivo, así los dos caminos ven lo mismo. Los acuerdos de tutoría no salen en el texto anónimo.</p>
+<div class="doc">═══ Alumno 07 ═══
+Asistencia: 92 % presente · 1 falta · 0 retrasos · <span class="new">2 días sin material</span>
+Notas: media 7,4 · tendencia: sube
+  · Condición física: Test Cooper 7,5 · Flexibilidad 8,0
+<span class="new">Rúbricas (nivel logrado):
+  · Resistencia: Avanzado — «Mantiene el ritmo toda la prueba»
+  · Velocidad: En progreso — «Reacciona tarde a la salida»</span>
+<span class="new">Sellos: Cooperación ×3 · Superación ×1 · Entrega pendiente ×1</span>
+Autoevaluación (Voleibol): media 3,2 / 4
+<span class="new">Valoración del docente: Coopera con el grupo. A mejorar: velocidad. Mantener la constancia.</span>
+Observaciones:
+  · <span class="new">Circuito (nota de celda): mejoró la técnica de salida.</span>
+  · Ayuda a Alumno 12 a organizar los calentamientos.</div>
+</section>
+
+<script>
+document.querySelectorAll('header button[data-s]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('header button[data-s]').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.state').forEach(s=>s.classList.toggle('on',s.id===b.dataset.s));
+});
+document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{const on=c.classList.toggle('on');c.setAttribute('aria-pressed',on)});
+</script>
+</body></html>

@@ -334,17 +334,22 @@ extension NotebookModuleView {
                 }
                 .sheet(isPresented: $isClosingReviewPresented, onDismiss: goToPendingClosingTarget) {
                     if let data = closingReviewData {
-                        NotebookClosingReviewSheet(
+                        EvaluationClosingSheet(
+                            data: data,
+                            bridge: bridge,
+                            className: currentClass?.name ?? "Grupo",
+                            tabId: bridge.selectedNotebookTabId,
+                            tabTitle: data.sheet.tabs.first { $0.id == bridge.selectedNotebookTabId }?.title,
                             contextText: closingReviewContextText(data: data),
-                            loadReport: {
+                            loadClosingReport: {
                                 try await bridge.buildNotebookClosingReport(data: data)
                             },
-                            onSelect: { target in
+                            onSelectIssue: { target in
                                 pendingClosingTarget = target
                             }
                         )
 #if os(macOS)
-                        .frame(minWidth: 480, minHeight: 560)
+                        .frame(minWidth: 560, minHeight: 620)
 #else
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 #endif

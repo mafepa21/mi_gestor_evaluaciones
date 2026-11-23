@@ -12,14 +12,19 @@ struct BulletinBaseAttendance: Equatable {
     var absent = 0
     var late = 0
     var justified = 0
+    /// Vino a clase sin equipación: está presente, pero es un dato a tener en cuenta en EF.
+    var noMaterial = 0
+    /// Exento de la práctica: está presente.
+    var exempt = 0
+    /// Estados que no se reconocen: no cuentan ni como presencia ni como falta.
     var other = 0
 
-    var total: Int { present + absent + late + justified + other }
+    var total: Int { present + absent + late + justified + noMaterial + exempt }
 
-    /// Porcentaje de sesiones con presencia (un retraso cuenta como presente).
+    /// Porcentaje de sesiones con presencia (retraso, sin material y exento cuentan como presente).
     var presenceRate: Int? {
         guard total > 0 else { return nil }
-        return Int((Double(present + late) / Double(total) * 100).rounded())
+        return Int((Double(present + late + noMaterial + exempt) / Double(total) * 100).rounded())
     }
 }
 
@@ -45,6 +50,21 @@ struct BulletinBaseObservation: Equatable {
     let text: String
 }
 
+/// Nivel logrado en un criterio de rúbrica (sale de `BuildLomloeCommentEvidence`, igual que la IA).
+struct BulletinBaseCriterionLevel: Equatable {
+    let criterion: String
+    let level: String
+    let descriptor: String?
+    /// Puntos del nivel sobre el máximo del criterio (0-1). Sitúa el nivel; no es una nota.
+    var ratio: Double? = nil
+}
+
+/// Sello del Cuaderno («Cooperación», «Superación»…) y cuántas veces se puso en el periodo.
+struct BulletinBaseStampCount: Equatable {
+    let title: String
+    let count: Int
+}
+
 struct BulletinBaseStudentInput: Equatable {
     let studentId: Int64
     let firstName: String
@@ -53,6 +73,15 @@ struct BulletinBaseStudentInput: Equatable {
     var grades: [BulletinBaseGrade] = []
     var selfAssessments: [BulletinBaseSelfAssessment] = []
     var observations: [BulletinBaseObservation] = []
+    var criterionLevels: [BulletinBaseCriterionLevel] = []
+    var stamps: [BulletinBaseStampCount] = []
+    /// «Tu valoración» del trimestre: privada en la app, sí entra (sin nombres) en el texto anónimo.
+    var teacherNote: String?
+
+    var hasLowData: Bool {
+        grades.count < BulletinBaseReportBuilder.minimumGrades
+            || attendance.total < BulletinBaseReportBuilder.minimumAttendanceDays
+    }
 
     var fullName: String {
         "\(firstName) \(lastName)".trimmingCharacters(in: .whitespacesAndNewlines)
@@ -76,8 +105,12 @@ struct BulletinBaseReport: Equatable {
     let evaluableColumnCount: Int
     let selfAssessmentCount: Int
     let generatedAt: Date
+    /// Datos de cada alumno por id, para pantallas de la app (fichas de «Valoración rápida»,
+    /// filtro «pocos datos»). Nunca se exportan.
+    var inputsByStudent: [Int64: BulletinBaseStudentInput] = [:]
 
     var studentCount: Int { key.count }
+    var lowDataStudentIds: Set<Int64> { Set(inputsByStudent.values.filter(\.hasLowData).map(\.studentId)) }
 }
 
 enum BulletinBaseReportBuilder {
@@ -111,7 +144,7 @@ enum BulletinBaseReportBuilder {
 
         var lowDataCodes: [String] = []
         for (code, student) in codes {
-            let lowData = student.grades.count < minimumGrades || student.attendance.total < minimumAttendanceDays
+            let lowData = student.hasLowData
             if lowData { lowDataCodes.append(code) }
             lines.append("")
             lines.append(contentsOf: studentBlock(code: code, student: student, lowData: lowData, scrubber: scrubber))
@@ -125,7 +158,8 @@ enum BulletinBaseReportBuilder {
             lowDataCodes: lowDataCodes,
             evaluableColumnCount: evaluableColumnCount,
             selfAssessmentCount: selfAssessmentCount,
-            generatedAt: generatedAt
+            generatedAt: generatedAt,
+            inputsByStudent: Dictionary(students.map { ($0.studentId, $0) }, uniquingKeysWith: { first, _ in first })
         )
     }
 
@@ -185,9 +219,33 @@ enum BulletinBaseReportBuilder {
         var lines = ["═══ \(code)\(lowData ? " · pocos datos" : "") ═══"]
         lines.append(attendanceLine(student.attendance))
         lines.append(contentsOf: gradeLines(student.grades, scrubber: scrubber))
+        lines.append(contentsOf: criterionLines(student.criterionLevels, scrubber: scrubber))
+        if let stamps = stampLine(student.stamps) { lines.append(stamps) }
         lines.append(contentsOf: selfAssessmentLines(student.selfAssessments, scrubber: scrubber))
+        if let note = student.teacherNote.map({ clip(scrubber.scrub($0)) }), !note.isEmpty {
+            lines.append("Valoración del docente: \(note)")
+        }
         lines.append(contentsOf: observationLines(student.observations, scrubber: scrubber))
         return lines
+    }
+
+    static func criterionLines(_ levels: [BulletinBaseCriterionLevel], scrubber: BulletinBaseTextScrubber) -> [String] {
+        guard !levels.isEmpty else { return [] }
+        return ["Rúbricas (nivel logrado):"] + levels.map { level in
+            var line = "  · \(scrubber.scrub(level.criterion)): \(scrubber.scrub(level.level))"
+            if let descriptor = level.descriptor.map({ clip(scrubber.scrub($0)) }), !descriptor.isEmpty {
+                line += " — «\(descriptor)»"
+            }
+            return line
+        }
+    }
+
+    static func stampLine(_ stamps: [BulletinBaseStampCount]) -> String? {
+        let sorted = stamps.filter { $0.count > 0 }.sorted {
+            $0.count == $1.count ? $0.title < $1.title : $0.count > $1.count
+        }
+        guard !sorted.isEmpty else { return nil }
+        return "Sellos: " + sorted.map { "\($0.title) ×\($0.count)" }.joined(separator: " · ")
     }
 
     static func attendanceLine(_ attendance: BulletinBaseAttendance) -> String {
@@ -205,6 +263,12 @@ enum BulletinBaseReportBuilder {
                 : "\(missed) \(label)")
         }
         parts.append("\(attendance.late) retraso\(attendance.late == 1 ? "" : "s")")
+        if attendance.noMaterial > 0 {
+            parts.append("\(attendance.noMaterial) día\(attendance.noMaterial == 1 ? "" : "s") sin material")
+        }
+        if attendance.exempt > 0 {
+            parts.append("\(attendance.exempt) día\(attendance.exempt == 1 ? "" : "s") exento")
+        }
         return "Asistencia: " + parts.joined(separator: " · ")
     }
 

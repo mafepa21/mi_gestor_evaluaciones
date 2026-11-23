@@ -11,10 +11,12 @@ extension KmpBridge {
         return BulletinBaseReportBuilder.codeNumbers(studentIds: students.map(\.id), classId: classId)
     }
 
+    /// - Parameter fallbackPeriod: fechas a usar si el horario docente no tiene periodos de
+    ///   evaluación. Si los tiene, se usan los suyos: así el informe y la IA ven el mismo trimestre.
     func buildBulletinBaseReport(
         classId: Int64,
         termLabel: String,
-        period: (start: Date, end: Date)
+        period fallbackPeriod: (start: Date, end: Date)
     ) async throws -> BulletinBaseReport {
         guard let schoolClass = try await container.classesRepository.listClasses().first(where: { $0.id == classId }) else {
             throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No se encontró la clase \(classId)."])
@@ -31,8 +33,17 @@ extension KmpBridge {
             )
         }
 
+        let termKey = TeacherTermNoteKeys.shared.fromLabel(label: termLabel)
+        let evidenceUseCase = container.buildLomloeCommentEvidence
+        let schedulePeriod = try? await evidenceUseCase.resolveTermPeriod(termKey: termKey)
+        let period: (start: Date, end: Date) = schedulePeriod.map {
+            (Date(timeIntervalSince1970: TimeInterval($0.startEpochMs) / 1000),
+             Date(timeIntervalSince1970: TimeInterval($0.endEpochMs) / 1000))
+        } ?? fallbackPeriod
+
         func inPeriod(_ date: Date) -> Bool { date >= period.start && date <= period.end }
         func date(_ instant: Instant) -> Date { Date(timeIntervalSince1970: TimeInterval(instant.epochSeconds)) }
+        func date(epochMs: Int64) -> Date { Date(timeIntervalSince1970: TimeInterval(epochMs) / 1000) }
 
         var inputs: [Int64: BulletinBaseStudentInput] = Dictionary(
             students.map { ($0.id, BulletinBaseStudentInput(studentId: $0.id, firstName: $0.firstName, lastName: $0.lastName)) },
@@ -49,6 +60,8 @@ extension KmpBridge {
             case NotebookAttendanceStatus.absent: inputs[record.studentId]?.attendance.absent += 1
             case NotebookAttendanceStatus.late: inputs[record.studentId]?.attendance.late += 1
             case NotebookAttendanceStatus.justified: inputs[record.studentId]?.attendance.justified += 1
+            case NotebookAttendanceStatus.noMaterial: inputs[record.studentId]?.attendance.noMaterial += 1
+            case NotebookAttendanceStatus.exempt: inputs[record.studentId]?.attendance.exempt += 1
             default: inputs[record.studentId]?.attendance.other += 1
             }
             let note = record.note.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -177,6 +190,60 @@ extension KmpBridge {
                     }
                 }
             }
+        }
+
+        // Rúbricas y notas del Cuaderno: la misma evidencia que usa la IA del dispositivo.
+        // Las incidencias ya se leen arriba y los acuerdos de tutoría no salen en el texto anónimo.
+        let evidence = (try? await evidenceUseCase.invokeForClass(
+            classId: classId,
+            termKey: termKey,
+            maxCriterionResults: 12,
+            maxObservations: 10
+        )) ?? []
+        for item in evidence {
+            let studentId = item.studentId
+            let studentEvidence = item.evidence
+            guard inputs[studentId] != nil else { continue }
+            inputs[studentId]?.criterionLevels = studentEvidence.criterionResults.map {
+                BulletinBaseCriterionLevel(
+                    criterion: $0.criterion,
+                    level: $0.levelName,
+                    descriptor: $0.levelDescription?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank,
+                    ratio: $0.maxPoints > 0 ? Double($0.points) / Double($0.maxPoints) : nil
+                )
+            }
+            for observation in studentEvidence.observations where observation.source == .notebook {
+                inputs[studentId]?.observations.append(
+                    BulletinBaseObservation(
+                        date: date(epochMs: observation.dateEpochMs),
+                        text: "\(observation.title): \(observation.text)"
+                    )
+                )
+            }
+        }
+
+        // Sellos del Cuaderno en el periodo, con su recuento.
+        let columnById = Dictionary(columns.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let cells = (try? await container.notebookCellsRepository.listClassCells(classId: classId)) ?? []
+        var stampCounts: [Int64: [String: Int]] = [:]
+        for cell in cells where inputs[cell.studentId] != nil {
+            // El sello se guarda en el icono de la celda: al leer de la base de datos la anotación no lo trae.
+            guard let icon = cell.annotation?.icon ?? cell.iconValue,
+                  let stamp = NotebookCellStampCatalog.item(for: icon) else { continue }
+            let epochMs = cell.observedAtEpochMs?.int64Value
+                ?? columnById[cell.columnId]?.dateEpochMs?.int64Value
+                ?? cell.trace.updatedAt.toEpochMilliseconds()
+            guard inPeriod(date(epochMs: epochMs)) else { continue }
+            stampCounts[cell.studentId, default: [:]][stamp.title, default: 0] += 1
+        }
+        for (studentId, counts) in stampCounts {
+            inputs[studentId]?.stamps = counts.map { BulletinBaseStampCount(title: $0.key, count: $0.value) }
+        }
+
+        // «Tu valoración» del trimestre.
+        let teacherNotes = (try? await teacherTermNotes(classId: classId, termLabel: termLabel)) ?? [:]
+        for (studentId, note) in teacherNotes {
+            inputs[studentId]?.teacherNote = note.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank
         }
 
         return BulletinBaseReportBuilder.build(

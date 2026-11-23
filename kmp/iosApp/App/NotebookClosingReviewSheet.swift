@@ -14,6 +14,10 @@ struct NotebookClosingReviewSheet: View {
     let contextText: String
     let loadReport: () async throws -> NotebookClosingReport
     let onSelect: (NotebookClosingTarget) -> Void
+    /// Dentro de «Cerrar evaluación» es un paso empujado: sin barra propia ni detents.
+    var embedded = false
+    /// Al tocar un aviso hay que cerrar toda la hoja (no solo volver atrás): lo hace quien la contiene.
+    var onFinish: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -31,7 +35,21 @@ struct NotebookClosingReviewSheet: View {
 
     private static let skeletonDelay: UInt64 = 500_000_000
 
+    @ViewBuilder
     var body: some View {
+        if embedded {
+            content
+                .navigationTitle("Notas")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .task(id: loadAttempt) { await load() }
+        } else {
+            standaloneBody
+        }
+    }
+
+    private var standaloneBody: some View {
         NavigationStack {
             content
                 .navigationTitle("Revisar cierre")
@@ -221,13 +239,14 @@ struct NotebookClosingReviewSheet: View {
         let model = RowModel(issue: issue)
         return Button {
             handleTap(issue)
-            dismiss()
+            if let onFinish { onFinish() } else { dismiss() }
         } label: {
             rowLayout(model)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(model.accessibilityLabel)
+        .accessibilityHint(embedded ? "Cierra «Cerrar evaluación» y lleva a la celda" : "")
         .accessibilityHint(model.accessibilityHint)
         .accessibilityAddTraits(.isButton)
     }

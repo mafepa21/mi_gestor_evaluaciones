@@ -94,6 +94,49 @@ final class BulletinBaseReportTests: XCTestCase {
         XCTAssertEqual(scrubber.scrub("Lucíana analiza"), "Lucíana analiza")
     }
 
+    func testQualitativeBlocksAreAddedWithoutNames() {
+        var students = makeStudents()
+        students[0].criterionLevels = [
+            BulletinBaseCriterionLevel(criterion: "Resistencia", level: "Avanzado", descriptor: "Mantiene el ritmo todo el test", ratio: 1)
+        ]
+        students[0].stamps = [
+            BulletinBaseStampCount(title: "Superación", count: 1),
+            BulletinBaseStampCount(title: "Cooperación", count: 3)
+        ]
+        students[0].teacherNote = "Fortaleza: Coopera con Mateo. A mejorar: velocidad."
+        let report = BulletinBaseReportBuilder.build(
+            className: "2º ESO B",
+            classId: 7,
+            termLabel: "1er Trimestre",
+            students: students,
+            evaluableColumnCount: 5,
+            selfAssessmentCount: 1,
+            generatedAt: start
+        )
+        let codeByName = Dictionary(uniqueKeysWithValues: report.key.map { ($0.studentName, $0.code) })
+        let mateo = codeByName["Mateo Prueba Dos"]!
+        XCTAssertTrue(report.text.contains("Rúbricas (nivel logrado):\n  · Resistencia: Avanzado — «Mantiene el ritmo todo el test»"))
+        XCTAssertTrue(report.text.contains("Sellos: Cooperación ×3 · Superación ×1"))
+        XCTAssertTrue(report.text.contains("Valoración del docente: Fortaleza: Coopera con \(mateo). A mejorar: velocidad."))
+        XCTAssertFalse(BulletinBaseTextScrubber.fold(report.text).contains("mateo"))
+        // Los datos por alumno quedan para la app, fuera del texto.
+        XCTAssertEqual(report.inputsByStudent[11]?.stamps.count, 2)
+        XCTAssertEqual(report.lowDataStudentIds, [22, 33])
+    }
+
+    func testNoMaterialAndExemptCountAsPresentAndAreShown() {
+        // 8 presentes, 1 sin material, 1 exento: el 100 % vino a clase.
+        let attendance = BulletinBaseAttendance(present: 8, absent: 0, late: 0, justified: 0, noMaterial: 1, exempt: 1, other: 0)
+        XCTAssertEqual(attendance.presenceRate, 100)
+        XCTAssertEqual(
+            BulletinBaseReportBuilder.attendanceLine(attendance),
+            "Asistencia: 100 % presente · 0 faltas · 0 retrasos · 1 día sin material · 1 día exento"
+        )
+        // Un estado desconocido no cuenta como falta.
+        let unknown = BulletinBaseAttendance(present: 4, other: 1)
+        XCTAssertEqual(unknown.presenceRate, 100)
+    }
+
     func testCodesAreStableBetweenBuilds() {
         let first = build()
         let second = build()

@@ -30,6 +30,7 @@ struct BulletinBaseReportView: View {
     }
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var state: LoadState = .loading
     @State private var retryCount = 0
     @State private var isKeyPresented = false
@@ -49,8 +50,8 @@ struct BulletinBaseReportView: View {
                         .padding(.vertical, 16)
                         .background(.regularMaterial, in: Capsule())
                         .padding(.bottom, 32)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .accessibilityAddTraits(.isStaticText)
+                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                        .allowsHitTesting(false)
                 }
             }
             .sheet(isPresented: $isKeyPresented) {
@@ -131,7 +132,6 @@ struct BulletinBaseReportView: View {
                 }
 
                 textCard(report.text)
-                    .accessibilityLabel("Texto del informe")
 
                 Text("Lo que ves es exactamente lo que se copia. Sin nombres, correos, teléfonos ni datos de inclusión o salud. Revisa el texto antes de pegarlo: un nombre que no sea del grupo no se puede detectar.")
                     .font(.footnote)
@@ -147,12 +147,15 @@ struct BulletinBaseReportView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("Base para boletín")
                     .font(.largeTitle.bold())
-                Label("Anónimo", systemImage: "checkmark.shield.fill")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.green)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.green.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                Label {
+                    Text("Anónimo")
+                } icon: {
+                    Image(systemName: "checkmark.shield.fill").foregroundStyle(.green)
+                }
+                .font(.footnote.weight(.semibold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.green.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             Text([className, termLabel].compactMap { $0 }.joined(separator: " · "))
                 .font(.title3)
@@ -164,7 +167,16 @@ struct BulletinBaseReportView: View {
 
     @ViewBuilder
     private func actionRow(report: BulletinBaseReport?) -> some View {
-        HStack(spacing: 8) {
+        // Con letra grande los tres botones pasan a columna en lugar de salirse.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { actionButtons(report: report) }
+            VStack(alignment: .leading, spacing: 8) { actionButtons(report: report) }
+        }
+        .disabled(report == nil)
+    }
+
+    @ViewBuilder
+    private func actionButtons(report: BulletinBaseReport?) -> some View {
             Button {
                 if let report { copy(report.text) }
             } label: {
@@ -174,17 +186,11 @@ struct BulletinBaseReportView: View {
             .controlSize(.large)
             .keyboardShortcut("c", modifiers: [.command, .shift])
 
-            if let report {
-                ShareLink(item: report.text) {
-                    Label("Compartir", systemImage: "square.and.arrow.up")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-            } else {
-                Button {} label: { Label("Compartir", systemImage: "square.and.arrow.up") }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
+            ShareLink(item: report?.text ?? "") {
+                Label("Compartir", systemImage: "square.and.arrow.up")
             }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
 
             Button {
                 isKeyPresented = true
@@ -194,8 +200,6 @@ struct BulletinBaseReportView: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
             .accessibilityHint("Muestra los nombres reales, solo en pantalla")
-        }
-        .disabled(report == nil)
     }
 
     @ViewBuilder
@@ -216,9 +220,12 @@ struct BulletinBaseReportView: View {
             : codes.prefix(5).joined(separator: ", ") + " y \(codes.count - 5) más"
         let count = codes.count == 1 ? "1 alumno con pocos datos" : "\(codes.count) alumnos con pocos datos"
         return VStack(alignment: .leading, spacing: 8) {
-            Label(count, systemImage: "exclamationmark.circle")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.orange)
+            Label {
+                Text(count)
+            } icon: {
+                Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
+            }
+            .font(.subheadline.weight(.semibold))
             Text("\(names). Saldrán marcados en el texto. «Pocos datos» = menos de \(BulletinBaseReportBuilder.minimumGrades) notas o menos de \(BulletinBaseReportBuilder.minimumAttendanceDays) días de asistencia en el trimestre.")
                 .font(.subheadline)
         }

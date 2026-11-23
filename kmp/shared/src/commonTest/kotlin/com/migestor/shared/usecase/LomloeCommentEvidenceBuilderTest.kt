@@ -124,11 +124,13 @@ class LomloeCommentEvidenceBuilderTest {
                 columns = listOf(
                     textColumn("obs", "Observación diaria"),
                     textColumn("ia", "Comentario IA", icon = LomloeCommentEvidenceBuilder.AI_COLUMN_ICON, kind = NotebookInstrumentKind.PRIVATE_COMMENT),
+                    textColumn("boletin", "Comentario de evaluación", icon = LomloeCommentEvidenceBuilder.EVALUATION_COMMENT_ICON, kind = NotebookInstrumentKind.PRIVATE_COMMENT),
                     NotebookColumnDefinition(id = "nota", title = "Examen T1", type = NotebookColumnType.NUMERIC, competencyCriteriaIds = listOf(101)),
                 ),
                 cells = listOf(
                     PersistedNotebookCell(classId = 7, studentId = ana, columnId = "obs", textValue = "  Ayuda a   sus compañeros ", trace = at(4_000)),
                     PersistedNotebookCell(classId = 7, studentId = ana, columnId = "ia", textValue = "Texto generado antes", trace = at(5_000)),
+                    PersistedNotebookCell(classId = 7, studentId = ana, columnId = "boletin", textValue = "Comentario del boletín ya generado", trace = at(5_500)),
                     PersistedNotebookCell(classId = 7, studentId = ana, columnId = "nota", textValue = "7", annotation = NotebookCellAnnotation(note = "Mejoró mucho la presentación"), trace = at(3_000)),
                     PersistedNotebookCell(classId = 7, studentId = luis, columnId = "obs", textValue = "De otro alumno", trace = at(6_000)),
                 ),
@@ -154,6 +156,8 @@ class LomloeCommentEvidenceBuilderTest {
         assertEquals("Examen T1", evidence.observations[1].title)
         // Ni lo generado por IA ni los temas tratados con la familia llegan a la evidencia.
         assertTrue(evidence.observations.none { "generado" in it.text || "privado" in it.text })
+        // El comentario de evaluación es la salida final: tampoco vuelve como evidencia.
+        assertTrue(evidence.observations.none { "boletín" in it.text })
         // La columna con contenido aporta su competencia.
         assertEquals(listOf("CE4"), evidence.competencies.map { it.code })
     }

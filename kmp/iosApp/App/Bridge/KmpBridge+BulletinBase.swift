@@ -5,6 +5,12 @@ import MiGestorKit
 // del boletín. Solo lee: no escribe nada en la base de datos.
 // No lee datos de inclusión ni de salud (adaptaciones, lesiones): quedan fuera a propósito.
 extension KmpBridge {
+    /// Clave de códigos «Alumno NN» del informe anónimo para el alumnado actual del grupo.
+    func bulletinCodeKey(classId: Int64) async throws -> [Int: Int64] {
+        let students = try await container.classesRepository.listStudentsInClass(classId: classId)
+        return BulletinBaseReportBuilder.codeNumbers(studentIds: students.map(\.id), classId: classId)
+    }
+
     func buildBulletinBaseReport(
         classId: Int64,
         termLabel: String,

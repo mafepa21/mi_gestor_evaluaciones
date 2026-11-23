@@ -87,11 +87,15 @@ struct EvaluationCommentPlan: Equatable {
     let sourceCount: Int
     /// Comentarios que sobran porque hay menos alumnos que filas.
     let extraCount: Int
+    /// Emparejado por código «Alumno NN» del informe anónimo, no por orden.
+    var matchedByCode = false
+    /// Códigos del archivo que no corresponden a ningún alumno del grupo.
+    var unknownCodes: [String] = []
 
     var importCount: Int { entries.filter(\.changes).count }
     var replaceCount: Int { entries.filter(\.replacesExisting).count }
     var emptyCount: Int { entries.filter { $0.newComment == nil }.count }
-    var countsDiffer: Bool { sourceCount != entries.count }
+    var countsDiffer: Bool { !matchedByCode && sourceCount != entries.count }
 }
 
 enum EvaluationCommentImportError: LocalizedError {
@@ -213,6 +217,68 @@ enum EvaluationCommentImport {
         let rest = texts.dropFirst()
         let averageRest = Double(rest.reduce(0) { $0 + $1.count }) / Double(rest.count)
         return averageRest >= Double(first.count) * 2
+    }
+
+    // MARK: - Códigos del informe anónimo
+
+    /// Número de un código «Alumno 07» (también «alumno 7», «ALUMNO 007»).
+    static func codeNumber(_ text: String) -> Int? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let match = trimmed.range(of: #"^alumno\s+(\d{1,4})$"#, options: [.regularExpression, .caseInsensitive]) else {
+            return nil
+        }
+        let digits = trimmed[match].split(whereSeparator: \.isWhitespace).last.map(String.init) ?? ""
+        return Int(digits)
+    }
+
+    /// Columna con códigos «Alumno NN»: al menos 2 y casi todas sus celdas (sin contar el título) lo son.
+    static func codeColumn(table: EvaluationCommentTable) -> Int? {
+        table.columnIndexes.first { column in
+            let texts = table.filledRows(in: column).map { table.value(row: $0, column: column) }
+            let codes = texts.filter { codeNumber($0) != nil }.count
+            let body = codeNumber(texts.first ?? "") == nil ? texts.count - 1 : texts.count
+            return codes >= 2 && Double(codes) >= Double(max(body, 1)) * 0.8
+        }
+    }
+
+    /// Empareja por código: cada fila va al alumno que indica la clave, sin importar el orden.
+    static func planByCode(
+        table: EvaluationCommentTable,
+        codeColumn: Int,
+        commentColumn: Int,
+        key: [Int: Int64],
+        students: [EvaluationCommentStudent]
+    ) -> EvaluationCommentPlan {
+        var commentByStudent: [Int64: (code: String, text: String)] = [:]
+        var unknown: [String] = []
+        var sourceCount = 0
+        for row in table.filledRows(in: codeColumn) {
+            let codeText = table.value(row: row, column: codeColumn)
+            guard let number = codeNumber(codeText) else { continue }
+            let text = table.value(row: row, column: commentColumn)
+            guard !text.isEmpty else { continue }
+            sourceCount += 1
+            guard let studentId = key[number], students.contains(where: { $0.id == studentId }) else {
+                unknown.append(codeText)
+                continue
+            }
+            commentByStudent[studentId] = (codeText, text)
+        }
+        let entries = students.enumerated().map { offset, student in
+            EvaluationCommentPlan.Entry(
+                position: offset + 1,
+                student: student,
+                newComment: commentByStudent[student.id]?.text,
+                sourceName: commentByStudent[student.id]?.code
+            )
+        }
+        return EvaluationCommentPlan(
+            entries: entries,
+            sourceCount: sourceCount,
+            extraCount: 0,
+            matchedByCode: true,
+            unknownCodes: unknown
+        )
     }
 
     // MARK: - Emparejamiento

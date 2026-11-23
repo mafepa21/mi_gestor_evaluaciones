@@ -85,6 +85,71 @@ final class EvaluationCommentImportTests: XCTestCase {
         XCTAssertEqual(EvaluationCommentImport.columnLetter(for: 26), "AA")
     }
 
+    // MARK: - Códigos del informe anónimo
+
+    func testCodeParsingAndColumnDetection() {
+        XCTAssertEqual(EvaluationCommentImport.codeNumber("Alumno 07"), 7)
+        XCTAssertEqual(EvaluationCommentImport.codeNumber(" alumno 7 "), 7)
+        XCTAssertEqual(EvaluationCommentImport.codeNumber("ALUMNO 012"), 12)
+        XCTAssertNil(EvaluationCommentImport.codeNumber("Alumno 07 es muy constante"))
+        XCTAssertNil(EvaluationCommentImport.codeNumber("Lucía"))
+        let table = EvaluationCommentTable(rows: [
+            ["Código", "Comentario"],
+            ["Alumno 02", "Texto largo para el segundo código."],
+            ["Alumno 01", "Texto largo para el primer código."]
+        ])
+        XCTAssertEqual(EvaluationCommentImport.codeColumn(table: table), 0)
+        XCTAssertEqual(EvaluationCommentImport.suggestedColumn(table: table, educamos: nil), 1)
+        XCTAssertNil(EvaluationCommentImport.codeColumn(table: EvaluationCommentTable(rows: [["Comentario"], ["Uno."], ["Dos."]])))
+    }
+
+    func testCodesGoToTheStudentOfTheAnonymousReportKey() throws {
+        // Mismo grupo que el informe «Base para boletín»: la clave debe ser idéntica.
+        let classId: Int64 = 7
+        let report = BulletinBaseReportBuilder.build(
+            className: "2º ESO B",
+            classId: classId,
+            termLabel: "1er Trimestre",
+            students: students.map {
+                let parts = $0.displayName.components(separatedBy: ", ")
+                return BulletinBaseStudentInput(studentId: $0.id, firstName: parts[1], lastName: parts[0])
+            },
+            evaluableColumnCount: 0,
+            selfAssessmentCount: 0
+        )
+        let key = BulletinBaseReportBuilder.codeNumbers(studentIds: students.map(\.id), classId: classId)
+        for entry in report.key {
+            let number = try XCTUnwrap(EvaluationCommentImport.codeNumber(entry.code))
+            let studentId = try XCTUnwrap(key[number])
+            let student = try XCTUnwrap(students.first { $0.id == studentId })
+            let parts = student.displayName.components(separatedBy: ", ")
+            XCTAssertEqual(entry.studentName, "\(parts[1]) \(parts[0])", "\(entry.code) apunta a otro alumno")
+        }
+
+        // Excel en orden inverso y con un código que no existe.
+        var rows: [[String]] = [["Código", "Comentario"]]
+        for entry in report.key.reversed() {
+            rows.append([entry.code, "Comentario para \(entry.studentName)."])
+        }
+        rows.append(["Alumno 09", "Este código no es del grupo."])
+        let table = EvaluationCommentTable(rows: rows)
+        let plan = EvaluationCommentImport.planByCode(
+            table: table,
+            codeColumn: 0,
+            commentColumn: 1,
+            key: key,
+            students: students
+        )
+        XCTAssertTrue(plan.matchedByCode)
+        XCTAssertFalse(plan.countsDiffer)
+        XCTAssertEqual(plan.unknownCodes, ["Alumno 09"])
+        for entry in plan.entries {
+            let parts = entry.student.displayName.components(separatedBy: ", ")
+            XCTAssertEqual(entry.newComment, "Comentario para \(parts[1]) \(parts[0]).")
+            XCTAssertNotNil(entry.sourceName)
+        }
+    }
+
     // MARK: - Plantilla de Educamos
 
     func testEducamosTemplateRoundTrip() throws {

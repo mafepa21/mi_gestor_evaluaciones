@@ -37,6 +37,9 @@ struct EvaluationCommentImportSheet: View {
     @State private var saveError: String?
     @State private var undoSnapshot: (columnId: String, values: [(studentId: Int64, text: String)])?
     @State private var loadTask: Task<Void, Never>?
+    /// Columna con códigos «Alumno NN» del informe anónimo, si el archivo la trae.
+    @State private var codeColumn: Int?
+    @State private var codeKey: [Int: Int64]?
 
     private var periodTitle: String { tabTitle ?? "esta evaluación" }
 
@@ -201,7 +204,16 @@ struct EvaluationCommentImportSheet: View {
     }
 
     private var plan: EvaluationCommentPlan {
-        EvaluationCommentImport.plan(
+        if let codeColumn, let codeKey {
+            return EvaluationCommentImport.planByCode(
+                table: table,
+                codeColumn: codeColumn,
+                commentColumn: selectedColumn,
+                key: codeKey,
+                students: students
+            )
+        }
+        return EvaluationCommentImport.plan(
             table: table,
             educamos: educamos,
             column: selectedColumn,
@@ -237,7 +249,9 @@ struct EvaluationCommentImportSheet: View {
                     }
                 }
                 .pickerStyle(.menu)
-                if educamos == nil {
+                if codeKey != nil {
+                    LabeledContent("Emparejar", value: "Por código «Alumno NN»")
+                } else if educamos == nil {
                     Toggle("La primera fila es un título", isOn: $skipHeader)
                 }
                 Picker("Destino", selection: $destination) {
@@ -252,13 +266,19 @@ struct EvaluationCommentImportSheet: View {
             } header: {
                 Text("Origen")
             } footer: {
-                Text(educamos != nil
-                     ? "Archivo de Educamos: se usan sus filas de alumnado, en el mismo orden."
-                     : "La app propone la columna con más texto. La primera fila con comentario va al primer alumno.")
+                Text(originFooter)
             }
 
-            if plan.countsDiffer || plan.replaceCount > 0 || plan.emptyCount > 0 {
+            if plan.countsDiffer || plan.replaceCount > 0 || plan.emptyCount > 0 || !plan.unknownCodes.isEmpty {
                 Section("Avisos") {
+                    if !plan.unknownCodes.isEmpty {
+                        Label {
+                            Text(unknownCodesMessage(plan.unknownCodes))
+                        } icon: {
+                            Image(systemName: "questionmark.circle")
+                                .foregroundStyle(.orange)
+                        }
+                    }
                     if plan.countsDiffer {
                         Label {
                             Text(countMessage(plan))
@@ -321,6 +341,23 @@ struct EvaluationCommentImportSheet: View {
         .appOnChange(of: destination) { _ in announceCount() }
     }
 
+    private var originFooter: String {
+        if codeKey != nil {
+            return "Los códigos son los del informe «Base para boletín» de este grupo: cada comentario va a su alumno aunque el orden sea otro. Solo vale si el alumnado del grupo no ha cambiado desde que generaste el informe."
+        }
+        if educamos != nil {
+            return "Archivo de Educamos: se usan sus filas de alumnado, en el mismo orden."
+        }
+        return "La app propone la columna con más texto. La primera fila con comentario va al primer alumno."
+    }
+
+    private func unknownCodesMessage(_ codes: [String]) -> String {
+        let list = codes.prefix(4).joined(separator: ", ") + (codes.count > 4 ? "…" : "")
+        return codes.count == 1
+            ? "\(list) no existe en este grupo. No se importará."
+            : "\(codes.count) códigos no existen en este grupo (\(list)). No se importarán."
+    }
+
     private func countMessage(_ plan: EvaluationCommentPlan) -> String {
         let comments = plan.sourceCount == 1 ? "1 comentario" : "\(plan.sourceCount) comentarios"
         let pupils = plan.entries.count == 1 ? "1 alumno" : "\(plan.entries.count) alumnos"
@@ -337,6 +374,7 @@ struct EvaluationCommentImportSheet: View {
         if plan.replaceCount > 0 { message += ", \(plan.replaceCount) sustituirán al actual" }
         message += "."
         if plan.countsDiffer { message += " " + countMessage(plan) }
+        if !plan.unknownCodes.isEmpty { message += " " + unknownCodesMessage(plan.unknownCodes) }
         AccessibilityNotification.Announcement(message).post()
     }
 
@@ -374,8 +412,17 @@ struct EvaluationCommentImportSheet: View {
                   let suggested = EvaluationCommentImport.suggestedColumn(table: loaded.0, educamos: loaded.1) else {
                 throw EvaluationCommentImportError.noTextColumns
             }
+            // Códigos del informe anónimo: se traduce cada «Alumno NN» con la clave del grupo.
+            let detectedCodeColumn = loaded.1 == nil ? EvaluationCommentImport.codeColumn(table: loaded.0) : nil
+            var key: [Int: Int64]?
+            if detectedCodeColumn != nil {
+                key = try await bridge.bulletinCodeKey(classId: data.sheet.classId)
+                try Task.checkCancellation()
+            }
             table = loaded.0
             educamos = loaded.1
+            codeColumn = detectedCodeColumn
+            codeKey = key
             columnOptions = options.contains { $0.index == suggested }
                 ? options
                 : options + [EvaluationCommentColumnOption(
@@ -539,7 +586,7 @@ private struct EvaluationCommentPreviewRow: View {
                     .lineLimit(3)
             }
         } else {
-            Text("Fila vacía: queda sin cambios")
+            Text("Sin comentario en el Excel: queda sin cambios")
                 .foregroundStyle(.secondary)
         }
     }
@@ -551,7 +598,7 @@ private struct EvaluationCommentPreviewRow: View {
     }
 
     private var accessibilityHintText: String {
-        guard entry.newComment != nil else { return "Fila vacía, queda sin cambios" }
+        guard entry.newComment != nil else { return "Sin comentario en el Excel, queda sin cambios" }
         if entry.replacesExisting { return "Sustituirá el comentario actual" }
         if !entry.changes { return "Igual que el actual" }
         return "Comentario nuevo"

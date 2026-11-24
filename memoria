@@ -2053,6 +2053,47 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-11-24 - Flujo del boletín a Educamos, «Cerrar evaluación» y pestaña de evaluación con pesos (PR #427, #428, #430)
+
+Resumen:
+- **Comentario de evaluación (PR #427).** Columna «Comentario de evaluación» por pestaña. Se importa desde Excel por orden o por código «Alumno NN» del informe anónimo, y «Exportar a Educamos» la escribe en la fila «Comentarios» (TipoColumna=20).
+- **Arreglos y HIG (PR #428).**
+  - La IA ya no lee el comentario como observación.
+  - «Sin material» y «Exento» cuentan como presencia.
+  - «Generar lote» guarda en «Comentario de evaluación».
+  - «Exportar a Educamos» cumple HIG.
+- **Cerrar evaluación (PR #428).** Sustituye a «Revisar cierre» con 4 pasos: Notas, Comentarios, Excel de Educamos y Subir. Incluye «Valoración rápida» con fichas que salen de sellos, rúbricas y días sin material. «Base para boletín» añade rúbricas, sellos y valoración, sin tutoría.
+- **Pestaña de evaluación (PR #430, ADR 003 en `docs/architecture/adr_003_pestana_evaluacion_pesos.md`).**
+  - Una pestaña raíz con hijas es una evaluación. Sus hijas son bloques (una por SA).
+  - Nota = Σ peso del bloque × media del bloque / Σ pesos con nota. El cálculo está en KMP (`usecase/NotebookEvaluation.kt`).
+  - Un bloque sin notas no cuenta como 0.
+  - El Resumen agrupa por bloques plegables con categorías de mentira `evalblock:<id>`.
+- **Valorar más rápido (PR #430).**
+  - «Leer y editar comentarios», con todos enteros y editables en el sitio.
+  - «Valorar por ficha».
+  - «Copiar del trimestre anterior», con deshacer.
+  - Fichas propias.
+- **Persistencia.**
+  - Migración 50 (aditiva; esquema 51): `notebook_tabs.weight REAL` y tabla `quick_note_phrases` con borrado lógico.
+  - `upsertTab` pasa a `ON CONFLICT DO UPDATE` para no arrastrar hijas.
+  - Borrar una evaluación suelta sus bloques (`NotebookViewModel.deleteTab`, que es quien borraba en cascada).
+  - Sync: el peso viaja con la pestaña (si falta la clave se conserva) y las fichas por `ModuleRecordsSync`.
+- **Educamos (arreglo):** cada «Media de SA» toma la media de su pestaña. Antes todas tomaban la de la pestaña abierta.
+- **Validación (PR #430):**
+  - `:shared:desktopTest` (`NotebookEvaluationTest` 6/6).
+  - `:data:desktopTest` (`EvaluationTabAndQuickNotePhraseTest` 6/6, `UpgradePathRegressionTest`, `ModuleRecordsSyncTest`).
+  - `xcodebuild test -scheme MiGestorPlannerTests` en macOS: 829 de 830, con 1 fallo ajeno ya conocido (`LearningSituationDocumentImportTests.testBachilleratoSA2BadmintonSessionsImportBothRoutes`).
+  - iPad compila.
+  - No validado: QA manual, sync real entre dos dispositivos y subida a Educamos.
+
+Notas para futuras conversaciones:
+- Hay que actualizar iPad y Mac a la vez antes de organizar por evaluaciones: una versión antigua no ve los bloques y, si borra una evaluación, borra sus bloques en cascada.
+- El menú «Pestañas» de `notebookCommandMenuContent` solo existe en la vista compacta. Lo que deba verse en iPad o Mac va en el menú del shell (`WorkspaceLayoutState`: `IPadWorkspaceShell.swift`, `IOSRootView.swift`, `MacRootView.swift`).
+- Swift no ve los parámetros por defecto de Kotlin: `NotebookTab(...)` y `NotebookRow(...)` en Swift deben pasar `weight:` y `evaluationExplanation:`.
+- Un `Map<Long, …>` de KMP hace que la app se cierre al recorrerlo en Swift (claves `NSNumber`): hay que devolver listas (`LomloeStudentEvidence`).
+- Las etiquetas de trimestre de las pruebas no deben llevar cifras 1, 2 o 3: `TeacherTermNoteKeys.fromLabel` las convierte en T1, T2 o T3.
+- Las columnas propias de una raíz que ya existía no entran en la nota de evaluación. Los grupos generales se comparten entre bloques.
+
 ### 2026-11-13 - «Tu valoración» del docente para el Comentario LOMLOE (issue #407, parte B)
 
 Resumen:

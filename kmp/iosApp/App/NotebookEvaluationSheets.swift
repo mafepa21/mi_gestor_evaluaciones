@@ -164,6 +164,12 @@ struct NotebookEvaluationWeightsSheet: View {
                         Text("Total").bold()
                     }
                     .accessibilityElement(children: .combine)
+                    .accessibilityValue(isHundred ? "\(totalText), suma 100" : "\(totalText), no suma 100")
+                    if !allValid {
+                        Text("Escribe en cada bloque un número de 0 a 100.")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
                 } header: {
                     Text("Peso de cada bloque")
                 } footer: {
@@ -301,7 +307,8 @@ struct NotebookPercentField: View {
                 #if os(iOS)
                 .keyboardType(.decimalPad)
                 #endif
-                .frame(minWidth: 56, maxWidth: 80)
+                .frame(minWidth: 56)
+                .fixedSize(horizontal: true, vertical: false)
                 .accessibilityLabel("\(accessibilityName), por ciento")
             Text("%").foregroundStyle(.secondary).accessibilityHidden(true)
         }

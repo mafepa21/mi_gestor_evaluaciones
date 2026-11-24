@@ -305,7 +305,8 @@ struct NotebookEvaluationBlockStrip: View {
             }
             Button("Pesos…", action: onEditWeights)
                 .buttonStyle(.bordered)
-                .controlSize(.small)
+                .frame(minHeight: minHeight)
+                .fixedSize()
                 .disabled(blocks.isEmpty)
                 .accessibilityHint("Peso de cada bloque en \(evaluationTitle)")
         }
@@ -330,12 +331,12 @@ struct NotebookEvaluationBlockStrip: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .lineLimit(1)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
             .padding(.horizontal, 12)
             .frame(minHeight: minHeight)
             .background {
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.08))
+                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.12))
                 }
             }
             .contentShape(Rectangle())
@@ -349,5 +350,11 @@ struct NotebookEvaluationBlockStrip: View {
         }
         .accessibilityLabel(detail.map { "\(title), \($0.replacingOccurrences(of: "%", with: "por ciento"))" } ?? "\(title) de \(evaluationTitle)")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityActions {
+            if let tab {
+                Button("Renombrar") { onRenameTab(tab) }
+                Button("Eliminar bloque") { onDeleteTab(tab) }
+            }
+        }
     }
 }

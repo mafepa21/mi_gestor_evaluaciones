@@ -25,6 +25,7 @@ struct QuickNoteGroupSheet: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var isNewPhrasePresented = false
+    @State private var savedMessage: String?
 
     private var chips: [QuickNoteChip] {
         let customTexts = custom.mapValues { $0.map { (id: $0.id, text: $0.text) } }
@@ -50,7 +51,7 @@ struct QuickNoteGroupSheet: View {
     private var orderedStudents: [(id: Int64, name: String)] {
         students.sorted { lhs, rhs in
             let l = stampCount(lhs.id), r = stampCount(rhs.id)
-            return l == r ? lhs.name < rhs.name : l > r
+            return l == r ? lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending : l > r
         }
     }
 
@@ -59,6 +60,20 @@ struct QuickNoteGroupSheet: View {
             List {
                 if let errorMessage {
                     Section { Label(errorMessage, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.primary) }
+                }
+                if let savedMessage {
+                    Section {
+                        Label {
+                            Text(savedMessage)
+                        } icon: {
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        }
+                    }
+                }
+                if isLoading {
+                    Section {
+                        HStack { Spacer(); ProgressView("Cargando…"); Spacer() }
+                    }
                 }
                 Section {
                     groupPicker
@@ -154,10 +169,14 @@ struct QuickNoteGroupSheet: View {
             }
             .sheet(isPresented: $isNewPhrasePresented) {
                 QuickNotePhraseSheet(initialGroup: group) { newGroup, text in
-                    if let phrase = try? await bridge.saveQuickNotePhrase(group: newGroup, text: text) {
-                        custom[newGroup, default: []].append(phrase)
-                        group = newGroup
-                        selectChip(phrase.text)
+                    do {
+                        if let phrase = try await bridge.saveQuickNotePhrase(group: newGroup, text: text) {
+                            custom[newGroup, default: []].append(phrase)
+                            group = newGroup
+                            selectChip(phrase.text)
+                        }
+                    } catch {
+                        errorMessage = "No se pudo guardar la ficha: \(error.localizedDescription)"
                     }
                 }
                 #if os(macOS)
@@ -211,6 +230,7 @@ struct QuickNoteGroupSheet: View {
             )
             notes = (try? await bridge.teacherTermNotes(classId: classId, termLabel: termLabel)) ?? notes
             errorMessage = nil
+            savedMessage = "«\(chipText)» guardada. \(changed) alumnos cambiados."
             AccessibilityNotification.Announcement("«\(chipText)» guardada en \(changed) alumnos").post()
         } catch {
             errorMessage = "No se pudo guardar: \(error.localizedDescription)"
@@ -319,13 +339,23 @@ struct CopyPreviousTermSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(undo == nil ? "Cancelar" : "Hecho") { dismiss() }
-                }
                 if undo == nil {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancelar") { dismiss() }
+                    }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Copiar") { Task { await copy() } }
-                            .disabled(willCopy == 0 || isWorking)
+                        Button {
+                            Task { await copy() }
+                        } label: {
+                            Text("Copiar")
+                                .opacity(isWorking ? 0 : 1)
+                                .overlay { if isWorking { ProgressView().controlSize(.small) } }
+                        }
+                        .disabled(willCopy == 0 || isWorking)
+                    }
+                } else {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Hecho") { dismiss() }
                     }
                 }
             }

@@ -83,3 +83,8 @@
 - Los sellos se guardan en `iconValue` de la celda. Al leer de la base de datos, `annotation.icon` llega vacío: hay que leer `annotation?.icon ?? iconValue`.
 - «Ya lo he subido» y el último Excel generado viven en `UserDefaults` por grupo y pestaña (`EvaluationClosingStore`): no se sincronizan entre iPad y Mac.
 - «Valoración rápida» guarda en «Tu valoración» con formato «Fortaleza: A, B. A mejorar: C. Orientación: D.» en la primera línea (`QuickNoteComposer`) para volver a marcar las fichas al abrir. Las frases no pueden llevar comas ni puntos (`QuickNoteCatalog.sanitize`).
+- Pestaña de evaluación (ADR 003): es una raíz con hijas. `NotebookEvaluation` (KMP) es la única fuente de la nota por bloques. `withActiveTabAverages` y `WebPortalGrades.scope` deben coincidir: si se toca uno, hay que tocar el otro.
+- El Resumen agrupa por categorías de mentira `evalblock:<tabId>`: no existen en la base de datos. Su menú contextual no puede renombrar ni mover (`categoryContextMenu`).
+- `activeNotebookTabId` acepta bloques (pestañas hijas); la barra de arriba marca su evaluación con `activeRootNotebookTabId`.
+- Swift no ve los parámetros por defecto de Kotlin: cualquier `NotebookTab(...)` o `NotebookRow(...)` en Swift debe pasar `weight:` y `evaluationExplanation:`.
+- Etiquetas de trimestre en pruebas: sin cifras 1, 2 o 3, o `TeacherTermNoteKeys.fromLabel` las convierte en T1–T3 y se mezclan con otras pruebas.

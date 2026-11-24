@@ -962,6 +962,11 @@ extension NotebookModuleView {
             )
             .accessibilityValue(blockText ?? (total == 0 ? "Vacía" : "\(filled) de \(total) columnas con datos"))
             .accessibilityHint("Toca para desplegar")
+            .accessibilityActions {
+                if let blockId = NotebookEvaluation.shared.blockIdFromCategoryId(categoryId: category.id) {
+                    Button("Abrir el bloque") { selectNotebookTab(blockId) }
+                }
+            }
     }
 
     @MainActor
@@ -1325,7 +1330,7 @@ extension NotebookModuleView {
     func categoryContextMenu(_ category: NotebookColumnCategory, data: NotebookUiStateData?) -> some View {
         if let blockId = NotebookEvaluation.shared.blockIdFromCategoryId(categoryId: category.id) {
             // Bloque del Resumen: no es una categoría guardada, así que no se renombra ni se mueve.
-            Button(isCategoryCollapsed(category) ? "Desplegar bloque" : "Plegar bloque") {
+            Button(isCategoryCollapsed(category) ? "Expandir bloque" : "Colapsar bloque") {
                 setCategoryCollapsed(category, collapsed: !isCategoryCollapsed(category))
             }
             Button("Abrir el bloque") {

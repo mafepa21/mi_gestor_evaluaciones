@@ -12,6 +12,8 @@ struct EvaluationCommentsReviewView: View {
 
     @State private var columnId: String?
     @State private var errorMessage: String?
+    /// Último texto guardado por alumno: una fila que reaparece al desplazar no vuelve al antiguo.
+    @State private var savedComments: [Int64: String]?
 
     var body: some View {
         List {
@@ -28,7 +30,7 @@ struct EvaluationCommentsReviewView: View {
                 ForEach(students, id: \.id) { student in
                     EvaluationCommentEditorRow(
                         studentName: student.name,
-                        initialText: initialComments[student.id] ?? "",
+                        initialText: (savedComments ?? initialComments)[student.id] ?? "",
                         onSave: { text in await save(studentId: student.id, text: text) }
                     )
                 }
@@ -53,6 +55,9 @@ struct EvaluationCommentsReviewView: View {
                 columnId = id
             }
             _ = try await bridge.saveEvaluationComments(classId: classId, columnId: id, comments: [(studentId, text)])
+            var updated = savedComments ?? initialComments
+            updated[studentId] = text
+            savedComments = updated
             errorMessage = nil
             return true
         } catch {
@@ -75,14 +80,21 @@ private struct EvaluationCommentEditorRow: View {
     @State private var savedText = ""
     @State private var state: SaveState = .idle
     @State private var saveTask: Task<Void, Never>?
+    @State private var loaded = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(studentName).font(.headline)
-                Spacer(minLength: 8)
-                stateLabel
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    Text(studentName).font(.headline)
+                    Spacer(minLength: 8)
+                    stateLabel
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(studentName).font(.headline)
+                    stateLabel
+                }
             }
             TextField("Sin comentario", text: $text, axis: .vertical)
                 .lineLimit(3...)
@@ -100,6 +112,8 @@ private struct EvaluationCommentEditorRow: View {
         }
         .padding(.vertical, 8)
         .onAppear {
+            guard !loaded else { return }
+            loaded = true
             text = initialText
             savedText = initialText
         }
@@ -118,9 +132,16 @@ private struct EvaluationCommentEditorRow: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         case .failed:
-            Label("Sin guardar", systemImage: "exclamationmark.triangle.fill")
-                .font(.footnote)
-                .foregroundStyle(.orange)
+            HStack(spacing: 8) {
+                Label {
+                    Text("Sin guardar").foregroundStyle(.primary)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                }
+                Button("Reintentar") { saveNow(force: true) }
+                    .buttonStyle(.borderless)
+            }
+            .font(.footnote)
         }
     }
 
@@ -135,8 +156,8 @@ private struct EvaluationCommentEditorRow: View {
         }
     }
 
-    private func saveNow() {
-        guard text != savedText else { return }
+    private func saveNow(force: Bool = false) {
+        guard force || text != savedText else { return }
         saveTask?.cancel()
         let value = text
         Task { await commit(value) }
@@ -146,9 +167,12 @@ private struct EvaluationCommentEditorRow: View {
     private func commit(_ value: String) async {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         let ok = await onSave(trimmed)
+        // Si el texto cambió mientras se guardaba, manda el guardado siguiente.
+        guard value == text else { return }
         if ok {
             savedText = value
             state = .saved
+            AccessibilityNotification.Announcement("Comentario de \(studentName) guardado").post()
         } else {
             state = .failed
         }

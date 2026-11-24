@@ -1311,6 +1311,24 @@ data class NotebookTab(
     val parentTabId: String? = null,
     val fixedColumnWidth: Double? = null,
     val trace: AuditTrace = AuditTrace(),
+    /**
+     * Peso de un bloque (pestaña hija) en su evaluación (pestaña raíz con hijas).
+     * `null` = mismo peso que los demás bloques. Las pestañas raíz y las sueltas lo ignoran.
+     */
+    val weight: Double? = null,
+)
+
+/**
+ * Ficha propia del docente para «Valoración rápida». [group] es `strength`, `improve`
+ * o `guidance`. Borrado lógico ([isDeleted]) para que el borrado se sincronice.
+ */
+data class QuickNotePhrase(
+    val id: String,
+    val group: String,
+    val text: String,
+    val order: Int = 0,
+    val isDeleted: Boolean = false,
+    val trace: AuditTrace = AuditTrace(),
 )
 
 data class NotebookWorkGroup(
@@ -1674,7 +1692,35 @@ data class NotebookRow(
     val averageExplanation: NotebookAverageExplanation? = null,
     val persistedCells: List<PersistedNotebookCell> = emptyList(),
     val persistedGrades: List<Grade> = emptyList(),
+    /** Solo en una pestaña de evaluación: nota por bloques. [weightedAverage] es su nota. */
+    val evaluationExplanation: NotebookEvaluationExplanation? = null,
 )
+
+/**
+ * Media de un bloque (pestaña hija) dentro de su evaluación. [weightPercent] es el peso
+ * ya repartido (los bloques suman 100). [average] es `null` si el bloque no tiene notas.
+ */
+data class NotebookEvaluationBlockResult(
+    val tabId: String,
+    val title: String,
+    val weightPercent: Double,
+    val average: Double?,
+    val includedColumnCount: Int,
+)
+
+/**
+ * Nota de evaluación = Σ (peso del bloque × media del bloque) / Σ pesos de los bloques
+ * con nota. Un bloque sin notas no cuenta como 0: la nota sale con los demás y
+ * [isPartial] lo marca.
+ */
+data class NotebookEvaluationExplanation(
+    val studentId: Long,
+    val average: Double?,
+    val blocks: List<NotebookEvaluationBlockResult>,
+) {
+    val blocksWithoutGrades: List<NotebookEvaluationBlockResult> get() = blocks.filter { it.average == null && it.weightPercent > 0.0 }
+    val isPartial: Boolean get() = average != null && blocksWithoutGrades.isNotEmpty()
+}
 
 data class NotebookAverageExplanation(
     val studentId: Long,

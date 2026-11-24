@@ -1,5 +1,6 @@
 package com.migestor.shared.viewmodel
 
+import com.migestor.shared.usecase.NotebookEvaluation
 import com.migestor.shared.domain.*
 import com.migestor.shared.formula.FormulaEvaluator
 import com.migestor.shared.notebook.validateFormula
@@ -602,7 +603,20 @@ class NotebookViewModel(
         val currentState = _state.value as? NotebookUiState.Data ?: return
         scope.launch {
             try {
-                val removedTabIds = collectTabAndDescendantIds(currentState.sheet.tabs, tabId)
+                // Borrar una evaluación nunca borra sus bloques: pasan a ser pestañas sueltas
+                // (con sus notas). Solo se borra la pestaña pedida y sus columnas propias.
+                val tabs = currentState.sheet.tabs
+                tabs.filter { it.parentTabId == tabId }.forEach { child ->
+                    notebookRepository.saveTab(
+                        classId,
+                        child.copy(
+                            parentTabId = null,
+                            weight = null,
+                            trace = child.trace.copy(updatedAt = Clock.System.now()),
+                        ),
+                    )
+                }
+                val removedTabIds = setOf(tabId)
                 val columnsToAdjust = currentState.sheet.columns.filter { column ->
                     column.tabIds.any { it in removedTabIds } && !column.sharedAcrossTabs
                 }
@@ -1266,6 +1280,7 @@ class NotebookViewModel(
 
     private fun NotebookUiState.Data.withActiveTabAverages(): NotebookUiState.Data {
         val tabId = activeAverageTabId(sheet.tabs)
+        if (NotebookEvaluation.isEvaluationTab(sheet.tabs, tabId)) return withEvaluationAverages(tabId!!)
         val averageColumns = sheet.columns.filter { columnIsVisibleInAverageTab(it, tabId) }
         val explanationsByStudentId = averageCache.explanationsByStudent(
             rows = sheet.rows,
@@ -1282,6 +1297,32 @@ class NotebookViewModel(
             row.copy(
                 weightedAverage = explanation?.average,
                 averageExplanation = explanation,
+                evaluationExplanation = null,
+            )
+        }
+        return copy(sheet = sheet.copy(rows = updatedRows))
+    }
+
+    /**
+     * Resumen de una evaluación: la Media es la nota de evaluación (por bloques y sus pesos).
+     * La explicación de columnas se mantiene para quien la lee (cierre, informes), con la
+     * nota de evaluación como media.
+     */
+    private fun NotebookUiState.Data.withEvaluationAverages(evaluationTabId: String): NotebookUiState.Data {
+        val familyColumns = NotebookEvaluation.columnsForEvaluation(sheet.tabs, sheet.columns, evaluationTabId)
+        val updatedRows = sheet.rows.map { row ->
+            val evaluation = NotebookEvaluation.explain(
+                row = row,
+                tabs = sheet.tabs,
+                columns = sheet.columns,
+                evaluationTabId = evaluationTabId,
+                numericDrafts = numericDrafts,
+            )
+            val pooled = row.computeAverageExplanation(columns = familyColumns, numericDrafts = numericDrafts)
+            row.copy(
+                weightedAverage = evaluation?.average,
+                averageExplanation = pooled?.copy(average = evaluation?.average),
+                evaluationExplanation = evaluation,
             )
         }
         return copy(sheet = sheet.copy(rows = updatedRows))

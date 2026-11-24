@@ -2241,6 +2241,53 @@ class StudentTutoringSessionRepositorySqlDelight(
     }
 }
 
+class QuickNotePhraseRepositorySqlDelight(
+    private val db: AppDatabase,
+) : com.migestor.shared.repository.QuickNotePhraseRepository {
+
+    private fun rowToModel(
+        id: String,
+        groupKey: String,
+        text: String,
+        sortOrder: Long,
+        isDeleted: Long,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ) = com.migestor.shared.domain.QuickNotePhrase(
+        id = id,
+        group = groupKey,
+        text = text,
+        order = sortOrder.toInt(),
+        isDeleted = isDeleted != 0L,
+        trace = AuditTrace(
+            updatedAt = Instant.fromEpochMilliseconds(updatedAtEpochMs),
+            deviceId = deviceId,
+            syncVersion = syncVersion,
+        ),
+    )
+
+    override suspend fun listAll(): List<com.migestor.shared.domain.QuickNotePhrase> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAllQuickNotePhrases(::rowToModel).executeAsList()
+    }
+
+    override suspend fun get(id: String): com.migestor.shared.domain.QuickNotePhrase? = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectQuickNotePhrase(id, ::rowToModel).executeAsOneOrNull()
+    }
+
+    override suspend fun save(phrase: com.migestor.shared.domain.QuickNotePhrase) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.upsertQuickNotePhrase(
+            id = phrase.id,
+            group_key = phrase.group,
+            text = phrase.text.trim(),
+            sort_order = phrase.order.toLong(),
+            is_deleted = if (phrase.isDeleted) 1L else 0L,
+            updated_at_epoch_ms = phrase.trace.updatedAt.toEpochMilliseconds(),
+            device_id = phrase.trace.deviceId,
+        )
+    }
+}
+
 class StudentTermTeacherNoteRepositorySqlDelight(
     private val db: AppDatabase,
 ) : StudentTermTeacherNoteRepository {

@@ -49,14 +49,14 @@ final class WebPortalGradesTests: XCTestCase {
         return NotebookRow(
             student: student,
             cells: grades.sorted { $0.key < $1.key }.map { NotebookCell(evaluationId: $0.key, value: KotlinDouble(value: $0.value)) },
-            weightedAverage: nil, averageExplanation: nil, persistedCells: [], persistedGrades: []
+            weightedAverage: nil, averageExplanation: nil, persistedCells: [], persistedGrades: [], evaluationExplanation: nil
         )
     }
 
     private func sheet(tabs: [String], columns: [NotebookColumnDefinition], rows: [NotebookRow]) -> NotebookSheet {
         NotebookSheet(
             classId: 7,
-            tabs: tabs.map { NotebookTab(id: $0, title: $0, description: nil, order: 0, parentTabId: nil, fixedColumnWidth: nil, trace: trace) },
+            tabs: tabs.map { NotebookTab(id: $0, title: $0, description: nil, order: 0, parentTabId: nil, fixedColumnWidth: nil, trace: trace, weight: nil) },
             columns: columns, columnCategories: [], rows: rows, workGroups: [], workGroupMembers: [], insights: []
         )
     }

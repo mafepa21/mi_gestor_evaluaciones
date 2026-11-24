@@ -8,6 +8,9 @@ struct NotebookTabStrip: View {
     let onCreateTab: () -> Void
     let onRenameTab: (NotebookTab) -> Void
     let onDeleteTab: (NotebookTab) -> Void
+    /// Abre «Organizar por evaluaciones». Con `showsOrganizeButton` se ve como botón (cuaderno sin evaluaciones).
+    var onOrganize: (() -> Void)? = nil
+    var showsOrganizeButton = false
 
     @Namespace private var selectionNamespace
 
@@ -38,7 +41,8 @@ struct NotebookTabStrip: View {
                                     canDelete: tabs.count > 1,
                                     onSelect: { onSelect(tab.id) },
                                     onRename: { onRenameTab(tab) },
-                                    onDelete: { onDeleteTab(tab) }
+                                    onDelete: { onDeleteTab(tab) },
+                                    onOrganize: onOrganize
                                 )
                             }
                         }
@@ -59,6 +63,14 @@ struct NotebookTabStrip: View {
                 .notebookTabActionButtonStyle(isProminent: false, isCircular: true)
                 .help("Nueva pestaña")
                 .accessibilityLabel("Nueva pestaña")
+
+                if showsOrganizeButton, let onOrganize {
+                    Button(action: onOrganize) {
+                        Label("Organizar por evaluaciones…", systemImage: "square.stack.3d.up")
+                    }
+                    .notebookTabActionButtonStyle(isProminent: false)
+                    .help("Mete tus pestañas en la 1.ª, 2.ª o 3.ª Evaluación para ver su Resumen")
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -76,6 +88,7 @@ private struct NotebookTabButton: View {
     let onSelect: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
+    var onOrganize: (() -> Void)? = nil
 
     @State private var isHovered = false
 
@@ -120,6 +133,14 @@ private struct NotebookTabButton: View {
                 onRename()
             } label: {
                 Label("Renombrar", systemImage: "pencil")
+            }
+
+            if let onOrganize {
+                Button {
+                    onOrganize()
+                } label: {
+                    Label("Mover a una evaluación…", systemImage: "square.stack.3d.up")
+                }
             }
 
             Button(role: .destructive) {
@@ -235,6 +256,126 @@ private extension View {
             self.buttonStyle(.bordered)
                 .buttonBorderShape(isCircular ? .circle : .capsule)
                 .controlSize(.small)
+        }
+    }
+}
+
+// MARK: - Segundo nivel: bloques de una evaluación
+
+/// Fila de bloques de una pestaña de evaluación: «Resumen» primero y luego cada bloque
+/// (pestaña hija, una por situación de aprendizaje) con su peso. Va debajo de la barra
+/// de evaluaciones. «Resumen» abre la propia evaluación.
+struct NotebookEvaluationBlockStrip: View {
+    struct Block: Identifiable {
+        let tab: NotebookTab
+        let weightText: String
+        var id: String { tab.id }
+    }
+
+    let evaluationTitle: String
+    let evaluationTabId: String
+    let blocks: [Block]
+    let activeTabId: String?
+    let onSelect: (String) -> Void
+    let onCreateBlock: () -> Void
+    let onEditWeights: () -> Void
+    let onRenameTab: (NotebookTab) -> Void
+    let onDeleteTab: (NotebookTab) -> Void
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var minHeight: CGFloat {
+        #if os(macOS)
+        return 28
+        #else
+        return 44
+        #endif
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    blockButton(
+                        title: "Resumen",
+                        detail: nil,
+                        isSelected: activeTabId == evaluationTabId,
+                        tabId: evaluationTabId,
+                        tab: nil
+                    )
+                    ForEach(blocks) { block in
+                        blockButton(
+                            title: block.tab.title,
+                            detail: block.weightText,
+                            isSelected: activeTabId == block.tab.id,
+                            tabId: block.tab.id,
+                            tab: block.tab
+                        )
+                    }
+                    Button(action: onCreateBlock) {
+                        Image(systemName: "plus")
+                            .font(.footnote.weight(.bold))
+                            .frame(minWidth: minHeight, minHeight: minHeight)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tint)
+                    .help("Añadir bloque a \(evaluationTitle)")
+                    .accessibilityLabel("Añadir bloque a \(evaluationTitle)")
+                }
+            }
+            Button("Pesos…", action: onEditWeights)
+                .buttonStyle(.bordered)
+                .frame(minHeight: minHeight)
+                .fixedSize()
+                .disabled(blocks.isEmpty)
+                .accessibilityHint("Peso de cada bloque en \(evaluationTitle)")
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Pestañas de \(evaluationTitle)")
+    }
+
+    private func blockButton(title: String, detail: String?, isSelected: Bool, tabId: String, tab: NotebookTab?) -> some View {
+        Button {
+            if !isSelected { AppleInteractionFeedback.play(.selection) }
+            onSelect(tabId)
+        } label: {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.footnote.weight(isSelected ? .semibold : .medium))
+                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                if let detail {
+                    Text(detail)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+            .padding(.horizontal, 12)
+            .frame(minHeight: minHeight)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.12))
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            if let tab {
+                Button { onRenameTab(tab) } label: { Label("Renombrar", systemImage: "pencil") }
+                Button(role: .destructive) { onDeleteTab(tab) } label: { Label("Eliminar bloque", systemImage: "trash") }
+            }
+        }
+        .accessibilityLabel(detail.map { "\(title), \($0.replacingOccurrences(of: "%", with: "por ciento"))" } ?? "\(title) de \(evaluationTitle)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityActions {
+            if let tab {
+                Button("Renombrar") { onRenameTab(tab) }
+                Button("Eliminar bloque") { onDeleteTab(tab) }
+            }
         }
     }
 }

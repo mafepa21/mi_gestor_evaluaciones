@@ -127,6 +127,8 @@ struct QuickNoteChip: Identifiable, Hashable {
     let text: String
     /// De dónde sale («sello ×3», «rúbrica», «2 días sin material»). `nil` en las frases fijas.
     let source: String?
+    /// Id de la ficha propia del docente; `nil` en las demás.
+    var phraseId: String? = nil
 
     var id: String { "\(group.rawValue)|\(text)" }
 }
@@ -143,12 +145,16 @@ enum QuickNoteCatalog {
     static let improveStamps: Set<String> = ["Necesita refuerzo", "Prioritario", "Entrega pendiente", "No superado"]
 
     /// Fichas del alumno: primero lo que ya consta (sellos, rúbricas, material), luego las fijas.
-    static func chips(for input: BulletinBaseStudentInput?) -> [QuickNoteGroup: [QuickNoteChip]] {
+    /// `custom`: fichas propias del docente (texto e id), que van justo después de lo registrado.
+    static func chips(
+        for input: BulletinBaseStudentInput?,
+        custom: [QuickNoteGroup: [(id: String, text: String)]] = [:]
+    ) -> [QuickNoteGroup: [QuickNoteChip]] {
         var result: [QuickNoteGroup: [QuickNoteChip]] = [:]
-        func add(_ group: QuickNoteGroup, _ text: String, _ source: String?) {
+        func add(_ group: QuickNoteGroup, _ text: String, _ source: String?, phraseId: String? = nil) {
             let clean = sanitize(text)
             guard !clean.isEmpty, !(result[group] ?? []).contains(where: { $0.text == clean }) else { return }
-            result[group, default: []].append(QuickNoteChip(group: group, text: clean, source: source))
+            result[group, default: []].append(QuickNoteChip(group: group, text: clean, source: source, phraseId: phraseId))
         }
 
         if let input {
@@ -168,6 +174,9 @@ enum QuickNoteCatalog {
                 add(.improve, "Traer el material de clase", days == 1 ? "1 día sin material" : "\(days) días sin material")
                 add(.guidance, "Revisar la agenda del material", nil)
             }
+        }
+        for group in QuickNoteGroup.allCases {
+            for phrase in custom[group] ?? [] { add(group, phrase.text, nil, phraseId: phrase.id) }
         }
         for group in QuickNoteGroup.allCases {
             for text in fixed[group] ?? [] { add(group, text, nil) }

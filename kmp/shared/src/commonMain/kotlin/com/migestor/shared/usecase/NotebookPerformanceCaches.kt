@@ -178,7 +178,7 @@ fun notebookSheetCacheKey(
     cells: List<PersistedNotebookCell>,
 ): NotebookSheetCacheKey {
     val configVersion = stableHash(
-        tabs.map { "${it.id}:${it.parentTabId}:${it.order}:${it.fixedColumnWidth}" } +
+        tabs.map { "${it.id}:${it.parentTabId}:${it.order}:${it.fixedColumnWidth}:${it.weight}:${it.title}" } +
             categories.map { "${it.id}:${it.tabId}:${it.order}:${it.isCollapsed}:${it.trace.updatedAt}" } +
             groups.map { "${it.id}:${it.tabId}:${it.order}:${it.learningSituationId}:${it.trace.updatedAt}" } +
             members.map { "${it.tabId}:${it.groupId}:${it.studentId}:${it.trace.updatedAt}" }

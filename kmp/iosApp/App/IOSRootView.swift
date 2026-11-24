@@ -575,6 +575,13 @@ struct IOSRootView: View {
                 .disabled(!layoutState.notebookOrganizationMenuAvailable)
 
                 Button {
+                    layoutState.openNotebookOrganizeTabs()
+                } label: {
+                    Label("Organizar por evaluaciones…", systemImage: "square.stack.3d.up")
+                }
+                .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+                Button {
                     layoutState.openNotebookGradeReports()
                 } label: {
                     Label("Enviar notas al alumnado…", systemImage: "envelope")

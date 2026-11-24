@@ -97,6 +97,9 @@ struct NotebookModuleView: View {
     @State var notebookTabDraft = ""
     @State var editingNotebookTabId: String? = nil
     @State var pendingDeleteNotebookTab: NotebookTab? = nil
+    @State var newNotebookTabRequest: NotebookNewTabRequest? = nil
+    @State var evaluationWeightsRequest: NotebookEvaluationWeightsRequest? = nil
+    @State var isOrganizeTabsPresented = false
     @State var isRenameColumnAlertPresented = false
     @State var columnDraft = ""
     @State var editingColumnId: String? = nil
@@ -511,7 +514,7 @@ struct NotebookModuleView: View {
                 if !tabs.isEmpty && focusMode == .normal && !isCompact {
                     NotebookTabStrip(
                         tabs: tabs,
-                        activeTabId: activeNotebookTabId(data: data),
+                        activeTabId: activeRootNotebookTabId(data: data),
                         onSelect: { tabId in
                             selectNotebookTab(tabId)
                         },
@@ -523,8 +526,36 @@ struct NotebookModuleView: View {
                         },
                         onDeleteTab: { tab in
                             pendingDeleteNotebookTab = tab
-                        }
+                        },
+                        onOrganize: { isOrganizeTabsPresented = true },
+                        showsOrganizeButton: !data.sheet.tabs.contains { $0.parentTabId != nil }
                     )
+                    if let evaluationTab = activeEvaluationTab(data: data) {
+                        NotebookEvaluationBlockStrip(
+                            evaluationTitle: evaluationTab.title,
+                            evaluationTabId: evaluationTab.id,
+                            blocks: evaluationBlockItems(data: data, evaluationTabId: evaluationTab.id),
+                            activeTabId: activeNotebookTabId(data: data),
+                            onSelect: { tabId in selectNotebookTab(tabId) },
+                            onCreateBlock: { presentCreateNotebookTab(parentTabId: evaluationTab.id) },
+                            onEditWeights: { evaluationWeightsRequest = NotebookEvaluationWeightsRequest(evaluationTabId: evaluationTab.id) },
+                            onRenameTab: { tab in presentRenameNotebookTab(tab) },
+                            onDeleteTab: { tab in pendingDeleteNotebookTab = tab }
+                        )
+                        if activeNotebookTabId(data: data) == evaluationTab.id,
+                           let message = evaluationEmptyBlocksMessage(data: data) {
+                            Label {
+                                Text(message)
+                            } icon: {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                            }
+                            .font(.subheadline)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 8)
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
                 }
                 Group {
                     if isGridMounted {
@@ -902,6 +933,9 @@ struct NotebookModuleView: View {
         Menu("Pestañas") {
             Button("Nueva pestaña") {
                 presentCreateNotebookTab()
+            }
+            Button("Organizar pestañas…") {
+                isOrganizeTabsPresented = true
             }
 
             if let activeTab = activeNotebookTab(data: data) {
@@ -1488,6 +1522,7 @@ struct NotebookModuleView: View {
                                 studentName: "\(row.student.firstName) \(row.student.lastName)",
                                 explanation: row.row.averageExplanation,
                                 columns: data.sheet.columns,
+                                evaluation: row.row.evaluationExplanation,
                                 onClose: {
                                     averageExplanationRow = nil
                                 }
@@ -1510,6 +1545,7 @@ struct NotebookModuleView: View {
                             studentName: "\(row.student.firstName) \(row.student.lastName)",
                             explanation: row.row.averageExplanation,
                             columns: data.sheet.columns,
+                            evaluation: row.row.evaluationExplanation,
                             onClose: {
                                 averageExplanationRow = nil
                             }
@@ -1524,6 +1560,7 @@ struct NotebookModuleView: View {
                         studentName: "\(row.student.firstName) \(row.student.lastName)",
                         explanation: row.row.averageExplanation,
                         columns: data.sheet.columns,
+                        evaluation: row.row.evaluationExplanation,
                         onClose: {
                             averageExplanationRow = nil
                         }
@@ -1726,6 +1763,11 @@ struct NotebookModuleView: View {
                     guard requestID != nil else { return }
                     isOrganizationMenuPresented = false
                     isHiddenColumnsSheetPresented = true
+                }
+                .appOnChange(of: layoutState.notebookOrganizeTabsRequestID) { requestID in
+                    guard requestID != nil else { return }
+                    isOrganizationMenuPresented = false
+                    isOrganizeTabsPresented = true
                 }
                 .appOnChange(of: layoutState.notebookClosingReviewRequestID) { requestID in
                     guard requestID != nil else { return }
@@ -2516,6 +2558,8 @@ struct CustomAverageExplanationPopoverView: View {
     let studentName: String
     let explanation: NotebookAverageExplanation?
     let columns: [NotebookColumnDefinition]
+    /// En el Resumen de una evaluación: cómo sale la nota por bloques.
+    var evaluation: NotebookEvaluationExplanation? = nil
     let onClose: () -> Void
 
     private static let decimalFormatter: NumberFormatter = {
@@ -2537,6 +2581,34 @@ struct CustomAverageExplanationPopoverView: View {
         case insufficient
     }
 
+    /// Nota de evaluación = media de cada bloque × su peso.
+    private func evaluationBlocksSection(_ evaluation: NotebookEvaluationExplanation) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader(title: "Por bloques", icon: "square.stack.3d.up.fill", color: NotebookStyle.successTint)
+            ForEach(evaluation.blocks, id: \.tabId) { block in
+                HStack {
+                    Text(block.title)
+                    Spacer(minLength: 8)
+                    Text(block.average.map { formattedDecimal($0.doubleValue) } ?? "Sin notas")
+                        .monospacedDigit()
+                    Text("× \(NotebookEvaluation.shared.formatPercent(value: block.weightPercent))")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                .font(.subheadline)
+                .accessibilityElement(children: .combine)
+            }
+            if evaluation.isPartial {
+                Label {
+                    Text("\(ListFormatter.localizedString(byJoining: evaluation.blocksWithoutGrades.map(\.title))) aún no tiene notas: la nota usa solo los demás bloques.")
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                }
+                .font(.footnote)
+            }
+        }
+    }
+
     private var averageState: AverageState {
         guard let explanation = explanation,
               explanation.average != nil,
@@ -2554,6 +2626,10 @@ struct CustomAverageExplanationPopoverView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         summaryInfo(explanation)
+
+                        if let evaluation, !evaluation.blocks.isEmpty {
+                            evaluationBlocksSection(evaluation)
+                        }
 
                         if !explanation.weightedContributions.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {

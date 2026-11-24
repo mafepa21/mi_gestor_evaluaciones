@@ -280,6 +280,13 @@ enum NotebookTabSyncMerge {
     static func optionalText(previous: String?, incoming: String?, keyPresent: Bool) -> String? {
         keyPresent ? incoming : previous
     }
+
+    /** Peso de bloque recibido: un número, o nulo («mismo peso que los demás»). */
+    static func weight(_ value: Any?) -> KotlinDouble? {
+        if let number = value as? NSNumber, !(value is NSNull) { return KotlinDouble(value: number.doubleValue) }
+        if let text = value as? String, let parsed = Double(text) { return KotlinDouble(value: parsed) }
+        return nil
+    }
 }
 
 enum NotebookGroupSyncMerge {
@@ -1315,7 +1322,9 @@ extension KmpBridge {
                     "title": tab.title,
                     "description": tab.description,
                     "order": Int(tab.order),
-                    "parentTabId": tab.parentTabId ?? ""
+                    "parentTabId": tab.parentTabId ?? "",
+                    // Siempre presente (nulo incluido): sin la clave, el otro lado conserva el suyo.
+                    "weight": tab.weight.map { $0.doubleValue as Any } ?? NSNull()
                 ],
                 shouldPersist: false,
                 shouldScheduleAutoSync: false
@@ -2285,6 +2294,11 @@ extension KmpBridge {
                     incoming: incomingDescription,
                     keyPresent: descriptionKeyPresent
                 )
+                // Peso de bloque: sin la clave (dispositivo antiguo) se conserva el local.
+                // No entra en needsPrevious para no descartar pestañas de un dispositivo antiguo.
+                let weight: KotlinDouble? = payloadObject.keys.contains("weight")
+                    ? NotebookTabSyncMerge.weight(payloadObject["weight"])
+                    : existing?.weight
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
                 let trace = AuditTrace(
                     authorUserId: nil,
@@ -2303,7 +2317,8 @@ extension KmpBridge {
                         order: order,
                         parentTabId: parentTabId,
                         fixedColumnWidth: existing?.fixedColumnWidth,
-                        trace: trace
+                        trace: trace,
+                        weight: weight
                     )
                 )
 

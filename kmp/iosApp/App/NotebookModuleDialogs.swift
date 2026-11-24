@@ -82,6 +82,51 @@ extension NotebookModuleView {
         } message: {
             Text("Cada pestaña funciona como un cuaderno temático independiente dentro de la clase.")
         }
+        .sheet(item: $newNotebookTabRequest) { request in
+            NotebookNewTabSheet(
+                tabs: (bridge.notebookState as? NotebookUiStateData)?.sheet.tabs ?? [],
+                preferredParentTabId: request.preferredParentTabId,
+                defaultTitle: defaultNotebookTabDraft(),
+                onCreate: { title, placement, weight in
+                    createNotebookTab(title: title, placement: placement, weight: weight)
+                }
+            )
+            #if os(macOS)
+            .frame(width: 460, height: 340)
+            #else
+            .presentationDetents([.medium, .large])
+            #endif
+        }
+        .sheet(item: $evaluationWeightsRequest) { request in
+            let tabs = (bridge.notebookState as? NotebookUiStateData)?.sheet.tabs ?? []
+            NotebookEvaluationWeightsSheet(
+                evaluationTitle: tabs.first { $0.id == request.evaluationTabId }?.title ?? "Evaluación",
+                blocks: NotebookEvaluation.shared.blocks(tabs: tabs, evaluationTabId: request.evaluationTabId),
+                onSave: { weights in
+                    bridge.saveEvaluationBlockWeights(weights)
+                    showToast("Pesos guardados")
+                }
+            )
+            #if os(macOS)
+            .frame(width: 460, height: 420)
+            #else
+            .presentationDetents([.medium, .large])
+            #endif
+        }
+        .sheet(isPresented: $isOrganizeTabsPresented) {
+            NotebookOrganizeTabsSheet(
+                tabs: (bridge.notebookState as? NotebookUiStateData)?.sheet.tabs ?? [],
+                onSave: { placements in
+                    bridge.placeNotebookTabs(placements)
+                    if !placements.isEmpty { showToast("Pestañas organizadas") }
+                }
+            )
+            #if os(macOS)
+            .frame(width: 480, height: 480)
+            #else
+            .presentationDetents([.medium, .large])
+            #endif
+        }
         .alert("Renombrar columna", isPresented: $isRenameColumnAlertPresented) {
             TextField("Título", text: $columnDraft)
             Button("Cancelar", role: .cancel) {
@@ -136,7 +181,7 @@ extension NotebookModuleView {
             }
         } message: {
             if let tab = pendingDeleteNotebookTab {
-                Text("Se eliminará la pestaña “\(tab.title)” y las columnas que solo pertenezcan a ella.")
+                Text(deleteNotebookTabMessage(tab))
             }
         }
         .confirmationDialog(
@@ -338,8 +383,9 @@ extension NotebookModuleView {
                             data: data,
                             bridge: bridge,
                             className: currentClass?.name ?? "Grupo",
-                            tabId: bridge.selectedNotebookTabId,
-                            tabTitle: data.sheet.tabs.first { $0.id == bridge.selectedNotebookTabId }?.title,
+                            // Desde un bloque se cierra su evaluación (donde vive el comentario).
+                            tabId: closingEvaluationTabId(data: data),
+                            tabTitle: data.sheet.tabs.first { $0.id == closingEvaluationTabId(data: data) }?.title,
                             contextText: closingReviewContextText(data: data),
                             loadClosingReport: {
                                 try await bridge.buildNotebookClosingReport(data: data)

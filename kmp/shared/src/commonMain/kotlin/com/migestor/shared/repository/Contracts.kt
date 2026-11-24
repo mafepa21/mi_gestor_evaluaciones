@@ -1170,6 +1170,18 @@ interface BackupMetadataRepository {
     suspend fun deleteBackup(id: Long)
 }
 
+/** Fichas propias del docente para «Valoración rápida» (migración 50). */
+interface QuickNotePhraseRepository {
+    /** Todas, también las borradas (para Sync LAN). La pantalla filtra `isDeleted`. */
+    @Throws(Throwable::class)
+    suspend fun listAll(): List<QuickNotePhrase>
+    @Throws(Throwable::class)
+    suspend fun get(id: String): QuickNotePhrase?
+    /** Guarda tal cual (alta, cambio o borrado lógico). La marca de tiempo la pone quien llama. */
+    @Throws(Throwable::class)
+    suspend fun save(phrase: QuickNotePhrase)
+}
+
 /** Valoración cualitativa del docente por alumno, grupo y trimestre (migración 49). */
 interface StudentTermTeacherNoteRepository {
     @Throws(Throwable::class)

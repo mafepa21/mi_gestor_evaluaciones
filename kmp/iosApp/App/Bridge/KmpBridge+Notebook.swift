@@ -376,7 +376,7 @@ extension KmpBridge {
         return composed
     }
     
-    func createTab(title: String, parentTabId: String? = nil) -> String? {
+    func createTab(title: String, parentTabId: String? = nil, weight: Double? = nil) -> String? {
         guard let classId = notebookViewModel.currentClassId?.int64Value else { return nil }
         let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedTitle.isEmpty else { return nil }
@@ -394,7 +394,16 @@ extension KmpBridge {
         let tabs = (notebookState as? NotebookUiStateData)?.sheet.tabs ?? []
         let siblingCount = tabs.filter { $0.parentTabId == parentTabId }.count
         let order = Int32(siblingCount)
-        let newTab = NotebookTab(id: tabId, title: normalizedTitle, description: nil, order: order, parentTabId: parentTabId, fixedColumnWidth: nil, trace: trace)
+        let newTab = NotebookTab(
+            id: tabId,
+            title: normalizedTitle,
+            description: nil,
+            order: order,
+            parentTabId: parentTabId,
+            fixedColumnWidth: nil,
+            trace: trace,
+            weight: weight.map { KotlinDouble(value: $0) }
+        )
         notebookViewModel.saveTab(tab: newTab)
         notebookViewModel.selectClass(classId: classId, force: true)
         scheduleNotebookSnapshotSync(forClassId: classId)

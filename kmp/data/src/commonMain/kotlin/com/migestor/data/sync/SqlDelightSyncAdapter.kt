@@ -289,6 +289,8 @@ class SqlDelightSyncAdapter(
                             put("description", tab.description?.let(::JsonPrimitive) ?: JsonPrimitive(""))
                             put("order", JsonPrimitive(tab.order))
                             put("parentTabId", tab.parentTabId?.let(::JsonPrimitive) ?: JsonPrimitive(""))
+                            // Siempre presente (null incluido): un dispositivo sin la clave conserva el suyo.
+                            put("weight", tab.weight?.let(::JsonPrimitive) ?: JsonNull)
                         }.toString(),
                     )
                 }
@@ -1662,6 +1664,8 @@ class SqlDelightSyncAdapter(
                                 order = if (payload.containsKey("order")) payload.int("order") ?: existing?.order ?: 0 else existing?.order ?: -1,
                                 parentTabId = parentTabId,
                                 fixedColumnWidth = if (payload.containsKey("fixedColumnWidth")) payload.double("fixedColumnWidth") else existing?.fixedColumnWidth,
+                                // Sin la clave (dispositivo antiguo) se conserva el peso local.
+                                weight = if (payload.containsKey("weight")) payload.double("weight") else existing?.weight,
                                 trace = AuditTrace(
                                     updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs),
                                     deviceId = change.deviceId,

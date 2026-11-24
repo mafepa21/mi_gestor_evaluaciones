@@ -19,6 +19,14 @@ struct QuickTermNoteSheet: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var isDiscardConfirmationPresented = false
+    @State private var custom: [QuickNoteGroup: [QuickNotePhrase]] = [:]
+    @State private var phraseEditor: PhraseEditor?
+
+    private struct PhraseEditor: Identifiable {
+        let id = UUID()
+        let group: QuickNoteGroup
+        let phrase: QuickNotePhrase?
+    }
 
     private var composed: String { QuickNoteComposer.compose(selected: selected, freeText: freeText) }
     private var hasChanges: Bool { composed != originalNote.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -52,6 +60,16 @@ struct QuickTermNoteSheet: View {
                                 ForEach(chipList(for: group)) { chip in
                                     chipToggle(chip)
                                 }
+                                Button {
+                                    phraseEditor = PhraseEditor(group: group, phrase: nil)
+                                } label: {
+                                    Label("Nueva ficha", systemImage: "plus")
+                                        .font(.subheadline)
+                                        .frame(minHeight: 44)
+                                }
+                                .buttonStyle(.bordered)
+                                .buttonBorderShape(.capsule)
+                                .accessibilityLabel("Nueva ficha de \(group.rawValue)")
                             }
                             .padding(.vertical, 8)
                         }
@@ -99,12 +117,37 @@ struct QuickTermNoteSheet: View {
             }
         }
         .interactiveDismissDisabled(hasChanges || isSaving)
+        .sheet(item: $phraseEditor) { editor in
+            QuickNotePhraseSheet(
+                title: editor.phrase == nil ? "Nueva ficha" : "Editar ficha",
+                initialGroup: editor.group,
+                initialText: editor.phrase?.text ?? ""
+            ) { group, text in
+                if let saved = try? await bridge.saveQuickNotePhrase(id: editor.phrase?.id, group: group, text: text) {
+                    custom = await bridge.quickNotePhrases()
+                    var items = selected[group] ?? []
+                    if let old = editor.phrase?.text { items.removeAll { $0 == old } }
+                    if !items.contains(saved.text) { items.append(saved.text) }
+                    selected[group] = items
+                }
+            }
+            #if os(macOS)
+            .frame(width: 420, height: 260)
+            #else
+            .presentationDetents([.medium])
+            #endif
+        }
         .task { await load() }
     }
 
     /// Fichas del grupo más las frases propias que ya estaban guardadas.
     private func chipList(for group: QuickNoteGroup) -> [QuickNoteChip] {
         var list = chips[group] ?? []
+        // Fichas propias del docente, justo después de las que salen de lo registrado.
+        let firstFixed = list.firstIndex { $0.source == nil } ?? list.count
+        let own = (custom[group] ?? []).filter { phrase in !list.contains { $0.text == phrase.text } }
+            .map { QuickNoteChip(group: group, text: $0.text, source: nil, phraseId: $0.id) }
+        list.insert(contentsOf: own, at: firstFixed)
         for text in selected[group] ?? [] where !list.contains(where: { $0.text == text }) {
             list.append(QuickNoteChip(group: group, text: text, source: nil))
         }
@@ -140,13 +183,37 @@ struct QuickTermNoteSheet: View {
         }
         .toggleStyle(.button)
         .buttonBorderShape(.capsule)
+        .contextMenu {
+            if let phrase = ownPhrase(chip) {
+                Button { phraseEditor = PhraseEditor(group: chip.group, phrase: phrase) } label: { Label("Editar", systemImage: "pencil") }
+                Button(role: .destructive) { Task { await deletePhrase(phrase) } } label: { Label("Borrar", systemImage: "trash") }
+            }
+        }
+        .accessibilityActions {
+            if let phrase = ownPhrase(chip) {
+                Button("Editar ficha") { phraseEditor = PhraseEditor(group: chip.group, phrase: phrase) }
+                Button("Borrar ficha") { Task { await deletePhrase(phrase) } }
+            }
+        }
         .accessibilityLabel(chip.source.map { "\(chip.text), de \($0)" } ?? chip.text)
         .accessibilityAddTraits(isSelected(chip) ? .isSelected : [])
+    }
+
+    private func ownPhrase(_ chip: QuickNoteChip) -> QuickNotePhrase? {
+        guard let id = chip.phraseId else { return nil }
+        return custom[chip.group]?.first { $0.id == id }
+    }
+
+    @MainActor
+    private func deletePhrase(_ phrase: QuickNotePhrase) async {
+        try? await bridge.deleteQuickNotePhrase(phrase)
+        custom = await bridge.quickNotePhrases()
     }
 
     @MainActor
     private func load() async {
         guard isLoading else { return }
+        custom = await bridge.quickNotePhrases()
         let note = (try? await bridge.teacherTermNote(studentId: studentId, classId: classId, termLabel: termLabel)) ?? ""
         let parts = QuickNoteComposer.decompose(note)
         selected = parts.selected

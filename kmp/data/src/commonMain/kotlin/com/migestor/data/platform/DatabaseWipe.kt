@@ -73,6 +73,8 @@ enum class WipeCategory(
             "evaluation_sessions", "evaluation_session_students",
             // Valoraciones del docente por trimestre: cuelgan del grupo (migración 49).
             "student_term_teacher_notes",
+            // Fichas propias de «Valoración rápida» (migración 50).
+            "quick_note_phrases",
             // Los torneos cuelgan de un curso (con o sin SdA): sin esto quedarían huérfanos al borrar cursos.
             "learning_situation_tournaments"
         )

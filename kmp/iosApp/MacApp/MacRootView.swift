@@ -897,6 +897,13 @@ struct MacRootView: View {
             .disabled(!notebookToolbarActions.organizationMenuAvailable)
 
             Button {
+                layoutState.openNotebookOrganizeTabs()
+            } label: {
+                Label("Organizar por evaluaciones…", systemImage: "square.stack.3d.up")
+            }
+            .disabled(!notebookToolbarActions.organizationMenuAvailable)
+
+            Button {
                 layoutState.openNotebookGradeReports()
             } label: {
                 Label("Enviar notas al alumnado…", systemImage: "envelope")

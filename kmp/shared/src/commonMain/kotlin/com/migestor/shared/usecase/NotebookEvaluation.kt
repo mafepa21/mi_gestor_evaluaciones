@@ -137,6 +137,12 @@ object NotebookEvaluation {
         }
     }
 
+    /** La misma explicación de columnas con otra media (la nota de evaluación). Para Swift. */
+    fun withAverage(
+        explanation: com.migestor.shared.domain.NotebookAverageExplanation,
+        average: Double?,
+    ): com.migestor.shared.domain.NotebookAverageExplanation = explanation.copy(average = average)
+
     fun blockIdFromCategoryId(categoryId: String): String? =
         categoryId.takeIf { it.startsWith(BLOCK_CATEGORY_PREFIX) }?.removePrefix(BLOCK_CATEGORY_PREFIX)
 

@@ -188,6 +188,16 @@ class ModuleRecordsSync(
             }
         }
 
+        // Fichas propias de «Valoración rápida»: borrado lógico, así que borrar es un cambio más.
+        container.quickNotePhraseRepository.listAll().forEach { phrase ->
+            emit(QUICK_NOTE_PHRASE, phrase.id, phrase.trace.updatedAt.toEpochMilliseconds(), phrase.trace.deviceId) {
+                put("group", JsonPrimitive(phrase.group))
+                put("text", JsonPrimitive(phrase.text))
+                put("order", JsonPrimitive(phrase.order))
+                put("isDeleted", JsonPrimitive(phrase.isDeleted))
+            }
+        }
+
         return Collected(changes, live)
     }
 
@@ -395,6 +405,22 @@ class ModuleRecordsSync(
                 // fechada igual que en el otro dispositivo (LWW).
                 container.inclusionTaskRepository.setDue(taskId, dueDateIso, payload.bool("dueIsCustom") ?: existing?.dueIsCustom ?: false, updatedAt)
                 container.inclusionTaskRepository.setDone(taskId, payload.textOrNull("doneAtIso", existing?.doneAt?.toString()), updatedAt)
+                Outcome.APPLIED
+            }
+
+            QUICK_NOTE_PHRASE -> {
+                val existing = container.quickNotePhraseRepository.get(change.id)
+                if (isStale(existing?.trace?.updatedAt?.toEpochMilliseconds())) return Outcome.STALE
+                container.quickNotePhraseRepository.save(
+                    com.migestor.shared.domain.QuickNotePhrase(
+                        id = change.id,
+                        group = payload.text("group") ?: existing?.group ?: return Outcome.SKIPPED,
+                        text = payload.text("text") ?: existing?.text ?: return Outcome.SKIPPED,
+                        order = payload.int("order") ?: existing?.order ?: 0,
+                        isDeleted = payload.bool("isDeleted") ?: existing?.isDeleted ?: false,
+                        trace = AuditTrace(updatedAt = Instant.fromEpochMilliseconds(updatedAt), deviceId = deviceId),
+                    ),
+                )
                 Outcome.APPLIED
             }
 
@@ -611,11 +637,13 @@ class ModuleRecordsSync(
         const val PE_ASSIGNMENT = "physical_test_assignment"
         const val PE_NOTEBOOK_LINK = "physical_test_notebook_link"
         const val PE_RESULT = "physical_test_result"
+        const val QUICK_NOTE_PHRASE = "quick_note_phrase"
 
         /** En orden de aplicación: padres antes que hijos. */
         val ENTITIES: List<String> = listOf(
             WEEK_PLAN, INCLUSION_GROUP_SETTING, INCLUSION_TASK,
             PE_DEFINITION, PE_BATTERY, PE_SCALE, PE_ASSIGNMENT, PE_NOTEBOOK_LINK, PE_RESULT,
+            QUICK_NOTE_PHRASE,
         )
 
         fun handles(entity: String): Boolean = entity in ENTITIES

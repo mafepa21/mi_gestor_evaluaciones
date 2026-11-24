@@ -79,6 +79,7 @@ class NotebookConfigRepositorySqlDelight(
                         order = it.sort_order.toInt(),
                         parentTabId = it.parent_tab_id,
                         fixedColumnWidth = it.fixed_column_width,
+                        weight = it.weight,
                         trace = AuditTrace(
                             updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                             deviceId = it.device_id,
@@ -97,6 +98,7 @@ class NotebookConfigRepositorySqlDelight(
                 order = it.sort_order.toInt(),
                 parentTabId = it.parent_tab_id,
                 fixedColumnWidth = it.fixed_column_width,
+                        weight = it.weight,
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                     deviceId = it.device_id,
@@ -119,13 +121,18 @@ class NotebookConfigRepositorySqlDelight(
             updated_at_epoch_ms = tab.trace.updatedAt.toEpochMilliseconds(),
             device_id = tab.trace.deviceId,
             sync_version = tab.trace.syncVersion,
-            fixed_column_width = tab.fixedColumnWidth
+            fixed_column_width = tab.fixedColumnWidth,
+            weight = tab.weight
         )
         NotebookRefreshBus.emitRefresh()
     }
 
     override suspend fun deleteTab(tabId: String) = withContext(Dispatchers.Default) {
-        db.appDatabaseQueries.deleteTab(tabId)
+        // Borrar una evaluación nunca borra sus bloques: pasan a ser pestañas sueltas.
+        db.transaction {
+            db.appDatabaseQueries.detachChildTabs(kotlinx.datetime.Clock.System.now().toEpochMilliseconds(), tabId)
+            db.appDatabaseQueries.deleteTab(tabId)
+        }
     }
 
     override fun observeColumns(classId: Long): Flow<List<NotebookColumnDefinition>> {

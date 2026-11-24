@@ -1,0 +1,19 @@
+-- Migración 50: pestaña de evaluación con pesos por bloque y fichas propias. Solo aditiva.
+--
+-- 1. Peso de un bloque (pestaña hija) dentro de su evaluación (pestaña raíz).
+--    NULL = mismo peso que los demás bloques. Las pestañas raíz y las sueltas lo ignoran.
+ALTER TABLE notebook_tabs ADD COLUMN weight REAL;
+
+-- 2. Fichas propias del docente para «Valoración rápida» (Fortaleza, A mejorar, Orientación).
+--    Son del docente, no de un grupo: salen en todos sus grupos. Borrado lógico
+--    (is_deleted) para que el borrado viaje por Sync LAN como un cambio más.
+CREATE TABLE IF NOT EXISTS quick_note_phrases (
+    id TEXT NOT NULL PRIMARY KEY,
+    group_key TEXT NOT NULL,
+    text TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);

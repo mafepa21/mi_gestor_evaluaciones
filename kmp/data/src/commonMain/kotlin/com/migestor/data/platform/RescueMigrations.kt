@@ -20,6 +20,8 @@ internal fun runRescueMigrations(driver: SqlDriver) {
         tableName = "notebook_tabs",
         columnDefinitions = listOf(
             "fixed_column_width REAL",
+            // Migración 50: peso del bloque en su evaluación.
+            "weight REAL",
         )
     )
     ensureColumns(

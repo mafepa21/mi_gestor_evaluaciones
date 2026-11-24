@@ -2130,6 +2130,7 @@ CREATE TABLE IF NOT EXISTS notebook_tabs (
     device_id   TEXT,
     sync_version INTEGER NOT NULL DEFAULT 0,
     fixed_column_width REAL,
+    weight REAL,
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_tab_id) REFERENCES notebook_tabs(id) ON DELETE CASCADE
 );
@@ -2404,17 +2405,34 @@ CREATE INDEX IF NOT EXISTS idx_physical_links_assignment ON physical_test_notebo
 CREATE INDEX IF NOT EXISTS idx_physical_links_test ON physical_test_notebook_links(test_id);
 
 selectTabsByClass:
-SELECT id, class_id, title, parent_tab_id, sort_order, updated_at_epoch_ms, device_id, sync_version, fixed_column_width
+SELECT id, class_id, title, parent_tab_id, sort_order, updated_at_epoch_ms, device_id, sync_version, fixed_column_width, weight
 FROM notebook_tabs
 WHERE class_id = ?
 ORDER BY sort_order, id;
 
+-- ON CONFLICT y no INSERT OR REPLACE: con las claves ajenas activas, REPLACE borra la
+-- fila y arrastra en cascada a las pestañas hijas (y sus categorías y grupos).
 upsertTab:
-INSERT OR REPLACE INTO notebook_tabs(id, class_id, title, parent_tab_id, sort_order, updated_at_epoch_ms, device_id, sync_version, fixed_column_width)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO notebook_tabs(id, class_id, title, parent_tab_id, sort_order, updated_at_epoch_ms, device_id, sync_version, fixed_column_width, weight)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    class_id = excluded.class_id,
+    title = excluded.title,
+    parent_tab_id = excluded.parent_tab_id,
+    sort_order = excluded.sort_order,
+    updated_at_epoch_ms = excluded.updated_at_epoch_ms,
+    device_id = excluded.device_id,
+    sync_version = excluded.sync_version,
+    fixed_column_width = excluded.fixed_column_width,
+    weight = excluded.weight;
 
 deleteTab:
 DELETE FROM notebook_tabs WHERE id = ?;
+
+-- Antes de borrar una evaluación: sus bloques pasan a ser pestañas sueltas (no se borran).
+detachChildTabs:
+UPDATE notebook_tabs SET parent_tab_id = NULL, weight = NULL, updated_at_epoch_ms = ?, sync_version = sync_version + 1
+WHERE parent_tab_id = ?;
 
 selectColumnsByClass:
 SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, counts_toward_average, is_pinned, is_hidden, is_template, empty_cell_policy, updated_at_epoch_ms, device_id, sync_version
@@ -3188,3 +3206,37 @@ SELECT class_id, school_year, initial_eval_date_iso FROM inclusion_group_setting
 upsertInclusionGroupInitialEval:
 INSERT OR REPLACE INTO inclusion_group_settings(class_id, school_year, initial_eval_date_iso)
 VALUES (?, ?, ?);
+
+-- Fichas propias de «Valoración rápida» (migración 50).
+CREATE TABLE IF NOT EXISTS quick_note_phrases (
+    id TEXT NOT NULL PRIMARY KEY,
+    group_key TEXT NOT NULL,
+    text TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+selectAllQuickNotePhrases:
+SELECT id, group_key, text, sort_order, is_deleted, updated_at_epoch_ms, device_id, sync_version
+FROM quick_note_phrases
+ORDER BY group_key, sort_order, text;
+
+selectQuickNotePhrase:
+SELECT id, group_key, text, sort_order, is_deleted, updated_at_epoch_ms, device_id, sync_version
+FROM quick_note_phrases
+WHERE id = ?;
+
+upsertQuickNotePhrase:
+INSERT INTO quick_note_phrases(id, group_key, text, sort_order, is_deleted, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+ON CONFLICT(id) DO UPDATE SET
+    group_key = excluded.group_key,
+    text = excluded.text,
+    sort_order = excluded.sort_order,
+    is_deleted = excluded.is_deleted,
+    updated_at_epoch_ms = excluded.updated_at_epoch_ms,
+    device_id = excluded.device_id,
+    sync_version = quick_note_phrases.sync_version + 1;

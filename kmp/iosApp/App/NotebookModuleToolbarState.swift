@@ -101,11 +101,55 @@ extension NotebookModuleView {
 
     func activeNotebookTabId(data: NotebookUiStateData) -> String? {
         let tabs = orderedNotebookTabs(data: data)
+        // Un bloque (pestaña hija de una evaluación) también puede ser la pestaña activa.
         if let selected = bridge.selectedNotebookTabId,
-           tabs.contains(where: { $0.id == selected }) {
+           data.sheet.tabs.contains(where: { tab in
+               tab.id == selected && (tab.parentTabId == nil || tabs.contains { root in root.id == tab.parentTabId })
+           }) {
             return selected
         }
         return tabs.first?.id
+    }
+
+    /// Pestaña de la barra de arriba que se marca: la evaluación si la activa es uno de sus bloques.
+    func activeRootNotebookTabId(data: NotebookUiStateData) -> String? {
+        guard let active = activeNotebookTabId(data: data) else { return nil }
+        return data.sheet.tabs.first { $0.id == active }?.parentTabId ?? active
+    }
+
+    /// Evaluación que hay que mostrar con su fila de bloques, o `nil`.
+    func activeEvaluationTab(data: NotebookUiStateData) -> NotebookTab? {
+        guard let rootId = activeRootNotebookTabId(data: data),
+              NotebookEvaluation.shared.isEvaluationTab(tabs: data.sheet.tabs, tabId: rootId) else { return nil }
+        return data.sheet.tabs.first { $0.id == rootId }
+    }
+
+    /// «Ultimate aún no tiene notas…» si algún bloque con peso no tiene ninguna nota en el grupo.
+    func evaluationEmptyBlocksMessage(data: NotebookUiStateData) -> String? {
+        let rows = data.sheet.rows
+        guard let first = rows.first?.evaluationExplanation else { return nil }
+        let empty = first.blocks.filter { block in
+            block.weightPercent > 0 && rows.allSatisfy { row in
+                row.evaluationExplanation?.blocks.first { $0.tabId == block.tabId }?.average == nil
+            }
+        }
+        guard !empty.isEmpty, empty.count < first.blocks.count else { return nil }
+        let names = ListFormatter.localizedString(byJoining: empty.map(\.title))
+        return empty.count == 1
+            ? "\(names) aún no tiene notas. Las notas marcadas con * usan solo los demás bloques."
+            : "\(names) aún no tienen notas. Las notas marcadas con * usan solo los demás bloques."
+    }
+
+    func evaluationBlockItems(data: NotebookUiStateData, evaluationTabId: String) -> [NotebookEvaluationBlockStrip.Block] {
+        let evaluation = NotebookEvaluation.shared
+        let blocks = evaluation.blocks(tabs: data.sheet.tabs, evaluationTabId: evaluationTabId)
+        let percents = evaluation.weightPercents(blocks: blocks)
+        return blocks.map { tab in
+            NotebookEvaluationBlockStrip.Block(
+                tab: tab,
+                weightText: evaluation.formatPercent(value: percents[tab.id]?.doubleValue ?? 0)
+            )
+        }
     }
 
     func activeNotebookTab(data: NotebookUiStateData) -> NotebookTab? {

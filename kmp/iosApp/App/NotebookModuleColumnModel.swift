@@ -210,9 +210,25 @@ final class NotebookGridLayoutModel: ObservableObject {
         data: NotebookUiStateData,
         activeTabId: String?
     ) -> [NotebookColumnCategory] {
-        data.sheet.columnCategories
+        // Resumen de una evaluación: un grupo plegable por bloque («Hockey · 60 %»).
+        if let evaluationTabId = activeTabId,
+           NotebookEvaluation.shared.isEvaluationTab(tabs: data.sheet.tabs, tabId: evaluationTabId) {
+            return NotebookEvaluation.shared.blockCategories(
+                classId: data.sheet.classId,
+                tabs: data.sheet.tabs,
+                evaluationTabId: evaluationTabId
+            )
+        }
+        return data.sheet.columnCategories
             .filter { activeTabId == nil || $0.tabId == activeTabId }
             .sorted { $0.order < $1.order }
+    }
+
+    /// Bloques de la evaluación activa (ids), o `nil` si la pestaña activa no es una evaluación.
+    private func evaluationBlockIds(data: NotebookUiStateData, activeTabId: String?) -> [String]? {
+        guard let activeTabId,
+              NotebookEvaluation.shared.isEvaluationTab(tabs: data.sheet.tabs, tabId: activeTabId) else { return nil }
+        return NotebookEvaluation.shared.blocks(tabs: data.sheet.tabs, evaluationTabId: activeTabId).map(\.id)
     }
 
     func managedColumns(
@@ -236,7 +252,18 @@ final class NotebookGridLayoutModel: ObservableObject {
         viewPreset: NotebookViewPreset,
         includeHidden: Bool = false
     ) -> [NotebookColumnDefinition] {
-        data.sheet.columns
+        if let blockId = NotebookEvaluation.shared.blockIdFromCategoryId(categoryId: category.id) {
+            // Columnas del bloque en el Resumen, en el orden del bloque.
+            return data.sheet.columns
+                .filter { $0.tabIds.contains(blockId) }
+                .filter { includeHidden || $0.isVisibleInGrid }
+                .filter { columnMatchesViewPreset($0, viewPreset: viewPreset) }
+                .sorted {
+                    if $0.order != $1.order { return $0.order < $1.order }
+                    return $0.id < $1.id
+                }
+        }
+        return data.sheet.columns
             .filter { $0.categoryId == category.id }
             .filter { includeHidden || $0.isVisibleInGrid }
             .filter { columnMatchesActiveTab($0, activeTabId: activeTabId) }
@@ -287,7 +314,11 @@ final class NotebookGridLayoutModel: ObservableObject {
                 return $0.id < $1.id
             }
 
-        segments.append(contentsOf: uncategorizedColumns.map(NotebookDisplaySegment.column))
+        let blockIds = evaluationBlockIds(data: data, activeTabId: activeTabId)
+        // En el Resumen, las columnas propias de la evaluación (p. ej. el comentario) van al final.
+        if blockIds == nil {
+            segments.append(contentsOf: uncategorizedColumns.map(NotebookDisplaySegment.column))
+        }
 
         for category in categories {
             let visibleCategoryColumns = columns(
@@ -309,6 +340,9 @@ final class NotebookGridLayoutModel: ObservableObject {
             } else {
                 segments.append(contentsOf: visibleCategoryColumns.map(NotebookDisplaySegment.column))
             }
+        }
+        if blockIds != nil {
+            segments.append(contentsOf: uncategorizedColumns.map(NotebookDisplaySegment.column))
         }
         return segments
     }

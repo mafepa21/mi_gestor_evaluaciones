@@ -56,7 +56,7 @@ final class WebPortalGradesTests: XCTestCase {
     private func sheet(tabs: [String], columns: [NotebookColumnDefinition], rows: [NotebookRow]) -> NotebookSheet {
         NotebookSheet(
             classId: 7,
-            tabs: tabs.map { NotebookTab(id: $0, title: $0, description: nil, order: 0, parentTabId: nil, fixedColumnWidth: nil, trace: trace) },
+            tabs: tabs.map { NotebookTab(id: $0, title: $0, description: nil, order: 0, parentTabId: nil, fixedColumnWidth: nil, trace: trace, weight: nil) },
             columns: columns, columnCategories: [], rows: rows, workGroups: [], workGroupMembers: [], insights: []
         )
     }

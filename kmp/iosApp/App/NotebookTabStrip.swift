@@ -238,3 +238,116 @@ private extension View {
         }
     }
 }
+
+// MARK: - Segundo nivel: bloques de una evaluación
+
+/// Fila de bloques de una pestaña de evaluación: «Resumen» primero y luego cada bloque
+/// (pestaña hija, una por situación de aprendizaje) con su peso. Va debajo de la barra
+/// de evaluaciones. «Resumen» abre la propia evaluación.
+struct NotebookEvaluationBlockStrip: View {
+    struct Block: Identifiable {
+        let tab: NotebookTab
+        let weightText: String
+        var id: String { tab.id }
+    }
+
+    let evaluationTitle: String
+    let evaluationTabId: String
+    let blocks: [Block]
+    let activeTabId: String?
+    let onSelect: (String) -> Void
+    let onCreateBlock: () -> Void
+    let onEditWeights: () -> Void
+    let onRenameTab: (NotebookTab) -> Void
+    let onDeleteTab: (NotebookTab) -> Void
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var minHeight: CGFloat {
+        #if os(macOS)
+        return 28
+        #else
+        return 44
+        #endif
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    blockButton(
+                        title: "Resumen",
+                        detail: nil,
+                        isSelected: activeTabId == evaluationTabId,
+                        tabId: evaluationTabId,
+                        tab: nil
+                    )
+                    ForEach(blocks) { block in
+                        blockButton(
+                            title: block.tab.title,
+                            detail: block.weightText,
+                            isSelected: activeTabId == block.tab.id,
+                            tabId: block.tab.id,
+                            tab: block.tab
+                        )
+                    }
+                    Button(action: onCreateBlock) {
+                        Image(systemName: "plus")
+                            .font(.footnote.weight(.bold))
+                            .frame(minWidth: minHeight, minHeight: minHeight)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tint)
+                    .help("Añadir bloque a \(evaluationTitle)")
+                    .accessibilityLabel("Añadir bloque a \(evaluationTitle)")
+                }
+            }
+            Button("Pesos…", action: onEditWeights)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(blocks.isEmpty)
+                .accessibilityHint("Peso de cada bloque en \(evaluationTitle)")
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Pestañas de \(evaluationTitle)")
+    }
+
+    private func blockButton(title: String, detail: String?, isSelected: Bool, tabId: String, tab: NotebookTab?) -> some View {
+        Button {
+            if !isSelected { AppleInteractionFeedback.play(.selection) }
+            onSelect(tabId)
+        } label: {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.footnote.weight(isSelected ? .semibold : .medium))
+                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                if let detail {
+                    Text(detail)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .lineLimit(1)
+            .padding(.horizontal, 12)
+            .frame(minHeight: minHeight)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.08))
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            if let tab {
+                Button { onRenameTab(tab) } label: { Label("Renombrar", systemImage: "pencil") }
+                Button(role: .destructive) { onDeleteTab(tab) } label: { Label("Eliminar bloque", systemImage: "trash") }
+            }
+        }
+        .accessibilityLabel(detail.map { "\(title), \($0.replacingOccurrences(of: "%", with: "por ciento"))" } ?? "\(title) de \(evaluationTitle)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}

@@ -255,7 +255,9 @@ extension NotebookModuleView {
 
     func averageText(for item: NotebookTableRow) -> String {
         guard let weightedAverage = item.row.weightedAverage else { return "Sin media" }
-        return IosFormatting.decimal(weightedAverage.doubleValue)
+        // Nota de evaluación sin todos los bloques: se marca con * además del aviso.
+        let partialMark = item.row.evaluationExplanation?.isPartial == true ? "*" : ""
+        return IosFormatting.decimal(weightedAverage.doubleValue) + partialMark
     }
 
     enum AverageCellState {

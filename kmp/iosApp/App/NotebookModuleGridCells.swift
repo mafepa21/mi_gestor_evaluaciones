@@ -912,6 +912,13 @@ extension NotebookModuleView {
         let filled = filledCellCount(item, columns: visibleColumns)
         let total = visibleColumns.count
         let categoryTint = tint(for: category)
+        // En el Resumen, un bloque plegado enseña su media (no «2/3»).
+        let blockResult = NotebookEvaluation.shared.blockIdFromCategoryId(categoryId: category.id).flatMap { blockId in
+            item.row.evaluationExplanation?.blocks.first { $0.tabId == blockId }
+        }
+        let blockText: String? = blockResult.map { result in
+            result.average.map { IosFormatting.decimal(from: $0.doubleValue) } ?? "Sin notas"
+        }
 
         return Button {
                 setCategoryCollapsed(category, collapsed: false)
@@ -922,7 +929,7 @@ extension NotebookModuleView {
                         .foregroundStyle(categoryTint.opacity(0.82))
                         .accessibilityHidden(true)
 
-                    Text(total == 0 ? "Vacía" : "\(filled)/\(total)")
+                    Text(blockText ?? (total == 0 ? "Vacía" : "\(filled)/\(total)"))
                         .notebookFont(size: 12, weight: .bold, design: .rounded)
                         .foregroundStyle(total == 0 ? .secondary : .primary)
                         .monospacedDigit()
@@ -947,11 +954,14 @@ extension NotebookModuleView {
             .contextMenu {
                 categoryContextMenu(category, data: data)
             }
-            .help(total == 0 ? "Categoría vacía." : "Resumen de categoría colapsada: \(filled) de \(total) columnas con datos.")
+            .help(blockText.map { "Media del bloque: \($0)." } ?? (total == 0 ? "Categoría vacía." : "Resumen de categoría colapsada: \(filled) de \(total) columnas con datos."))
             .accessibilityLabel(
-                "\(category.name), \(item.student.fullName), categoría colapsada"
+                blockText == nil
+                    ? "\(category.name), \(item.student.fullName), categoría colapsada"
+                    : "\(category.name), \(item.student.fullName), media del bloque"
             )
-            .accessibilityValue(total == 0 ? "Vacía" : "\(filled) de \(total) columnas con datos")
+            .accessibilityValue(blockText ?? (total == 0 ? "Vacía" : "\(filled) de \(total) columnas con datos"))
+            .accessibilityHint("Toca para desplegar")
     }
 
     @MainActor
@@ -1313,6 +1323,21 @@ extension NotebookModuleView {
 
     @ViewBuilder
     func categoryContextMenu(_ category: NotebookColumnCategory, data: NotebookUiStateData?) -> some View {
+        if let blockId = NotebookEvaluation.shared.blockIdFromCategoryId(categoryId: category.id) {
+            // Bloque del Resumen: no es una categoría guardada, así que no se renombra ni se mueve.
+            Button(isCategoryCollapsed(category) ? "Desplegar bloque" : "Plegar bloque") {
+                setCategoryCollapsed(category, collapsed: !isCategoryCollapsed(category))
+            }
+            Button("Abrir el bloque") {
+                selectNotebookTab(blockId)
+            }
+        } else {
+            regularCategoryContextMenu(category, data: data)
+        }
+    }
+
+    @ViewBuilder
+    private func regularCategoryContextMenu(_ category: NotebookColumnCategory, data: NotebookUiStateData?) -> some View {
         Button("Renombrar categoría") {
             editingCategoryId = category.id
             categoryDraft = category.name

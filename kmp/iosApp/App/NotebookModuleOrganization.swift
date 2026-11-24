@@ -61,10 +61,29 @@ extension NotebookModuleView {
         addColumnContext = NotebookAddColumnContext(categoryId: category.id, startsCreatingCategory: false)
     }
 
-    func presentCreateNotebookTab() {
+    /// Nueva pestaña: hoja con nombre, evaluación y peso (la evaluación se crea sola si falta).
+    func presentCreateNotebookTab(parentTabId: String? = nil) {
         editingNotebookTabId = nil
-        notebookTabDraft = defaultNotebookTabDraft()
-        isNotebookTabAlertPresented = true
+        newNotebookTabRequest = NotebookNewTabRequest(preferredParentTabId: parentTabId)
+    }
+
+    func createNotebookTab(title: String, placement: NotebookEvaluationPlacement, weight: Double?) {
+        if let createdId = bridge.createNotebookTab(title: title, placement: placement, weight: weight) {
+            selectNotebookTab(createdId)
+            showToast("Pestaña creada")
+        }
+    }
+
+    func deleteNotebookTabMessage(_ tab: NotebookTab) -> String {
+        guard let data = bridge.notebookState as? NotebookUiStateData else {
+            return "Se eliminará la pestaña “\(tab.title)” y las columnas que solo pertenezcan a ella."
+        }
+        let blocks = NotebookEvaluation.shared.blocks(tabs: data.sheet.tabs, evaluationTabId: tab.id)
+        guard !blocks.isEmpty else {
+            return "Se eliminará la pestaña “\(tab.title)” y las columnas que solo pertenezcan a ella."
+        }
+        let names = ListFormatter.localizedString(byJoining: blocks.map(\.title))
+        return "\(names) no se borran: pasan a ser pestañas sueltas con todas sus notas. Se borrarán los pesos de bloque y las columnas propias de la evaluación, como el comentario de evaluación."
     }
 
     func presentRenameNotebookTab(_ tab: NotebookTab) {
@@ -104,7 +123,8 @@ extension NotebookModuleView {
                 order: tab.order,
                 parentTabId: tab.parentTabId,
                 fixedColumnWidth: tab.fixedColumnWidth,
-                trace: tab.trace
+                trace: tab.trace,
+                weight: tab.weight
             ))
             showToast("Pestaña renombrada")
         } else if let createdId = bridge.createTab(title: draft) {

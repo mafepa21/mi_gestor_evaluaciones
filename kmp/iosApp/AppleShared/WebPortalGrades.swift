@@ -112,19 +112,32 @@ enum WebPortalGrades {
         } else {
             averageColumns = sheet.columns
         }
+        // En el Resumen de una evaluación la Media es la nota por bloques (igual que el Cuaderno).
+        let evaluation = NotebookEvaluation.shared
+        let isEvaluation = evaluation.isEvaluationTab(tabs: tabs, tabId: tabId)
+        let familyColumns = (isEvaluation && tabId != nil)
+            ? evaluation.columnsForEvaluation(tabs: tabs, columns: sheet.columns, evaluationTabId: tabId!)
+            : averageColumns
         let rows = sheet.rows.map { row -> NotebookRow in
             let explanation = row.computeAverageExplanation(
-                columns: averageColumns,
+                columns: familyColumns,
                 calculatedValuesByColumnId: [:],
                 numericDrafts: [:]
             )
+            let evaluationExplanation = (isEvaluation && tabId != nil)
+                ? evaluation.explain(row: row, tabs: tabs, columns: sheet.columns, evaluationTabId: tabId!, numericDrafts: [:])
+                : nil
+            let average = isEvaluation ? evaluationExplanation?.average : explanation?.average
             return NotebookRow(
                 student: row.student,
                 cells: row.cells,
-                weightedAverage: explanation?.average,
-                averageExplanation: explanation,
+                weightedAverage: average,
+                averageExplanation: isEvaluation
+                    ? explanation.map { evaluation.withAverage(explanation: $0, average: average) }
+                    : explanation,
                 persistedCells: row.persistedCells,
-                persistedGrades: row.persistedGrades
+                persistedGrades: row.persistedGrades,
+                evaluationExplanation: evaluationExplanation
             )
         }
         return Scope(

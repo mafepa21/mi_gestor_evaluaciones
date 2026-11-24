@@ -8,6 +8,9 @@ struct NotebookTabStrip: View {
     let onCreateTab: () -> Void
     let onRenameTab: (NotebookTab) -> Void
     let onDeleteTab: (NotebookTab) -> Void
+    /// Abre «Organizar por evaluaciones». Con `showsOrganizeButton` se ve como botón (cuaderno sin evaluaciones).
+    var onOrganize: (() -> Void)? = nil
+    var showsOrganizeButton = false
 
     @Namespace private var selectionNamespace
 
@@ -38,7 +41,8 @@ struct NotebookTabStrip: View {
                                     canDelete: tabs.count > 1,
                                     onSelect: { onSelect(tab.id) },
                                     onRename: { onRenameTab(tab) },
-                                    onDelete: { onDeleteTab(tab) }
+                                    onDelete: { onDeleteTab(tab) },
+                                    onOrganize: onOrganize
                                 )
                             }
                         }
@@ -59,6 +63,14 @@ struct NotebookTabStrip: View {
                 .notebookTabActionButtonStyle(isProminent: false, isCircular: true)
                 .help("Nueva pestaña")
                 .accessibilityLabel("Nueva pestaña")
+
+                if showsOrganizeButton, let onOrganize {
+                    Button(action: onOrganize) {
+                        Label("Organizar por evaluaciones…", systemImage: "square.stack.3d.up")
+                    }
+                    .notebookTabActionButtonStyle(isProminent: false)
+                    .help("Mete tus pestañas en la 1.ª, 2.ª o 3.ª Evaluación para ver su Resumen")
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -76,6 +88,7 @@ private struct NotebookTabButton: View {
     let onSelect: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
+    var onOrganize: (() -> Void)? = nil
 
     @State private var isHovered = false
 
@@ -120,6 +133,14 @@ private struct NotebookTabButton: View {
                 onRename()
             } label: {
                 Label("Renombrar", systemImage: "pencil")
+            }
+
+            if let onOrganize {
+                Button {
+                    onOrganize()
+                } label: {
+                    Label("Mover a una evaluación…", systemImage: "square.stack.3d.up")
+                }
             }
 
             Button(role: .destructive) {

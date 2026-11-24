@@ -17,6 +17,7 @@ final class WorkspaceLayoutState: ObservableObject {
     @Published var notebookOrganizationMenuAvailable: Bool = false
     @Published var notebookHiddenColumnsRequestID: UUID?
     @Published var notebookClosingReviewRequestID: UUID?
+    @Published var notebookOrganizeTabsRequestID: UUID?
     @Published var notebookGradeReportRequestID: UUID?
     @Published var notebookSearchText: String = ""
     @Published var notebookSurfaceMode: String = "grid"
@@ -201,6 +202,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookOrganizationMenuAvailable = false
             self.notebookHiddenColumnsRequestID = nil
             self.notebookClosingReviewRequestID = nil
+            self.notebookOrganizeTabsRequestID = nil
             self.notebookGradeReportRequestID = nil
             self.notebookSearchText = ""
             self.notebookSurfaceMode = "grid"
@@ -288,6 +290,10 @@ final class WorkspaceLayoutState: ObservableObject {
 
     func openNotebookClosingReview() {
         notebookClosingReviewRequestID = UUID()
+    }
+
+    func openNotebookOrganizeTabs() {
+        notebookOrganizeTabsRequestID = UUID()
     }
 
     func openNotebookGradeReports() {
@@ -1917,6 +1923,13 @@ struct AppWorkspaceShell: View {
                 layoutState.openNotebookClosingReview()
             } label: {
                 Label("Cerrar evaluación…", systemImage: "checklist")
+            }
+            .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+            Button {
+                layoutState.openNotebookOrganizeTabs()
+            } label: {
+                Label("Organizar por evaluaciones…", systemImage: "square.stack.3d.up")
             }
             .disabled(!layoutState.notebookOrganizationMenuAvailable)
 

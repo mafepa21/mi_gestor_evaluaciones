@@ -526,7 +526,9 @@ struct NotebookModuleView: View {
                         },
                         onDeleteTab: { tab in
                             pendingDeleteNotebookTab = tab
-                        }
+                        },
+                        onOrganize: { isOrganizeTabsPresented = true },
+                        showsOrganizeButton: !data.sheet.tabs.contains { $0.parentTabId != nil }
                     )
                     if let evaluationTab = activeEvaluationTab(data: data) {
                         NotebookEvaluationBlockStrip(
@@ -1761,6 +1763,11 @@ struct NotebookModuleView: View {
                     guard requestID != nil else { return }
                     isOrganizationMenuPresented = false
                     isHiddenColumnsSheetPresented = true
+                }
+                .appOnChange(of: layoutState.notebookOrganizeTabsRequestID) { requestID in
+                    guard requestID != nil else { return }
+                    isOrganizationMenuPresented = false
+                    isOrganizeTabsPresented = true
                 }
                 .appOnChange(of: layoutState.notebookClosingReviewRequestID) { requestID in
                     guard requestID != nil else { return }

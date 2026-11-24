@@ -1,5 +1,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(macOS)
+import AppKit
+#endif
 import MiGestorKit
 
 /// Hoja «Enviar notas al alumnado»: prepara un informe en PDF por alumno con la
@@ -32,6 +35,11 @@ struct GradeReportDispatchSheet: View {
     @State private var errorMessage: String?
     @State private var narrativeTask: Task<Void, Never>?
     @State private var compactPath: [Int64] = []
+    @State private var isFolderPickerPresented = false
+    @State private var batchTask: Task<Void, Never>?
+    @State private var batchDone = 0
+    @State private var batchTotal = 0
+    @State private var batchSummary: GradeReportBatchSummary?
 
     private let aiService = AppleFoundationGradeReportService()
 
@@ -50,8 +58,20 @@ struct GradeReportDispatchSheet: View {
                         Button(allSent ? "Todo enviado" : "Enviar siguiente") {
                             if let next = nextToSend { confirmTarget = next }
                         }
-                        .disabled(nextToSend == nil)
+                        .disabled(nextToSend == nil || isBatchRunning)
                     }
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            isFolderPickerPresented = true
+                        } label: {
+                            Label("Guardar todos los PDF…", systemImage: "square.and.arrow.down.on.square")
+                        }
+                        .help("Guarda un PDF por alumno en la carpeta que elijas")
+                        .disabled(isLoading || isBatchRunning || !reports.contains(where: { $0.hasGrades }))
+                    }
+                }
+                .safeAreaInset(edge: .bottom) {
+                    if isBatchRunning { batchProgressBar }
                 }
                 .navigationDestination(for: Int64.self) { id in
                     if let report = reports.first(where: { $0.studentId == id }) {
@@ -61,7 +81,31 @@ struct GradeReportDispatchSheet: View {
                 }
         }
         .task { await load() }
-        .onDisappear { narrativeTask?.cancel() }
+        .onDisappear {
+            narrativeTask?.cancel()
+            batchTask?.cancel()
+        }
+        .interactiveDismissDisabled(isBatchRunning)
+        .fileImporter(isPresented: $isFolderPickerPresented, allowedContentTypes: [.folder]) { result in
+            switch result {
+            case .success(let url): startBatch(into: url)
+            case .failure: errorMessage = "No se pudo abrir esa carpeta. Elige otra."
+            }
+        }
+        .alert(
+            batchSummary?.title ?? "",
+            isPresented: Binding(get: { batchSummary != nil }, set: { if !$0 { batchSummary = nil } }),
+            presenting: batchSummary
+        ) { summary in
+#if os(macOS)
+            if let folder = summary.folder {
+                Button("Mostrar en Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+            }
+#endif
+            Button("Aceptar", role: .cancel) {}
+        } message: { summary in
+            Text(summary.message)
+        }
         .alert(item: $confirmTarget) { report in
             Alert(
                 title: Text("¿Enviar a \(report.studentName)?"),
@@ -418,6 +462,79 @@ struct GradeReportDispatchSheet: View {
         }
     }
 
+    // MARK: - Guardar todos
+
+    private var isBatchRunning: Bool { batchTask != nil }
+
+    private var batchProgressBar: some View {
+        HStack(spacing: 16) {
+            ProgressView(value: Double(batchDone), total: Double(max(batchTotal, 1)))
+                .frame(maxWidth: 240)
+            Text("Preparando \(batchDone) de \(batchTotal)")
+                .monospacedDigit()
+            Spacer(minLength: 8)
+            Button("Cancelar") { batchTask?.cancel() }
+        }
+        .padding(16)
+        .background(.bar)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Preparando informes, \(batchDone) de \(batchTotal)")
+    }
+
+    /// Prepara los textos que falten y guarda un PDF por alumno con notas.
+    /// Escribe al final: si se cancela antes, no queda ningún archivo a medias.
+    private func startBatch(into parent: URL) {
+        let targets = reports.filter { $0.hasGrades }
+        guard !targets.isEmpty else { return }
+        errorMessage = nil
+        narrativeTask?.cancel()
+        batchDone = 0
+        batchTotal = targets.count
+        batchTask = Task {
+            defer {
+                batchTask = nil
+                // Retoma en segundo plano los textos que falten (p. ej. tras cancelar).
+                narrativeTask = Task { await generateNarratives() }
+            }
+            for report in targets {
+                if Task.isCancelled { break }
+                if narratives[report.studentId] == nil {
+                    generatingIds.insert(report.studentId)
+                    let narrative = await aiService.narrative(for: report, subjectName: subjectName)
+                    generatingIds.remove(report.studentId)
+                    if narratives[report.studentId] == nil {
+                        narratives[report.studentId] = narrative
+                    }
+                }
+                batchDone += 1
+            }
+            if Task.isCancelled {
+                batchSummary = .cancelled
+                return
+            }
+            let items = targets.map {
+                GradeReportBatchExporter.Item(
+                    report: $0,
+                    narrative: narratives[$0.studentId] ?? AppleFoundationGradeReportService.templateNarrative(for: $0)
+                )
+            }
+            let accessing = parent.startAccessingSecurityScopedResource()
+            defer { if accessing { parent.stopAccessingSecurityScopedResource() } }
+            do {
+                let result = try GradeReportBatchExporter.export(
+                    items: items,
+                    context: .init(className: className, subjectName: subjectName, periodName: periodName),
+                    into: parent
+                )
+                let skipped = reports.filter { !$0.hasGrades }.map(\.studentName)
+                batchSummary = .saved(result, skippedNames: skipped)
+                AccessibilityNotification.Announcement("Guardados \(result.savedFiles.count) informes").post()
+            } catch {
+                batchSummary = .failed
+            }
+        }
+    }
+
     private func regenerate(_ report: StudentGradeReport) {
         guard !generatingIds.contains(report.studentId) else { return }
         generatingIds.insert(report.studentId)
@@ -509,6 +626,43 @@ struct GradeReportPDFFile: Transferable, @unchecked Sendable {
             guard let url else { throw CocoaError(.fileWriteUnknown) }
             return SentTransferredFile(url)
         }
+    }
+}
+
+/// Resumen que se enseña al terminar «Guardar todos los PDF».
+struct GradeReportBatchSummary {
+    let title: String
+    let message: String
+    let folder: URL?
+
+    static let cancelled = GradeReportBatchSummary(
+        title: "Guardado cancelado",
+        message: "No se ha guardado ningún informe.",
+        folder: nil
+    )
+
+    static let failed = GradeReportBatchSummary(
+        title: "No se pudieron guardar",
+        message: "No se pudo crear la carpeta en ese sitio. Prueba con otra carpeta.",
+        folder: nil
+    )
+
+    static func saved(_ result: GradeReportBatchExporter.Result, skippedNames: [String]) -> GradeReportBatchSummary {
+        let count = result.savedFiles.count
+        var lines = [count == 1
+            ? "Se ha guardado 1 informe en «\(result.folder.lastPathComponent)»."
+            : "Se han guardado \(count) informes en «\(result.folder.lastPathComponent)»."]
+        if !skippedNames.isEmpty {
+            lines.append("Sin notas, no se guardan: \(skippedNames.joined(separator: ", ")).")
+        }
+        if !result.failedNames.isEmpty {
+            lines.append("No se pudo guardar: \(result.failedNames.joined(separator: ", ")).")
+        }
+        return GradeReportBatchSummary(
+            title: result.failedNames.isEmpty ? "Informes guardados" : "Guardado con avisos",
+            message: lines.joined(separator: "\n"),
+            folder: result.folder
+        )
     }
 }
 

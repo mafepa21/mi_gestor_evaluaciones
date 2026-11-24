@@ -1,6 +1,6 @@
 # Ticket M: Avisos en Educamos, SA por bloque y nota de evaluación en la IA
 
-Estado: pendiente de aprobación. Maqueta: `docs/maquetas/educamos-avisos-sa/mockup/index.html`.
+Estado: aprobado por el docente el 2026-11-24. Maqueta: `docs/maquetas/educamos-avisos-sa/mockup/index.html`.
 Rama: `codex/educamos-avisos-sa-bloques` (desde `main` en `02d104cc`).
 
 ## Objetivo y contexto

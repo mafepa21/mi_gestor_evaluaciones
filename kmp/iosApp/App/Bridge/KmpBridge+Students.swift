@@ -2588,9 +2588,10 @@ extension KmpBridge {
             // Con periodo, un `nil` significa "sin datos en el trimestre": nunca se rellena con el curso.
             let termMetrics = evidence?.periodApplied == true ? evidence?.termMetrics : nil
             let usesTermFigures = termMetrics != nil
-            let numericScore: Double? = usesTermFigures
+            // Con pestaña de evaluación del trimestre, la nota es la del Resumen (por bloques y pesos).
+            let numericScore: Double? = evidence?.evaluationAverage?.doubleValue ?? (usesTermFigures
                 ? termMetrics?.averageScore?.doubleValue
-                : (profile.averageScore > 0 ? profile.averageScore : nil)
+                : (profile.averageScore > 0 ? profile.averageScore : nil))
             // Se trunca a entero, como hace el perfil con la asistencia de curso.
             let termAttendanceRate: Int? = (termMetrics?.attendanceRate?.doubleValue).map { Int($0) }
             let attendanceRate: Int? = usesTermFigures ? termAttendanceRate : Optional(profile.attendanceRate)

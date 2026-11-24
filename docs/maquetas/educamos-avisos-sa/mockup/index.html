@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta · Avisos y SA en Educamos</title>
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--fg:#1d1d1f;--mut:#6e6e73;--line:#e5e5ea;--acc:#0066cc;--ok:#1a7f37;--warn:#9a5b00;--chip:#e9e9ee}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--card:#1c1c1e;--fg:#f5f5f7;--mut:#a1a1a6;--line:#38383a;--acc:#4da3ff;--ok:#4cd964;--warn:#ffb340;--chip:#3a3a3c}}
+*{box-sizing:border-box}
+body{margin:0;font:1rem/1.45 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header.tabs{display:flex;gap:8px;padding:16px 24px;flex-wrap:wrap;align-items:center;background:var(--card);border-bottom:1px solid var(--line)}
+header.tabs button{min-height:36px;padding:0 16px;border-radius:18px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;font:inherit;font-size:.875rem}
+header.tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.state{display:none;padding:24px}.state.on{display:block}
+.note{color:var(--mut);font-size:.875rem;margin:0 0 16px;max-width:720px}
+.sheet{background:var(--bg);border:1px solid var(--line);border-radius:24px;max-width:600px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.12)}
+.nav{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;min-height:56px;background:var(--card);border-bottom:1px solid var(--line)}
+.nav h2{margin:0;font-size:1.0625rem}
+.link{color:var(--acc);background:none;border:none;font:inherit;min-height:44px;cursor:pointer;padding:0 8px}.link.b{font-weight:600}
+.body{padding:16px}
+.sec{margin-bottom:24px}.sec h3{margin:0 0 8px;padding:0 16px;font-size:.8125rem;color:var(--mut);font-weight:500}
+.group{background:var(--card);border-radius:12px;overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;padding:8px 16px;min-height:52px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:none}.row .t{flex:1}.row .t small{display:block;color:var(--mut);font-size:.875rem}
+.foot{color:var(--mut);font-size:.875rem;padding:8px 16px 0}
+select{min-height:44px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;padding:0 8px}
+.ic{width:24px;text-align:center}
+.warn{color:var(--warn)}.ok{color:var(--ok)}.mut{color:var(--mut)}
+</style></head><body>
+<header class="tabs">
+<button data-s="avisos" class="on">1 · Avisos antes de generar</button>
+<button data-s="sa">2 · Elegir el bloque de cada SA</button>
+<button data-s="ok">3 · Sin avisos</button>
+</header>
+
+<section class="state on" id="avisos">
+<p class="note">«Exportar a Educamos» › Revisar. Arriba del todo, un aviso cuando a algún alumno le falta un bloque. Tú eliges qué se escribe en su nota final. Por defecto se deja vacía para no subir una nota incompleta sin querer.</p>
+<div class="sheet">
+  <div class="nav"><button class="link">Cancelar</button><h2>Revisar exportación</h2><button class="link b">Generar</button></div>
+  <div class="body">
+    <div class="sec"><h3>Avisos</h3>
+      <div class="group">
+        <div class="row"><span class="ic warn" role="img" aria-label="Aviso">⚠︎</span><span class="t">3 alumnos no tienen notas en Ultimate<small>Su nota de evaluación usa solo Hockey (marcada con * en el Cuaderno).</small></span></div>
+        <div class="row"><span class="ic" aria-hidden="true"></span><label for="fin" class="t">Nota final de esos alumnos</label><select id="fin"><option>Dejarla vacía</option><option>Exportar la nota parcial</option></select></div>
+        <details class="row"><summary class="t">Ver alumnos</summary><small>Ejemplo Dos, Bruno · Prueba Cinco, Vera · Ejemplo Ocho, Iker</small></details>
+        <div class="row"><span class="ic warn" role="img" aria-label="Aviso">⚠︎</span><span class="t">2 alumnos sin comentario de evaluación<small>Su columna «Comentarios» quedará vacía.</small></span></div>
+      </div>
+      <p class="foot">Puedes generar igual. La app recuerda tu elección en este grupo.</p>
+    </div>
+    <div class="sec"><h3>Columnas detectadas</h3>
+      <div class="group">
+        <div class="row"><span class="t">Hockey<small>Media Situación de Aprendizaje · Columna J</small></span><select aria-label="Pestaña para Hockey"><option>Hockey (1.ª Evaluación)</option></select></div>
+        <div class="row"><span class="t">Nota final<small>Nota final evaluación · Columna W</small></span><span>Nota de 1.ª Evaluación</span></div>
+      </div></div>
+  </div>
+</div>
+</section>
+
+<section class="state" id="sa">
+<p class="note">Cada «Media de SA» de Educamos es un menú, como ya lo son los instrumentos. Propone el bloque por el nombre («SA2 Hockey» → Hockey). Si no lo encuentra, eliges tú y la app lo recuerda para este grupo.</p>
+<div class="sheet">
+  <div class="nav"><button class="link">Cancelar</button><h2>Revisar exportación</h2><button class="link b">Generar</button></div>
+  <div class="body">
+    <div class="sec"><h3>Columnas detectadas</h3>
+      <div class="group">
+        <div class="row"><span class="t">SA2 Hockey<small>Media Situación de Aprendizaje · Columna J</small></span><select aria-label="Pestaña del Cuaderno para SA2 Hockey"><option>Hockey (1.ª Evaluación)</option><option>Ultimate (1.ª Evaluación)</option><option>Asistencia</option><option>Sin pestaña</option></select></div>
+        <div class="row"><span class="t">SA3 Disco volador<small>Media Situación de Aprendizaje · Columna K</small></span><select aria-label="Pestaña del Cuaderno para SA3 Disco volador"><option>Elegir pestaña</option><option>Hockey (1.ª Evaluación)</option><option>Ultimate (1.ª Evaluación)</option><option>Sin pestaña</option></select></div>
+        <div class="row"><span class="t">Nota final<small>Nota final evaluación · Columna W</small></span><span>Nota de 1.ª Evaluación</span></div>
+      </div>
+      <p class="foot"><span class="warn">⚠︎ SA3 Disco volador no tiene pestaña: su columna quedará vacía.</span><br>Cada SA toma la media de su pestaña. La nota final es la de la evaluación, no la de la pestaña abierta.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<section class="state" id="ok">
+<div class="sheet">
+  <div class="nav"><button class="link">Cancelar</button><h2>Revisar exportación</h2><button class="link b">Generar</button></div>
+  <div class="body"><div class="sec"><h3>Avisos</h3><div class="group">
+    <div class="row"><span class="ic ok" aria-hidden="true">✓</span><span class="t">Todo completo<small>Todos los alumnos tienen nota en todos los bloques y comentario.</small></span></div>
+  </div></div></div>
+</div>
+</section>
+<script>
+document.querySelectorAll('header button[data-s]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('header button[data-s]').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.state').forEach(s=>s.classList.toggle('on',s.id===b.dataset.s));});
+</script></body></html>

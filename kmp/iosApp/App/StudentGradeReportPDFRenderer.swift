@@ -195,14 +195,23 @@ enum StudentGradeReportPDFRenderer {
         return "Notas_\(period.isEmpty ? "" : period + "_")\(clean(report.studentName)).pdf"
     }
 
+    /// El PDF completo de un alumno. Lo usan el correo y el guardado en bloque: así son idénticos.
+    static func pdfData(
+        report: StudentGradeReport,
+        narrative: GradeReportNarrative,
+        context: Context
+    ) -> Data? {
+        let body = buildAttributedReport(report: report, narrative: narrative, context: context)
+        return renderPDF(attributedBody: body, headerText: "NOTA PROVISIONAL · \(report.studentName.uppercased())")
+    }
+
     /// Escribe el PDF en una carpeta temporal propia y devuelve su URL.
     static func writeTemporaryFile(
         report: StudentGradeReport,
         narrative: GradeReportNarrative,
         context: Context
     ) -> URL? {
-        let body = buildAttributedReport(report: report, narrative: narrative, context: context)
-        guard let data = renderPDF(attributedBody: body, headerText: "NOTA PROVISIONAL · \(report.studentName.uppercased())") else {
+        guard let data = pdfData(report: report, narrative: narrative, context: context) else {
             return nil
         }
         let folder = FileManager.default.temporaryDirectory

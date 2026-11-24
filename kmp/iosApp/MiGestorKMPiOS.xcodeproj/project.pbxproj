@@ -42,6 +42,7 @@
 		08E14864FE14A9C51D88DCA6 /* LearningSituationEvaluationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96464B8DA798A6C60DDC0970 /* LearningSituationEvaluationSheet.swift */; };
 		08EDA9A1AF2F3EF57F163B84 /* ShelfView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 019F45D9F4E15DB7C1B94945 /* ShelfView.swift */; };
 		099689EBA9E98BA1364417F4 /* KmpBridge+Meetings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 212337E509470CFD689BB7F8 /* KmpBridge+Meetings.swift */; };
+		09D74C2F8224533D5D2D735E /* GradeReportBatchExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA34B6B3AA80DA1F70395750 /* GradeReportBatchExporter.swift */; };
 		09F8FF2F1C0C6AF0075371AD /* LanSyncDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 412BDB0BE52A021D8CFE19FE /* LanSyncDiscovery.swift */; };
 		0A94F3EA584945A698FC6F74 /* PlannerSequenceGanttView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D56DE443EAEED31903DC305 /* PlannerSequenceGanttView.swift */; };
 		0AE7E14FE315094662D8C033 /* AIRubricGeneratorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A474B147014D2A130BF246 /* AIRubricGeneratorSheet.swift */; };
@@ -166,6 +167,7 @@
 		2B8C387421A1620F71EB8F16 /* StringHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBAAEE8EDA2AFF2C273DAC5F /* StringHelpers.swift */; };
 		2BCB17B07E782475C4F707A7 /* KmpBridge+PhysicalEducation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 121AB49AB4B52F4FE5FD8FB2 /* KmpBridge+PhysicalEducation.swift */; };
 		2BD588BFF3A9F6713F9BD94B /* WebPortalGradesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C37076419E1EB0A71DAC7915 /* WebPortalGradesView.swift */; };
+		2C58AED7C85A72F8B54644A9 /* GradeReportBatchExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA34B6B3AA80DA1F70395750 /* GradeReportBatchExporter.swift */; };
 		2C89D560DB6ABB2D6C4BF014 /* TournamentPhaseTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = F266D6B0064869EB735A4D40 /* TournamentPhaseTimeline.swift */; };
 		2C96F0474CC75AB421D42592 /* DashboardSharedBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8C8563CC96E19042E114CEA /* DashboardSharedBlocks.swift */; };
 		2DB4A4DB52E11150E9D63595 /* WebPortalPESettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63CAA086E6B5DC43F227433D /* WebPortalPESettings.swift */; };
@@ -528,6 +530,7 @@
 		830479F2E8118437B8115C2F /* NotebookWorkGroupImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D74476D5561462609506B631 /* NotebookWorkGroupImportService.swift */; };
 		830837B69A6A3773AF05B011 /* LearningSituationDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16E3DD63D6D3D2C2C4A53366 /* LearningSituationDetailView.swift */; };
 		830FAFA5283800B1663E3077 /* NotebookModuleClosingReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A021A715AC8F47D8E5B7125 /* NotebookModuleClosingReview.swift */; };
+		83BDEFE456A9B44B1FE59823 /* GradeReportBatchExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B39306910DCB214B6C2CA020 /* GradeReportBatchExporterTests.swift */; };
 		83DB805DBC12FA13994AB6DC /* DataManagementSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72A84FEEBDA24C73D956D7A /* DataManagementSettingsView.swift */; };
 		8471DB8D15E78BF4ACD5572B /* EvaluationSessionBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A16EC8B96A8491E180F8CE3D /* EvaluationSessionBoardView.swift */; };
 		848F92D2B41519F8D28627AF /* WebPassportProgressSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2AB4196DBEAD5BB81AB5A13 /* WebPassportProgressSheet.swift */; };
@@ -1535,6 +1538,7 @@
 		B192F720EFF18727043E63CE /* KmpBridge+EvaluationComments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+EvaluationComments.swift"; sourceTree = "<group>"; };
 		B2383FA2AFCB17CB773F8D8C /* ScheduleImportPreviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleImportPreviewSheet.swift; sourceTree = "<group>"; };
 		B34A65A8DB96C57F13E8E8DC /* WebSubmissionPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionPublisher.swift; sourceTree = "<group>"; };
+		B39306910DCB214B6C2CA020 /* GradeReportBatchExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GradeReportBatchExporterTests.swift; sourceTree = "<group>"; };
 		B3A6585B3DD2F80359E49B7B /* PerfLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfLog.swift; sourceTree = "<group>"; };
 		B3CA8D09864762412D9ACD81 /* PlannerSessionDetailComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSessionDetailComponents.swift; sourceTree = "<group>"; };
 		B43394FF80D6A97B38599A52 /* AppleSharedBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSharedBridge.swift; sourceTree = "<group>"; };
@@ -1617,6 +1621,7 @@
 		D9892E60A7CF035F7B78B081 /* QRCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeView.swift; sourceTree = "<group>"; };
 		D9935CD7725DE77C880BB96A /* EducamosSMXlsxWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EducamosSMXlsxWriter.swift; sourceTree = "<group>"; };
 		DA1BD2B3F044AC25CBBAA1EB /* NotebookModuleGradeReports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleGradeReports.swift; sourceTree = "<group>"; };
+		DA34B6B3AA80DA1F70395750 /* GradeReportBatchExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GradeReportBatchExporter.swift; sourceTree = "<group>"; };
 		DBAB767831B374EE9C56A739 /* NotebookGroupBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookGroupBoardView.swift; sourceTree = "<group>"; };
 		DBDE22B7BADFF6EE757E8A93 /* DashboardRecommendations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardRecommendations.swift; sourceTree = "<group>"; };
 		DC401B312E27E14451320702 /* ScheduleRoundBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleRoundBuilder.swift; sourceTree = "<group>"; };
@@ -1803,6 +1808,7 @@
 				379959F6774F930B1BDBD791 /* DiaryTimelineProjectionTests.swift */,
 				3B525ADC177B6828B2F6DD5C /* EvaluationClosingFlowTests.swift */,
 				6526B53A14BF954CE33CBD17 /* EvaluationCommentImportTests.swift */,
+				B39306910DCB214B6C2CA020 /* GradeReportBatchExporterTests.swift */,
 				9B3002E7811D4B29D8FF4324 /* GroupBoardGridLayoutTests.swift */,
 				F1B78B0B2F01205E9FD1158F /* JuntaProjectionTests.swift */,
 				19F8CDBBBF2E11474BA08A78 /* KmpBridgeWatchTests.swift */,
@@ -2292,6 +2298,7 @@
 				A16EC8B96A8491E180F8CE3D /* EvaluationSessionBoardView.swift */,
 				E922E11F3F5C230B61F05C10 /* EvaluationSessionStore.swift */,
 				810903E198F9573C820FD886 /* EvaluationSessionView.swift */,
+				DA34B6B3AA80DA1F70395750 /* GradeReportBatchExporter.swift */,
 				1E9400117477EBE7766B1004 /* GradeReportDispatchSheet.swift */,
 				68CECDCD8E8BA9586738CB42 /* GradeReportMailComposer.swift */,
 				22A843B7836ADC09ABE07A6E /* InclusionTrackerView.swift */,
@@ -2746,6 +2753,7 @@
 				6669D2E57DFF465030F853CB /* DiaryTimelineProjectionTests.swift in Sources */,
 				9A2E79679FB4D66F7BBE4353 /* EvaluationClosingFlowTests.swift in Sources */,
 				DDBFDD73166CA58075F42401 /* EvaluationCommentImportTests.swift in Sources */,
+				83BDEFE456A9B44B1FE59823 /* GradeReportBatchExporterTests.swift in Sources */,
 				1008A8FEAEAFDC3650892F48 /* GroupBoardGridLayoutTests.swift in Sources */,
 				D8CD80C744205E4451971AA0 /* JuntaProjectionTests.swift in Sources */,
 				0B76889311EC1A92AA95496C /* KmpBridgeWatchTests.swift in Sources */,
@@ -2905,6 +2913,7 @@
 				1438B6144A1B3E1A60D6E9A2 /* EvaluationSessionView.swift in Sources */,
 				E87B821CC8CE67E56C40621C /* EvaluationSettingsView.swift in Sources */,
 				8CDF2E982B870BD83D430A83 /* GeneralSettingsView.swift in Sources */,
+				2C58AED7C85A72F8B54644A9 /* GradeReportBatchExporter.swift in Sources */,
 				DBAE4DCAFCFD24622130E049 /* GradeReportDispatchSheet.swift in Sources */,
 				BEE4E1EA3D8CFBC0C1CD3311 /* GradeReportMailComposer.swift in Sources */,
 				1B2C7DAD7AEEF4FA93C4382C /* GroupStageConfiguration.swift in Sources */,
@@ -3397,6 +3406,7 @@
 				BC4B4976BB038E11C49934CF /* ExportSheet.swift in Sources */,
 				EE76EADE438B22F17CB7A803 /* FloatingControls.swift in Sources */,
 				4DA54612ADD4CCE7CBCF9577 /* GeneralSettingsView.swift in Sources */,
+				09D74C2F8224533D5D2D735E /* GradeReportBatchExporter.swift in Sources */,
 				178713BF4688D84DFD9E6B12 /* GradeReportDispatchSheet.swift in Sources */,
 				1C2A89A633294E6B6BDD1F82 /* GradeReportMailComposer.swift in Sources */,
 				C50A52CB1FD0B26AFC159A90 /* GroupSheets.swift in Sources */,

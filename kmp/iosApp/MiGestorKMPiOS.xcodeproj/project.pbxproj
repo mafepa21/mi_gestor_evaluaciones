@@ -254,6 +254,7 @@
 		3FA1406F09B961DDDCFC19C0 /* MacRubricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABD5C416DAF2C9F1BB98CB1 /* MacRubricsView.swift */; };
 		3FA574AA93A4CAE372C3152B /* KmpBridge+NotebookEvaluation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35C876E0294768CC608879AC /* KmpBridge+NotebookEvaluation.swift */; };
 		3FF1BF0D16BF0F5C1BDD8354 /* SupportMeasureBulkImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26E65AEB66C13E89107AA8BA /* SupportMeasureBulkImportSheet.swift */; };
+		4009807AC0340DF445707D2A /* EducamosEvaluationMatching.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49940E7071B0DC3535FD161B /* EducamosEvaluationMatching.swift */; };
 		404152863CFAC7A84D37B872 /* NotebookClassPickerComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 808AE922E0187FD7FAEA5FFC /* NotebookClassPickerComponents.swift */; };
 		4070A29B6AD59600E298B2F4 /* SdaTournamentRubricSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3C18AF6C427C16F84A5CBBC /* SdaTournamentRubricSheet.swift */; };
 		4082176C927DA2B8C18C834C /* KmpBridge+SyncLAN.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D1F4F31F6224448FEE5718 /* KmpBridge+SyncLAN.swift */; };
@@ -343,6 +344,7 @@
 		542ADE7A23F1332BB9ECE624 /* NotebookEvaluationSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44F5F2DAFE0799BE6F6DF708 /* NotebookEvaluationSheets.swift */; };
 		55881333E8EF00D0F018B1B8 /* NotebookFormulaEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9967D38B9A879C71B174CAE6 /* NotebookFormulaEditorSheet.swift */; };
 		55BC740588BFC9C4D12C7A55 /* PlannerSessionAIAssistantSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0243BF8C00C29271B58D894B /* PlannerSessionAIAssistantSheet.swift */; };
+		55F1A18856684992E608626A /* EducamosEvaluationMatching.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49940E7071B0DC3535FD161B /* EducamosEvaluationMatching.swift */; };
 		56234DAACC18188F7C681066 /* AppleLifecycleNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA5E3F32F725E60EF71507B /* AppleLifecycleNotifications.swift */; };
 		5632658DCEA1D81F68BCF011 /* AppleCalendarSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A03FDE0C4F31704F1EB7F1E /* AppleCalendarSettingsView.swift */; };
 		564C98196DA69A9B30E24636 /* TeacherTermNoteEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E963AC50763BBD8E21C700 /* TeacherTermNoteEditor.swift */; };
@@ -991,6 +993,7 @@
 		EC1817FC5C801E01A4ECC71C /* WebPortalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F16B3AD2252E6530EC2D79BA /* WebPortalStore.swift */; };
 		EC3FE7565B8305ADFD4458DF /* TournamentNotesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C179C02A5FDB3DA774D35629 /* TournamentNotesTests.swift */; };
 		EC465FA1A3AA49BBF03CF1B5 /* AppleBackupModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B44EBC79907A49017DC0CD /* AppleBackupModels.swift */; };
+		EC4C52AFD6DFC7054CFA085E /* EducamosEvaluationMatchingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97DBBDB632409D1838653F8F /* EducamosEvaluationMatchingTests.swift */; };
 		EC8F549D4FA038658EE40327 /* PhysicalTestSetupWizardSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C0CB8CB623CA1ADBC0DFF6F /* PhysicalTestSetupWizardSheet.swift */; };
 		ED98D88C7B3D125F44C52856 /* ApplePortableBackupSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D4F4BED25965EAF394D2A2A /* ApplePortableBackupSheets.swift */; };
 		EDECBDC094AC979CC8E1120A /* ProjectionEnglishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC9EE5348217691F85D9113 /* ProjectionEnglishTests.swift */; };
@@ -1288,6 +1291,7 @@
 		45E5C92C7E6989DEA198FADC /* SdaProjectionScenes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SdaProjectionScenes.swift; sourceTree = "<group>"; };
 		466A6EE8F4E0ABF4D24AEDDD /* AppleViewCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleViewCompatibility.swift; sourceTree = "<group>"; };
 		467B02D2576A83946B6237BA /* MiGestorKMPiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MiGestorKMPiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		49940E7071B0DC3535FD161B /* EducamosEvaluationMatching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EducamosEvaluationMatching.swift; sourceTree = "<group>"; };
 		4A47C8FEAEAB280FF9E56FDA /* KmpBridgeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KmpBridgeModels.swift; sourceTree = "<group>"; };
 		4B834188C13BEE93C12A69D4 /* PlannerDaySheetPDFRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerDaySheetPDFRendererTests.swift; sourceTree = "<group>"; };
 		4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleView.swift; sourceTree = "<group>"; };
@@ -1476,6 +1480,7 @@
 		968077A1B396C10078A51773 /* LegacyTournamentMigratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyTournamentMigratorTests.swift; sourceTree = "<group>"; };
 		96D315F8AD91123E61E2BAC9 /* TournamentPlanEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TournamentPlanEstimator.swift; sourceTree = "<group>"; };
 		9709BFE74E58DAF93AA2E4C0 /* TournamentLiveStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TournamentLiveStateTests.swift; sourceTree = "<group>"; };
+		97DBBDB632409D1838653F8F /* EducamosEvaluationMatchingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EducamosEvaluationMatchingTests.swift; sourceTree = "<group>"; };
 		981C6D0281E5FDAD29F3E195 /* PhysicalTestsGroupsViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalTestsGroupsViews.swift; sourceTree = "<group>"; };
 		98A9F35D6CEDD07FCA45EBA5 /* MacSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSettingsView.swift; sourceTree = "<group>"; };
 		98E67AE039A950AB5F97323B /* MacTournamentProjectionWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacTournamentProjectionWindow.swift; sourceTree = "<group>"; };
@@ -1823,6 +1828,7 @@
 				553CB47B4806F997A313F12A /* CourtVoiceCriteriaTests.swift */,
 				C7555A56587822C96BF3303A /* CourtVoiceRealDictationTests.swift */,
 				379959F6774F930B1BDBD791 /* DiaryTimelineProjectionTests.swift */,
+				97DBBDB632409D1838653F8F /* EducamosEvaluationMatchingTests.swift */,
 				3B525ADC177B6828B2F6DD5C /* EvaluationClosingFlowTests.swift */,
 				6526B53A14BF954CE33CBD17 /* EvaluationCommentImportTests.swift */,
 				58180F3B684F4CFA6F650BAA /* EvaluationTabQuickNotesTests.swift */,
@@ -2306,6 +2312,7 @@
 				E9DDA0E6F08F741F76A88455 /* DiaryExportPDFSheet.swift */,
 				531AE7FED19377A844BC1165 /* DiaryTimelineModels.swift */,
 				4ED9D8451FE6172EFBD59BC5 /* DiaryWorkspaceView.swift */,
+				49940E7071B0DC3535FD161B /* EducamosEvaluationMatching.swift */,
 				E7718D843E34107AC5241204 /* EducamosSMExportSheet.swift */,
 				565AB2893F931BC86C0A8994 /* EvaluationClosingFlow.swift */,
 				9F341783F205DBB041F7C3FF /* EvaluationClosingSheet.swift */,
@@ -2774,6 +2781,7 @@
 				7AFCD20DE4748CFAC9DEC594 /* CourtVoiceCriteriaTests.swift in Sources */,
 				FC44FC4E6D4E107241F3E841 /* CourtVoiceRealDictationTests.swift in Sources */,
 				6669D2E57DFF465030F853CB /* DiaryTimelineProjectionTests.swift in Sources */,
+				EC4C52AFD6DFC7054CFA085E /* EducamosEvaluationMatchingTests.swift in Sources */,
 				9A2E79679FB4D66F7BBE4353 /* EvaluationClosingFlowTests.swift in Sources */,
 				DDBFDD73166CA58075F42401 /* EvaluationCommentImportTests.swift in Sources */,
 				30FBA5F02C0AD713EE4D78BA /* EvaluationTabQuickNotesTests.swift in Sources */,
@@ -2920,6 +2928,7 @@
 				CF68E17349CF56774354A1BB /* DiaryExportPDFSheet.swift in Sources */,
 				D49A13F7696C3B6DCA0D99EC /* DiaryTimelineModels.swift in Sources */,
 				CAF67FA20CA5E389338EA49A /* DiaryWorkspaceView.swift in Sources */,
+				4009807AC0340DF445707D2A /* EducamosEvaluationMatching.swift in Sources */,
 				BA7A856E7EC38FE569543540 /* EducamosSMExportSheet.swift in Sources */,
 				8D3995D946668FFCAAC0DCDE /* EducamosSMTemplateService.swift in Sources */,
 				5F942EFB956D97377E2E55CB /* EducamosSMXlsxWriter.swift in Sources */,
@@ -3416,6 +3425,7 @@
 				484F7BDF69DA03ED8222E014 /* DiaryTimelineModels.swift in Sources */,
 				E11C883BCE69B05FE0FBC324 /* DiaryWorkspaceView.swift in Sources */,
 				2F5460E8967B994D0C550828 /* DrawingCanvas.swift in Sources */,
+				55F1A18856684992E608626A /* EducamosEvaluationMatching.swift in Sources */,
 				A18BC39D531663255025F65C /* EducamosSMExportSheet.swift in Sources */,
 				4DD47300CBEB7F5784CCF080 /* EducamosSMTemplateService.swift in Sources */,
 				EF68CA636463C34D058454ED /* EducamosSMXlsxWriter.swift in Sources */,

@@ -52,6 +52,12 @@ data class LomloeCommentEvidence(
      * sin periodo configurado es `null` y quien consume usa las cifras de todo el curso.
      */
     val termMetrics: LomloeTermMetrics? = null,
+    /**
+     * Nota de evaluación (por bloques y sus pesos, ADR 003) si el grupo tiene una pestaña de
+     * evaluación para este trimestre. Es la misma nota del Resumen: el comentario la usa antes
+     * que la media del periodo o la del curso. `null` si no hay evaluación o no tiene notas.
+     */
+    val evaluationAverage: Double? = null,
 ) {
     val isEmpty: Boolean get() = criterionResults.isEmpty() && observations.isEmpty() && competencies.isEmpty()
 }
@@ -451,7 +457,37 @@ class BuildLomloeCommentEvidenceUseCase(
             maxCriterionResults = maxCriterionResults,
             maxObservations = maxObservations,
             termAverage = period?.let { termAverage(classId, studentId, input, it) },
+        ).copy(evaluationAverage = evaluationAverage(classId, studentId, termKey, classEvaluations, input))
+    }
+
+    /**
+     * Nota de la pestaña de evaluación del trimestre («1.ª Evaluación» → `T1`), con todas las
+     * columnas de sus bloques (sin filtrar por fechas, igual que el Resumen).
+     */
+    private suspend fun evaluationAverage(
+        classId: Long,
+        studentId: Long,
+        termKey: String,
+        classEvaluations: List<com.migestor.shared.domain.Evaluation>,
+        input: LomloeEvidenceInput,
+    ): Double? {
+        val tabs = notebookConfig.listTabs(classId)
+        val evaluationTab = tabs.firstOrNull { tab ->
+            NotebookEvaluation.isEvaluationTab(tabs, tab.id) &&
+                com.migestor.shared.domain.TeacherTermNoteKeys.fromLabel(tab.title) == termKey
+        } ?: return null
+        val student = classes.listStudentsInClass(classId).firstOrNull { it.id == studentId } ?: return null
+        val sheet = notebookSheet.build(
+            classId = classId,
+            evaluations = classEvaluations,
+            students = listOf(student),
+            tabs = tabs,
+            configuredColumns = input.columns,
+            persistedGrades = input.grades,
+            persistedCells = input.cells,
         )
+        val row = sheet.rows.firstOrNull { it.student.id == studentId } ?: return null
+        return NotebookEvaluation.explain(row, tabs, sheet.columns, evaluationTab.id)?.average
     }
 
     /**

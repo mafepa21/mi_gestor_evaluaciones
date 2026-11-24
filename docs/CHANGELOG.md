@@ -15,6 +15,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- «Exportar a Educamos» con pestañas de evaluación:
+  - **Avisos antes de generar**: alumnos sin notas en algún bloque (con «Ver alumnos»), alumnos sin comentario y SA sin pestaña.
+  - **Nota final de un alumno al que le falta un bloque**: «Dejarla vacía» (por defecto) o «Exportar la nota parcial», recordado por grupo.
+  - **Cada «Media de SA» es un menú de pestañas** (los bloques muestran su evaluación). Propone por nombre ignorando prefijos como «SA2», nunca propone una evaluación y recuerda la elección por grupo.
 - Cuaderno: **pestaña de evaluación con pesos por bloque** (iPad y Mac).
   - «1.ª/2.ª/3.ª Evaluación» reúnen sus bloques (una pestaña por situación de aprendizaje). La barra tiene dos niveles: arriba las evaluaciones, debajo «Resumen» y los bloques con su peso.
   - En el Resumen están las notas de cada bloque, agrupadas y plegables (plegado enseña la media del bloque), la nota de evaluación y el comentario.
@@ -86,6 +90,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- «Exportar a Educamos»: la «Nota final» sale de la evaluación del mismo trimestre que el Excel, no de la Media de la pestaña abierta.
+- Comentario LOMLOE: la IA cita la nota de evaluación (por bloques y pesos), la misma del Resumen. `LomloeCommentEvidence.evaluationAverage`.
 - «Exportar a Educamos»: cada «Media de SA» toma la media de su pestaña. Antes todas tomaban la Media de la pestaña abierta y con varias SA salían iguales.
 - Guardar una pestaña padre ya no puede borrar en cascada sus hijas (`upsertTab` con `ON CONFLICT`), y la caché de la hoja tiene en cuenta el peso y el título de la pestaña.
 - Flujo del boletín y Educamos (iPad y Mac), a partir de `docs/planes/analisis_flujo_boletin_educamos_2026-11-23.md`:
@@ -105,6 +111,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Avisos, SA por bloque y nota de evaluación en la IA (2026-11-24):
+  - `:data:desktopTest --tests "*LomloeEvaluationAverageTest*"`: con Hockey 7,5 (60 %) y Ultimate 6,0 (40 %), la IA recibe 6,9.
+  - `:shared:desktopTest --tests "*LomloeCommentEvidenceBuilderTest*"` en verde.
+  - XCTest `EducamosEvaluationMatchingTests` (4) y `EvaluationClosingFlowTests` en verde.
+  - Suite completa `xcodebuild test -scheme MiGestorPlannerTests` (macOS): 839 pruebas, 838 en verde y 1 fallo ajeno ya conocido (`LearningSituationDocumentImportTests.testBachilleratoSA2BadmintonSessionsImportBothRoutes`).
+  - `xcodebuild build -scheme MiGestorKMPiOS` (simulador iOS): OK.
+  - Dos veces el ejecutor de pruebas de macOS se quedó colgado antes de conectar (fallo del entorno, no del código). Al repetir sí conectó.
+  - Revisión HIG de la maqueta y del código: sin bloqueantes; ajustes aplicados.
+  - No hecho: QA manual ni subida a Educamos.
 - Pestaña de evaluación y valoración rápida (2026-11-24): `:shared:desktopTest` (`NotebookEvaluationTest` 6/6, `AverageCacheTest`, `BuildNotebookClosingReportUseCaseTest`) y `:data:desktopTest` (`EvaluationTabAndQuickNotePhraseTest` 6/6, `UpgradePathRegressionTest` 3/3, `ModuleRecordsSyncTest` 6/6, `EvaluationSessionRepositorySqlDelightTest` con versión de esquema 51). `xcodebuild test -scheme MiGestorPlannerTests` (macOS): 830 pruebas, 829 en verde y 1 fallo ajeno ya conocido (`LearningSituationDocumentImportTests.testBachilleratoSA2BadmintonSessionsImportBothRoutes`); nuevas `EvaluationTabQuickNotesTests`. `xcodebuild build -scheme MiGestorKMPiOS` (simulador iOS): OK. Revisión del plan de datos por `architect` (5 cambios aplicados) y revisión HIG de maqueta y código por `ui-reviewer` (bloqueantes aplicados). No hecho: prueba manual en iPad y Mac, sync real entre dos dispositivos ni subida a Educamos.
 - Guardar todos los PDF: `xcodebuild test -scheme MiGestorPlannerTests` con `GradeReportBatchExporterTests` y `StudentGradeReportPDFRendererTests` (10 tests, verde, datos inventados); build de `MiGestorKMPiOS` (simulador genérico) sin errores. Sin prueba manual en pantalla.
 - Arreglos y HIG del flujo boletín → Educamos (2026-11-23): `./gradlew :shared:desktopTest --tests "*LomloeCommentEvidenceBuilderTest*"` 14/14. `xcodebuild test -scheme MiGestorPlannerTests` (macOS): 821 pruebas, 4 omitidas, 1 fallo ajeno ya conocido (`LearningSituationDocumentImportTests.testBachilleratoSA2BadmintonSessionsImportBothRoutes`); las del flujo (`BulletinBaseReportTests`, `BulletinBaseBridgeTests`, `EvaluationCommentImportTests`) en verde. `xcodebuild build -scheme MiGestorKMPiOS` (simulador iOS genérico): OK. Revisión HIG del código cambiado por subagente: los 3 bloqueantes de «Exportar a Educamos» resueltos y los detalles restantes aplicados. No hecho: prueba manual en la app ni subida real a Educamos.

@@ -28,6 +28,11 @@ struct EducamosSMExportSheet: View {
     @State private var isProcessing = false
     @State private var generatedFileURL: URL?
     @State private var savedToDownloadsPath: String?
+    /// Alumnos a los que les falta algún bloque de la evaluación (nota con *).
+    @State private var partialStudents: [EducamosPartialStudent] = []
+    @State private var studentsWithoutComment = 0
+    @State private var partialGradePolicy: EducamosPartialGradePolicy = .leaveEmpty
+    @State private var partialPolicyLoaded = false
 
     enum ExportStep {
         case selectFile
@@ -40,7 +45,10 @@ struct EducamosSMExportSheet: View {
         let educamosElement: EducamosSMElement
         var appColumn: NotebookColumnDefinition?
         let isCategorySA: Bool
-        let appTabTitle: String?
+        /// Pestaña del Cuaderno de una «Media de SA» (un bloque o una pestaña suelta).
+        var appTab: NotebookTab?
+
+        var appTabTitle: String? { appTab?.title }
 
         var isMatched: Bool {
             appColumn != nil || appTabTitle != nil || educamosElement.isNotaFinal
@@ -52,7 +60,7 @@ struct EducamosSMExportSheet: View {
             } else if let tab = appTabTitle {
                 return tab
             } else if educamosElement.isNotaFinal {
-                return "Media evaluación"
+                return "Nota de evaluación"
             }
             return "-"
         }
@@ -247,8 +255,10 @@ struct EducamosSMExportSheet: View {
                     Text("Plantilla de Educamos")
                 }
 
+                warningsSection
+
                 if orderMatchedCount > 0 || unmatchedCount > 0 {
-                    Section("Avisos") {
+                    Section("Emparejamiento") {
                         if orderMatchedCount > 0 {
                             Label {
                                 Text(orderMatchedCount == 1
@@ -306,6 +316,80 @@ struct EducamosSMExportSheet: View {
         }
     }
 
+    private var unmatchedSAs: [MatchedColumn] {
+        matchedColumns.filter { $0.isCategorySA && $0.appTab == nil }
+    }
+
+    /// Avisos antes de generar: bloques sin notas, alumnos sin comentario y SA sin pestaña.
+    @ViewBuilder
+    private var warningsSection: some View {
+        Section {
+            if !partialStudents.isEmpty {
+                warningLabel(partialStudentsText)
+                Picker("Nota final de esos alumnos", selection: $partialGradePolicy) {
+                    ForEach(EducamosPartialGradePolicy.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.menu)
+                .frame(minHeight: 44)
+                .accessibilityHint("Si eliges dejarla vacía, su nota final no se exporta")
+                .appOnChange(of: partialGradePolicy) { policy in
+                    policy.save(classId: data.sheet.classId)
+                    if let template { buildStudentMatches(template: template) }
+                }
+                DisclosureGroup("Ver alumnos") {
+                    ForEach(partialStudents) { student in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(student.name)
+                            Text("Sin notas en \(ListFormatter.localizedString(byJoining: student.missingBlocks))")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+            if studentsWithoutComment > 0 {
+                warningLabel(studentsWithoutComment == 1
+                    ? "1 alumno sin comentario de evaluación. Su columna «Comentarios» quedará vacía."
+                    : "\(studentsWithoutComment) alumnos sin comentario de evaluación. Su columna «Comentarios» quedará vacía.")
+            }
+            ForEach(unmatchedSAs) { col in
+                warningLabel("\(col.educamosElement.shortName) no tiene pestaña: su columna quedará vacía. Elígela abajo.")
+            }
+            if partialStudents.isEmpty && studentsWithoutComment == 0 && unmatchedSAs.isEmpty {
+                Label {
+                    Text("Todo completo: todos tienen nota en todos los bloques y comentario.")
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                }
+            }
+        } header: {
+            Text("Avisos")
+        } footer: {
+            if !partialStudents.isEmpty || studentsWithoutComment > 0 || !unmatchedSAs.isEmpty {
+                Text("Puedes generar igual. La app recuerda tus elecciones en este grupo.")
+            }
+        }
+    }
+
+    private var partialStudentsText: String {
+        let blocks = Set(partialStudents.flatMap(\.missingBlocks)).sorted()
+        let names = ListFormatter.localizedString(byJoining: blocks)
+        return partialStudents.count == 1
+            ? "1 alumno no tiene notas en \(names). Su nota de evaluación usa solo los demás bloques."
+            : "\(partialStudents.count) alumnos no tienen notas en \(names). Su nota de evaluación usa solo los demás bloques."
+    }
+
+    private func warningLabel(_ text: String) -> some View {
+        Label {
+            Text(text)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Aviso: \(text)")
+    }
+
     private func columnTitleBlock(_ col: MatchedColumn) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
@@ -325,6 +409,8 @@ struct EducamosSMExportSheet: View {
     private func columnSourceView(_ col: MatchedColumn) -> some View {
         if col.educamosElement.isInstrumento || col.educamosElement.isComentarios {
             columnPicker(for: col)
+        } else if col.isCategorySA {
+            tabPicker(for: col)
         } else if col.isMatched {
             Label {
                 Text(col.sourceTitle)
@@ -401,6 +487,53 @@ struct EducamosSMExportSheet: View {
 
 
     /// Menú para elegir a mano la columna del cuaderno de un instrumento de Educamos.
+    /// Menú de la pestaña de una «Media de SA»: bloques (con su evaluación) y pestañas sueltas.
+    private func tabPicker(for col: MatchedColumn) -> some View {
+        let tabs = data.sheet.tabs
+        return Menu {
+            Button {
+                chooseTab(nil, for: col)
+            } label: {
+                if col.appTab == nil { Label("Sin pestaña", systemImage: "checkmark") } else { Text("Sin pestaña") }
+            }
+            Divider()
+            ForEach(EducamosSATabMatcher.candidateTabs(tabs), id: \.id) { tab in
+                let title = EducamosSATabMatcher.displayTitle(tab, tabs: tabs)
+                Button {
+                    chooseTab(tab, for: col)
+                } label: {
+                    if tab.id == col.appTab?.id { Label(title, systemImage: "checkmark") } else { Text(title) }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                if let tab = col.appTab {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).accessibilityHidden(true)
+                    Text(EducamosSATabMatcher.displayTitle(tab, tabs: tabs))
+                        .font(.subheadline.weight(.medium))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.trailing)
+                } else {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
+                    Text("Elegir pestaña")
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                }
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
+        .accessibilityLabel("Pestaña para \(col.educamosElement.shortName)")
+        .accessibilityValue(col.appTab.map { EducamosSATabMatcher.displayTitle($0, tabs: tabs) } ?? "Sin pestaña. Su columna quedará vacía")
+    }
+
     private func columnPicker(for col: MatchedColumn) -> some View {
         Menu {
             Button {
@@ -611,6 +744,18 @@ struct EducamosSMExportSheet: View {
         }
     }
 
+    private func chooseTab(_ tab: NotebookTab?, for col: MatchedColumn) {
+        var mapping = savedMapping()
+        mapping[mappingKey(for: col.educamosElement)] = tab.map { "tab:\($0.id)" } ?? ""
+        UserDefaults.standard.set(mapping, forKey: savedMappingKey)
+
+        guard let index = matchedColumns.firstIndex(where: { $0.id == col.id }) else { return }
+        matchedColumns[index].appTab = tab
+        if let template {
+            buildStudentMatches(template: template)
+        }
+    }
+
     /// Empareja columnas, pestañas de SA y alumnos de Educamos con los datos del cuaderno.
     private func buildMatching(template: EducamosSMTemplate) {
         let candidates = selectableAppColumns
@@ -640,16 +785,18 @@ struct EducamosSMExportSheet: View {
                     educamosElement: element,
                     appColumn: matchedCol,
                     isCategorySA: false,
-                    appTabTitle: nil
+                    appTab: nil
                 ))
             } else if element.isCategoriaSA {
-                // Buscar pestaña (SA) cuyo título coincida con el nombre corto (ej. "Handball" <-> "Hand")
-                let matchedTab = data.sheet.tabs.first { tab in
-                    tab.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                        .localizedCaseInsensitiveCompare(element.shortName) == .orderedSame
-                } ?? data.sheet.tabs.first { tab in
-                    tab.title.localizedCaseInsensitiveContains(element.shortName) ||
-                    element.shortName.localizedCaseInsensitiveContains(tab.title)
+                // Primero la elección guardada («tab:<id>», o vacía = sin pestaña); si no, por nombre
+                // («SA2 Hockey» → Hockey). Nunca una evaluación: su media es la nota final.
+                let tabs = data.sheet.tabs
+                let matchedTab: NotebookTab?
+                if let savedValue = saved[mappingKey(for: element)],
+                   savedValue.isEmpty || EducamosSATabMatcher.candidateTabs(tabs).contains(where: { "tab:\($0.id)" == savedValue }) {
+                    matchedTab = EducamosSATabMatcher.candidateTabs(tabs).first { "tab:\($0.id)" == savedValue }
+                } else {
+                    matchedTab = EducamosSATabMatcher.propose(shortName: element.shortName, tabs: tabs)
                 }
 
                 columnMatches.append(MatchedColumn(
@@ -657,7 +804,7 @@ struct EducamosSMExportSheet: View {
                     educamosElement: element,
                     appColumn: nil,
                     isCategorySA: true,
-                    appTabTitle: matchedTab?.title
+                    appTab: matchedTab
                 ))
             } else if element.isComentarios {
                 // Comentario del profesor: la elección guardada o «Comentario de evaluación» de la pestaña activa.
@@ -676,7 +823,7 @@ struct EducamosSMExportSheet: View {
                     educamosElement: element,
                     appColumn: matchedCol,
                     isCategorySA: false,
-                    appTabTitle: nil
+                    appTab: nil
                 ))
             } else if element.isNotaFinal {
                 columnMatches.append(MatchedColumn(
@@ -684,7 +831,7 @@ struct EducamosSMExportSheet: View {
                     educamosElement: element,
                     appColumn: nil,
                     isCategorySA: false,
-                    appTabTitle: nil
+                    appTab: nil
                 ))
             }
         }
@@ -697,6 +844,17 @@ struct EducamosSMExportSheet: View {
     private func buildStudentMatches(template: EducamosSMTemplate) {
         let appStudents = filteredAppStudents
         let columnMatches = matchedColumns
+        if !partialPolicyLoaded {
+            partialGradePolicy = EducamosPartialGradePolicy.load(classId: data.sheet.classId)
+            partialPolicyLoaded = true
+        }
+        // La nota final sale de la evaluación del Excel, no de la pestaña abierta.
+        let evaluationTabId = EducamosFinalGradeSource.evaluationTabId(
+            tabs: data.sheet.tabs,
+            excelEvaluation: template.metadata.evaluacion,
+            activeTabId: bridge.selectedNotebookTabId
+        )
+        var partials: [EducamosPartialStudent] = []
 
         // 2. Emparejar alumnos
         matchedStudents = template.students.map { educamosStudent in
@@ -774,13 +932,11 @@ struct EducamosSMExportSheet: View {
                         }
                     }
                     // B) Media de Situación de Aprendizaje (SA)
-                    else if colMatch.isCategorySA && colMatch.appTabTitle != nil {
-                        // Media de esa pestaña (su situación de aprendizaje), no la de la pestaña abierta:
-                        // antes todas las SA salían con la misma Media.
-                        let saTab = data.sheet.tabs.first { $0.title == colMatch.appTabTitle }
-                        let saAverage = saTab.flatMap { tab in
-                            tableRow.flatMap { NotebookEvaluation.shared.tabAverage(row: $0, columns: data.sheet.columns, tabId: tab.id, numericDrafts: [:]) }
-                        } ?? tableRow?.weightedAverage
+                    else if colMatch.isCategorySA, let saTab = colMatch.appTab {
+                        // Media de esa pestaña (su situación de aprendizaje), no la de la pestaña abierta.
+                        let saAverage = tableRow.flatMap {
+                            NotebookEvaluation.shared.tabAverage(row: $0, columns: data.sheet.columns, tabId: saTab.id, numericDrafts: [:])
+                        }
                         if let avg = saAverage?.doubleValue {
                             studentGrades.append(StudentGradeEntry(
                                 columnLetter: el.columnLetter,
@@ -791,7 +947,21 @@ struct EducamosSMExportSheet: View {
                     }
                     // C) Nota final de evaluación (entero 0-10)
                     else if el.isNotaFinal {
-                        if let avg = tableRow?.weightedAverage?.doubleValue {
+                        let evaluationExplanation = evaluationTabId.flatMap { evalId in
+                            tableRow.flatMap {
+                                NotebookEvaluation.shared.explain(row: $0, tabs: data.sheet.tabs, columns: data.sheet.columns, evaluationTabId: evalId, numericDrafts: [:])
+                            }
+                        }
+                        if let explanation = evaluationExplanation, explanation.isPartial {
+                            partials.append(EducamosPartialStudent(
+                                id: student.id,
+                                name: "\(student.lastName), \(student.firstName)",
+                                missingBlocks: explanation.blocksWithoutGrades.map(\.title)
+                            ))
+                        }
+                        let skipPartial = evaluationExplanation?.isPartial == true && partialGradePolicy == .leaveEmpty
+                        let finalAverage = evaluationTabId == nil ? tableRow?.weightedAverage : evaluationExplanation?.average
+                        if !skipPartial, let avg = finalAverage?.doubleValue {
                             let intGrade = max(0, min(10, Int(avg.rounded())))
                             studentGrades.append(StudentGradeEntry(
                                 columnLetter: el.columnLetter,
@@ -814,6 +984,9 @@ struct EducamosSMExportSheet: View {
 
         totalGradesToExport = matchedStudents.reduce(0) { $0 + $1.grades.filter { !$0.isComment }.count }
         totalCommentsToExport = matchedStudents.filter(\.hasComment).count
+        partialStudents = partials
+        let hasCommentColumn = columnMatches.contains { $0.educamosElement.isComentarios && $0.appColumn != nil }
+        studentsWithoutComment = hasCommentColumn ? matchedStudents.filter { $0.hasMatch && !$0.hasComment }.count : 0
     }
 
     /// Columnas que se pueden elegir: de texto para el comentario, todas para los instrumentos.

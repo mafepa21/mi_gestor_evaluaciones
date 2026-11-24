@@ -89,3 +89,4 @@
 - Swift no ve los parámetros por defecto de Kotlin: cualquier `NotebookTab(...)` o `NotebookRow(...)` en Swift debe pasar `weight:` y `evaluationExplanation:`.
 - Etiquetas de trimestre en pruebas: sin cifras 1, 2 o 3, o `TeacherTermNoteKeys.fromLabel` las convierte en T1–T3 y se mezclan con otras pruebas.
 - «Organizar por evaluaciones…» se abre desde el menú del shell (iPad, iPhone y Mac) con `layoutState.openNotebookOrganizeTabs()`. El menú «Pestañas» de `notebookCommandMenuContent` solo existe en la vista compacta: lo que se ponga solo ahí no se ve en iPad ni en Mac.
+- Exportar a Educamos: la «Nota final» la decide `EducamosFinalGradeSource`, que usa la evaluación del trimestre del Excel y, si no la reconoce, la de la pestaña abierta. Las SA se emparejan con `EducamosSATabMatcher`, que nunca empareja con una evaluación, y se guardan en el mismo diccionario de `UserDefaults` que las columnas con el valor `tab:<id>`.

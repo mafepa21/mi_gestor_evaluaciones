@@ -383,8 +383,9 @@ extension NotebookModuleView {
                             data: data,
                             bridge: bridge,
                             className: currentClass?.name ?? "Grupo",
-                            tabId: bridge.selectedNotebookTabId,
-                            tabTitle: data.sheet.tabs.first { $0.id == bridge.selectedNotebookTabId }?.title,
+                            // Desde un bloque se cierra su evaluación (donde vive el comentario).
+                            tabId: closingEvaluationTabId(data: data),
+                            tabTitle: data.sheet.tabs.first { $0.id == closingEvaluationTabId(data: data) }?.title,
                             contextText: closingReviewContextText(data: data),
                             loadClosingReport: {
                                 try await bridge.buildNotebookClosingReport(data: data)

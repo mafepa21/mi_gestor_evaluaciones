@@ -49,7 +49,7 @@ final class WebPortalGradesTests: XCTestCase {
         return NotebookRow(
             student: student,
             cells: grades.sorted { $0.key < $1.key }.map { NotebookCell(evaluationId: $0.key, value: KotlinDouble(value: $0.value)) },
-            weightedAverage: nil, averageExplanation: nil, persistedCells: [], persistedGrades: []
+            weightedAverage: nil, averageExplanation: nil, persistedCells: [], persistedGrades: [], evaluationExplanation: nil
         )
     }
 

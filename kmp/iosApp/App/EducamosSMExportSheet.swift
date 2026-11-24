@@ -775,7 +775,13 @@ struct EducamosSMExportSheet: View {
                     }
                     // B) Media de Situación de Aprendizaje (SA)
                     else if colMatch.isCategorySA && colMatch.appTabTitle != nil {
-                        if let avg = tableRow?.weightedAverage?.doubleValue {
+                        // Media de esa pestaña (su situación de aprendizaje), no la de la pestaña abierta:
+                        // antes todas las SA salían con la misma Media.
+                        let saTab = data.sheet.tabs.first { $0.title == colMatch.appTabTitle }
+                        let saAverage = saTab.flatMap { tab in
+                            tableRow.flatMap { NotebookEvaluation.shared.tabAverage(row: $0, columns: data.sheet.columns, tabId: tab.id, numericDrafts: [:]) }
+                        } ?? tableRow?.weightedAverage
+                        if let avg = saAverage?.doubleValue {
                             studentGrades.append(StudentGradeEntry(
                                 columnLetter: el.columnLetter,
                                 value: .decimal(avg),

@@ -21,6 +21,7 @@ struct EvaluationClosingSheet: View {
     enum Step: Hashable {
         case notes
         case comments
+        case readComments
         case upload
     }
 
@@ -30,6 +31,8 @@ struct EvaluationClosingSheet: View {
         case importComments
         case educamos
         case quickNote(studentId: Int64)
+        case groupNote
+        case copyPrevious
 
         var id: String {
             switch self {
@@ -38,6 +41,8 @@ struct EvaluationClosingSheet: View {
             case .importComments: return "importar"
             case .educamos: return "educamos"
             case .quickNote(let id): return "valoracion-\(id)"
+            case .groupNote: return "por-ficha"
+            case .copyPrevious: return "copiar"
             }
         }
     }
@@ -309,7 +314,19 @@ struct EvaluationClosingSheet: View {
                     onDeviceAI: { presented = .deviceAI },
                     onAnonymousText: { presented = .anonymousText },
                     onImport: { presented = .importComments },
-                    onStudent: { presented = .quickNote(studentId: $0) }
+                    onStudent: { presented = .quickNote(studentId: $0) },
+                    onGroupNote: { presented = .groupNote },
+                    onCopyPrevious: term == .first ? nil : { presented = .copyPrevious }
+                )
+            }
+        case .readComments:
+            if case .loaded(let snapshot) = phase {
+                EvaluationCommentsReviewView(
+                    bridge: bridge,
+                    classId: classId,
+                    tabId: tabId,
+                    students: snapshot.students,
+                    initialComments: snapshot.commentByStudent
                 )
             }
         case .upload:
@@ -384,6 +401,37 @@ struct EvaluationClosingSheet: View {
             #else
             .presentationDetents([.large])
             #endif
+        case .groupNote:
+            if case .loaded(let snapshot) = phase {
+                QuickNoteGroupSheet(
+                    bridge: bridge,
+                    classId: classId,
+                    termLabel: term.rawValue,
+                    students: snapshot.students,
+                    inputsByStudent: snapshot.bulletin?.inputsByStudent ?? [:]
+                )
+                #if os(macOS)
+                .frame(minWidth: 560, minHeight: 640)
+                #else
+                .presentationDetents([.large])
+                #endif
+            }
+        case .copyPrevious:
+            if case .loaded(let snapshot) = phase,
+               let index = EvaluationClosingTerm.allCases.firstIndex(of: term), index > 0 {
+                CopyPreviousTermSheet(
+                    bridge: bridge,
+                    classId: classId,
+                    fromTerm: EvaluationClosingTerm.allCases[index - 1],
+                    toTerm: term,
+                    studentIds: snapshot.students.map(\.id)
+                )
+                #if os(macOS)
+                .frame(width: 460, height: 320)
+                #else
+                .presentationDetents([.medium])
+                #endif
+            }
         case .quickNote(let studentId):
             if case .loaded(let snapshot) = phase {
                 QuickTermNoteSheet(
@@ -415,6 +463,10 @@ struct EvaluationClosingSheet: View {
 
     @MainActor
     private func load() async {
+        // La Media del Cuaderno (y la nota final de Educamos) debe ser la de la evaluación.
+        if let tabId, bridge.selectedNotebookTabId != tabId {
+            bridge.setSelectedNotebookTab(id: tabId)
+        }
         if case .loaded = phase {} else { phase = .loading }
         do {
             let report = try await loadClosingReport()
@@ -457,6 +509,9 @@ struct EvaluationClosingCommentsView: View {
     let onAnonymousText: () -> Void
     let onImport: () -> Void
     let onStudent: (Int64) -> Void
+    let onGroupNote: () -> Void
+    /// `nil` en el 1.er trimestre (no hay uno anterior).
+    let onCopyPrevious: (() -> Void)?
 
     enum Filter: String, CaseIterable, Identifiable {
         case missing = "Sin comentario"
@@ -505,6 +560,36 @@ struct EvaluationClosingCommentsView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(.isButton)
+                NavigationLink(value: EvaluationClosingSheet.Step.readComments) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Leer y editar comentarios")
+                        Text("Todos enteros, sin cortar, y se editan en el sitio")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(minHeight: 44)
+                }
+            } header: {
+                Text("Comentario de evaluación")
+            }
+
+            Section {
+                Button(action: onGroupNote) {
+                    actionRow("Valorar por ficha", detail: "Eliges una ficha y marcas a todos los que la merecen")
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(.isButton)
+                if let onCopyPrevious {
+                    Button(action: onCopyPrevious) {
+                        actionRow("Copiar del trimestre anterior", detail: "Como punto de partida; no pisa a nadie por defecto")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(.isButton)
+                }
+            } header: {
+                Text("Tu valoración (privada)")
+            } footer: {
+                Text("Es lo que la IA usa para redactar. Toca un alumno de la lista para valorarlo a fondo.")
             }
 
             Section {

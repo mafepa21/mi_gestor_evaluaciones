@@ -111,6 +111,12 @@ extension NotebookModuleView {
         return tabs.first?.id
     }
 
+    /// Pestaña sobre la que trabaja «Cerrar evaluación»: la evaluación si la activa es un bloque.
+    func closingEvaluationTabId(data: NotebookUiStateData) -> String? {
+        let selected = bridge.selectedNotebookTabId
+        return NotebookEvaluation.shared.evaluationTabId(tabs: data.sheet.tabs, tabId: selected) ?? selected
+    }
+
     /// Pestaña de la barra de arriba que se marca: la evaluación si la activa es uno de sus bloques.
     func activeRootNotebookTabId(data: NotebookUiStateData) -> String? {
         guard let active = activeNotebookTabId(data: data) else { return nil }

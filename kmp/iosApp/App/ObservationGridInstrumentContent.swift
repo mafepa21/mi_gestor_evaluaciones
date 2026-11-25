@@ -66,17 +66,17 @@ struct ObservationGridInstrumentContent: View {
         InstrumentEvaluationChromeSurface(role: .context) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(instrumentAverageText == "—" ? "Nota provisional" : "Nota del instrumento")
+                    Text(overallLevelAverage == nil ? "Nota provisional" : "Nota en el Cuaderno")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    Text("Media de las sesiones respondidas")
+                    Text(instrumentSubtitleText)
                         .font(.caption)
                         .foregroundStyle(.secondary.opacity(0.8))
                 }
                 Spacer()
                 Text(instrumentAverageText)
                     .font(.title3.weight(.bold))
-                    .foregroundStyle(instrumentAverageText == "—" ? .secondary : NotebookStyle.successTint)
+                    .foregroundStyle(overallLevelAverage == nil ? .secondary : NotebookStyle.successTint)
                     .monospacedDigit()
             }
         }
@@ -145,13 +145,27 @@ struct ObservationGridInstrumentContent: View {
     }
 
     private func averageText(for indices: [Int]) -> String {
-        sessionAverage(for: indices).map { String(format: "%.2f", $0) } ?? "—"
+        guard let avg = sessionAverage(for: indices) else { return "—" }
+        let onTen = NotebookStructuredGrade.scoreOutOfTen(fromFourLevel: avg)
+        return "\(NotebookPhysicalMark.decimalText(onTen)) / 10 (\(NotebookPhysicalMark.decimalText(avg))/4)"
+    }
+
+    private var overallLevelAverage: Double? {
+        let sessionAverages = groups.compactMap { sessionAverage(for: $0.itemIndices) }
+        guard !sessionAverages.isEmpty else { return nil }
+        return sessionAverages.reduce(0, +) / Double(sessionAverages.count)
+    }
+
+    private var instrumentSubtitleText: String {
+        guard let overall = overallLevelAverage else {
+            return "Se evalúa de 1 a 4 y se transpone sobre 10 automáticamente"
+        }
+        return "Media \(NotebookPhysicalMark.decimalText(overall)) / 4 en las sesiones respondidas"
     }
 
     private var instrumentAverageText: String {
-        let sessionAverages = groups.compactMap { sessionAverage(for: $0.itemIndices) }
-        guard !sessionAverages.isEmpty else { return "—" }
-        let overall = sessionAverages.reduce(0, +) / Double(sessionAverages.count)
-        return String(format: "%.2f / 4", overall)
+        guard let overall = overallLevelAverage else { return "—" }
+        let onTen = NotebookStructuredGrade.scoreOutOfTen(fromFourLevel: overall)
+        return "\(NotebookPhysicalMark.decimalText(onTen)) / 10"
     }
 }

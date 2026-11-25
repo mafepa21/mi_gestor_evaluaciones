@@ -238,19 +238,21 @@ struct StructuredInstrumentBulkEvaluationSheet: View {
     }
 
     private func gradeLabel(for student: StructuredInstrumentBulkRequest.Student) -> some View {
-        let grade = models[student.id].flatMap(previewGrade)
+        let rawGrade = models[student.id].flatMap(previewGrade)
         return Group {
-            if let grade {
+            if let rawGrade {
+                let onTen = NotebookStructuredGrade.scoreOutOfTen(fromFourLevel: rawGrade)
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text(NotebookPhysicalMark.decimalText(grade))
+                    Text(NotebookPhysicalMark.decimalText(onTen))
                         .font(.body.weight(.bold))
                         .monospacedDigit()
-                    Text("/ 4")
+                    Text("/ 10")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
+                .help("Nivel \(NotebookPhysicalMark.decimalText(rawGrade)) / 4")
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("Nota \(NotebookPhysicalMark.decimalText(grade)) sobre 4")
+                .accessibilityLabel("Nota \(NotebookPhysicalMark.decimalText(onTen)) sobre 10, nivel \(NotebookPhysicalMark.decimalText(rawGrade)) sobre 4")
             } else {
                 Text("—")
                     .foregroundStyle(.secondary)

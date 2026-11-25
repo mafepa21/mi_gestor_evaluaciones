@@ -971,12 +971,19 @@ private struct NotebookStatefulEditableTableCell: View {
                         }
                     } label: {
                         HStack(spacing: 6) {
-                            Text(numericDraft.isEmpty ? "—" : numericDraft)
+                            let displayedNumeric = transposedFourLevelNumericDisplay
+                            Text(displayedNumeric.primary)
                                 .notebookFont(size: 13, weight: .bold, design: .rounded)
                                 .monospacedDigit()
                                 .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                                 .lineLimit(1)
-                            if let physicalScore {
+                            if let levelBadge = displayedNumeric.levelBadge {
+                                Text(levelBadge)
+                                    .notebookFont(size: 11, weight: .semibold, design: .rounded)
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            } else if let physicalScore {
                                 Text("· \(IosFormatting.decimal(physicalScore))")
                                     .notebookFont(size: 11, weight: .bold, design: .rounded)
                                     .monospacedDigit()
@@ -1181,12 +1188,23 @@ private struct NotebookStatefulEditableTableCell: View {
                         return .handled
                     }
             } else {
-                Text(numericDraft.isEmpty ? "—" : numericDraft)
-                    .font(NotebookGridStyle.cellFont)
-                    .monospacedDigit()
-                    .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                let displayedNumeric = transposedFourLevelNumericDisplay
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Spacer(minLength: 0)
+                    Text(displayedNumeric.primary)
+                        .font(NotebookGridStyle.cellFont)
+                        .monospacedDigit()
+                        .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                        .lineLimit(1)
+                    if let levelBadge = displayedNumeric.levelBadge {
+                        Text(levelBadge)
+                            .notebookFont(size: 11, weight: .medium, design: .rounded)
+                            .monospacedDigit()
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
     }
@@ -1415,6 +1433,17 @@ private struct NotebookStatefulEditableTableCell: View {
         let raw = draft.isEmpty ? displaySnapshot.numericText : draft
         guard let value = NotebookStructuredGrade.parse(raw) else { return nil }
         return NotebookStructuredGrade(value: value, column: column)
+    }
+
+    private var transposedFourLevelNumericDisplay: (primary: String, levelBadge: String?) {
+        guard !numericDraft.isEmpty else { return ("—", nil) }
+        guard column.scaleKind == .fourLevel,
+              let raw = NotebookStructuredGrade.parse(numericDraft),
+              raw >= 1.0 && raw <= 4.0 else {
+            return (numericDraft, nil)
+        }
+        let onTen = NotebookStructuredGrade.scoreOutOfTen(fromFourLevel: raw)
+        return (NotebookPhysicalMark.decimalText(onTen), "(\(NotebookPhysicalMark.decimalText(raw))/4)")
     }
 
     private var choicePopoverBinding: Binding<Bool> {
@@ -2288,6 +2317,7 @@ private extension NotebookColumnDefinition {
         id == other.id &&
             type == other.type &&
             inputKind == other.inputKind &&
+            scaleKind == other.scaleKind &&
             categoryKind == other.categoryKind &&
             categoryId == other.categoryId &&
             colorHex == other.colorHex &&
@@ -2443,21 +2473,48 @@ private struct NotebookRubricValueLabel: View {
     }
 }
 
-/// Nota de un instrumento estructurado con la escala en la que se guardó.
-/// Las notas derivadas son 1-4 (observación, rúbrica de alumnado, escala genérica) o 0-10
-/// (checklist proporcional). La escala se deduce con la misma regla que el editor de media
-/// (`NotebookAverageEditorSheet.rescaleNumericGrade`): si cambia una, cambiar la otra.
+/// Nota de un instrumento estructurado transponiendo escalas 1-4 a base 0-10.
+/// La conversión `(nivel − 1) / 3 × 10` coincide con `NotebookColumnDefinition.rescaleNumericGrade`
+/// (Kotlin) y `NotebookAverageEditorSheet`, de modo que la nota mostrada en el Cuaderno, la media
+/// y la exportación a Educamos sean idénticas.
 struct NotebookStructuredGrade: Equatable {
+    /// Nota sobre 10 mostrada en el Cuaderno y exportada.
     let value: Double
-    let maximum: Int
+    /// Nivel medio original 1-4 cuando el instrumento puntúa de 1 a 4; `nil` si ya nace sobre 10.
+    let rawFourLevelValue: Double?
+    let maximum: Int = 10
 
-    init(value: Double, column: NotebookColumnDefinition) {
-        self.value = value
-        // Las listas de casillas dan nota 0-10 aunque caiga entre 1 y 4 (p. ej. 2,5).
+    init(value rawValue: Double, column: NotebookColumnDefinition) {
+        if Self.usesFourLevelScale(rawValue: rawValue, column: column) {
+            let clamped = min(max(rawValue, 1.0), 4.0)
+            self.rawFourLevelValue = clamped
+            self.value = Self.scoreOutOfTen(fromFourLevel: clamped)
+        } else {
+            self.rawFourLevelValue = nil
+            self.value = rawValue
+        }
+    }
+
+    static func usesFourLevelScale(rawValue: Double, column: NotebookColumnDefinition) -> Bool {
         let isCheckList = column.inputKind == .structuredChecklist
-        let isFourLevel = column.scaleKind == .fourLevel
-            || (!isCheckList && column.scaleKind != .tenPoint && value >= 1.0 && value <= 4.0)
-        self.maximum = isFourLevel ? 4 : 10
+        return column.scaleKind == .fourLevel
+            || (!isCheckList && column.scaleKind != .tenPoint && rawValue >= 1.0 && rawValue <= 4.0)
+    }
+
+    static func scoreOutOfTen(fromFourLevel level: Double) -> Double {
+        let clamped = min(max(level, 1.0), 4.0)
+        return (clamped - 1.0) / 3.0 * 10.0
+    }
+
+    static func rescaleIfNeeded(_ rawValue: Double, column: NotebookColumnDefinition) -> Double {
+        if column.scaleKind == .fourLevel {
+            return scoreOutOfTen(fromFourLevel: rawValue)
+        }
+        if column.inputKind.isStructuredInstrument,
+           usesFourLevelScale(rawValue: rawValue, column: column) {
+            return scoreOutOfTen(fromFourLevel: rawValue)
+        }
+        return rawValue
     }
 
     static func parse(_ raw: String) -> Double? {
@@ -2468,7 +2525,12 @@ struct NotebookStructuredGrade: Equatable {
 
     var valueText: String { NotebookPhysicalMark.decimalText(value) }
     var scaleText: String { "/ \(maximum)" }
-    var accessibilityText: String { "\(valueText) sobre \(maximum)" }
+    var accessibilityText: String {
+        if let rawFourLevelValue {
+            return "\(valueText) sobre 10 (nivel \(NotebookPhysicalMark.decimalText(rawFourLevelValue)) sobre 4)"
+        }
+        return "\(valueText) sobre \(maximum)"
+    }
 }
 
 /// Estado de un instrumento estructurado (observación, checklist). Con nota: la nota y su

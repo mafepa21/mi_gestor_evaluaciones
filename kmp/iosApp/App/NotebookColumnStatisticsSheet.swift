@@ -316,7 +316,7 @@ enum NotebookStatisticsExtractor {
     ) -> Double? {
         // 1. Nota numérica directa persistida
         if let value = row.persistedGrades.first(where: { $0.columnId == column.id })?.value?.doubleValue {
-            return value
+            return NotebookStructuredGrade.rescaleIfNeeded(value, column: column)
         }
 
         // 2. Columna tipo check / binaria
@@ -328,7 +328,7 @@ enum NotebookStatisticsExtractor {
         // 3. Celda de evaluación vinculada
         if let evaluationId = column.evaluationId?.int64Value,
            let value = row.cells.first(where: { $0.evaluationId == evaluationId })?.value?.doubleValue {
-            return value
+            return NotebookStructuredGrade.rescaleIfNeeded(value, column: column)
         }
 
         // 4. Rúbrica evaluada a través de KmpBridge
@@ -347,7 +347,7 @@ enum NotebookStatisticsExtractor {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .replacingOccurrences(of: ",", with: ".")
             if let parsed = Double(raw) {
-                return parsed
+                return NotebookStructuredGrade.rescaleIfNeeded(parsed, column: column)
             }
         }
 

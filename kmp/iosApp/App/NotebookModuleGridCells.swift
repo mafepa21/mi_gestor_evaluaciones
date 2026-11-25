@@ -980,10 +980,10 @@ extension NotebookModuleView {
         let hasNote = !(annotation.note?.isEmpty ?? true)
         let attachmentCount = annotation.attachmentCount
 
-        // Instrumento estructurado que no es columna numérica (formulario, quiz, observación):
-        // la nota derivada vive en las notas guardadas y el progreso ("Completo", "3/5") en
-        // `displayValue`. Se pasan los dos para que la celda enseñe la nota y, al lado, el estado.
-        if column.inputKind.isStructuredInstrument, column.type != .numeric {
+        // Instrumento estructurado (rejilla 1-4, formulario, quiz, checklist):
+        // la nota cruda vive en `persistedGrades` (`1-4` o `0-10`) y el progreso ("Completo", "3/5")
+        // en `displayValue`. `NotebookStructuredGrade` la transpone una única vez a base 10.
+        if column.inputKind.isStructuredInstrument {
             return NotebookCellDisplaySnapshot(
                 numericText: persistedRawNumericText(for: item, columnId: column.id)
                     .trimmingCharacters(in: .whitespacesAndNewlines),

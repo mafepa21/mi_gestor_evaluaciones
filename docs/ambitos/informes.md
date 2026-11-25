@@ -25,3 +25,6 @@
 - El icono `text.bubble` de «Comentario de evaluación» es contrato con KMP (`LomloeCommentEvidenceBuilder.EVALUATION_COMMENT_ICON`): si cambia en Swift, la IA volverá a leer el comentario como observación.
 - Asistencia del informe anónimo: «sin material» y «exento» son presencia. Un estado no reconocido no cuenta en el porcentaje.
 - «Base para boletín» usa `BuildLomloeCommentEvidenceUseCase.invokeForClass` (una carga para todo el grupo) para rúbricas y notas de celda; las incidencias siguen saliendo del puente y los acuerdos de tutoría se descartan a propósito. El periodo es el del horario docente (`resolveTermPeriod`) y, si no hay, las fechas fijas de `AttendanceMatrixRange`.
+- Enviar notas (Mac): `ShareLink` en el Mac solo comparte (AirDrop, Mail…), no guarda en el disco. Para guardar, `fileExporter` con `GradeReportPDFDocument`. Va en un `.background` aparte del `fileImporter` de carpeta: dos paneles de archivo en la misma vista se pisan.
+- En las hojas del Mac, un botón en `.primaryAction` de la barra puede no verse: lo importante va también en el contenido (la columna de la izquierda).
+- El detalle enseña primero al alumno elegido. «Has terminado» solo sale sin nadie elegido: si no, tapa el informe de los alumnos sin correo.

@@ -90,6 +90,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Enviar notas al alumnado (Mac): ya se pueden guardar los informes en PDF.
+  - Con nadie por enviar (o nadie con correo), «Has terminado» tapaba al alumno elegido y su PDF. Ahora el alumno elegido va primero (también en iPad).
+  - «Guardar PDF…» sale en cada alumno con notas y abre «Guardar como». Antes era Compartir, que en el Mac no guarda en el disco, y solo salía sin correo.
+  - «Guardar todos los PDF…» pasa a la columna de la izquierda en el Mac.
 - «Exportar a Educamos»: la «Nota final» sale de la evaluación del mismo trimestre que el Excel, no de la Media de la pestaña abierta.
 - Comentario LOMLOE: la IA cita la nota de evaluación (por bloques y pesos), la misma del Resumen. `LomloeCommentEvidence.evaluationAverage`.
 - «Exportar a Educamos»: cada «Media de SA» toma la media de su pestaña. Antes todas tomaban la Media de la pestaña abierta y con varias SA salían iguales.
@@ -111,6 +115,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Informes en PDF desde el Mac (2026-11-25):
+  - App de Mac con datos inventados (3 ESO A): «Guardar PDF…» de Ana guardó `Notas_Evaluacion_Ana_Lopez.pdf` (1 página).
+  - «Guardar todos los PDF…» creó «Notas Evaluación · 3 ESO A» con los 2 PDF.
+  - Antes del arreglo, la misma prueba enseñaba «Has terminado» y ningún botón para guardar.
+  - `xcodebuild test -only-testing:GradeReportBatchExporterTests` (macOS): 5 en verde.
+  - `xcodebuild build -scheme MiGestorKMPiOS` (simulador iOS): OK.
+  - No hecho: suite completa ni prueba en el iPad.
 - Avisos, SA por bloque y nota de evaluación en la IA (2026-11-24):
   - `:data:desktopTest --tests "*LomloeEvaluationAverageTest*"`: con Hockey 7,5 (60 %) y Ultimate 6,0 (40 %), la IA recibe 6,9.
   - `:shared:desktopTest --tests "*LomloeCommentEvidenceBuilderTest*"` en verde.

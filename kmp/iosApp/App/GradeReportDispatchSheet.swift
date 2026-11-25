@@ -40,6 +40,9 @@ struct GradeReportDispatchSheet: View {
     @State private var batchDone = 0
     @State private var batchTotal = 0
     @State private var batchSummary: GradeReportBatchSummary?
+    /// PDF de un alumno listo para «Guardar como» (Mac).
+    @State private var pdfToSave: GradeReportPDFDocument?
+    @State private var pdfToSaveName = ""
 
     private let aiService = AppleFoundationGradeReportService()
 
@@ -60,15 +63,11 @@ struct GradeReportDispatchSheet: View {
                         }
                         .disabled(nextToSend == nil || isBatchRunning)
                     }
+#if os(iOS)
                     ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            isFolderPickerPresented = true
-                        } label: {
-                            Label("Guardar todos los PDF…", systemImage: "square.and.arrow.down.on.square")
-                        }
-                        .help("Guarda un PDF por alumno en la carpeta que elijas")
-                        .disabled(isLoading || isBatchRunning || !reports.contains(where: { $0.hasGrades }))
+                        saveAllButton
                     }
+#endif
                 }
                 .safeAreaInset(edge: .bottom) {
                     if isBatchRunning { batchProgressBar }
@@ -92,6 +91,22 @@ struct GradeReportDispatchSheet: View {
             case .failure: errorMessage = "No se pudo abrir esa carpeta. Elige otra."
             }
         }
+#if os(macOS)
+        .background {
+            // Aparte del selector de carpeta: dos paneles de archivo en la misma vista se pisan.
+            Color.clear.fileExporter(
+                isPresented: Binding(get: { pdfToSave != nil }, set: { if !$0 { pdfToSave = nil } }),
+                document: pdfToSave,
+                contentType: .pdf,
+                defaultFilename: pdfToSaveName
+            ) { result in
+                if case .failure = result {
+                    errorMessage = "No se pudo guardar el PDF. Prueba en otra carpeta."
+                }
+                pdfToSave = nil
+            }
+        }
+#endif
         .alert(
             batchSummary?.title ?? "",
             isPresented: Binding(get: { batchSummary != nil }, set: { if !$0 { batchSummary = nil } }),
@@ -127,6 +142,37 @@ struct GradeReportDispatchSheet: View {
             emailEditor(for: report)
         }
     }
+
+    // MARK: - Guardar PDF
+
+    private var saveAllButton: some View {
+        Button {
+            isFolderPickerPresented = true
+        } label: {
+            Label("Guardar todos los PDF…", systemImage: "square.and.arrow.down.on.square")
+        }
+        .help("Guarda un PDF por alumno en la carpeta que elijas")
+        .disabled(isLoading || isBatchRunning || !reports.contains(where: { $0.hasGrades }))
+    }
+
+#if os(macOS)
+    /// En el Mac, «Compartir» no guarda en el disco: se abre «Guardar como».
+    private func savePDFButton(for report: StudentGradeReport) -> some View {
+        Button {
+            guard let data = pdfData(for: report) else {
+                errorMessage = "No se pudo crear el PDF de \(report.firstName). Prueba otra vez."
+                return
+            }
+            errorMessage = nil
+            pdfToSaveName = StudentGradeReportPDFRenderer.fileName(for: report, periodName: periodName)
+            pdfToSave = GradeReportPDFDocument(data: data)
+        } label: {
+            Label("Guardar PDF…", systemImage: "square.and.arrow.down")
+        }
+        .help("Guarda el informe de \(report.firstName) en el Mac")
+        .disabled(!report.hasGrades || isBatchRunning)
+    }
+#endif
 
     // MARK: - Contenido
 
@@ -177,15 +223,9 @@ struct GradeReportDispatchSheet: View {
 
     @ViewBuilder
     private var detail: some View {
-        if allSent {
-            ContentUnavailableView {
-                Label("Has terminado", systemImage: "checkmark.circle.fill")
-            } description: {
-                Text(withoutEmailCount == 0
-                     ? "Todos los informes están enviados."
-                     : "Quedan \(withoutEmailCount) alumnos sin correo. Añade su correo o guarda su PDF para dárselo en mano.")
-            }
-        } else if let report = selectedReport {
+        // El alumno elegido va primero: si no, con todo enviado (o nadie con correo)
+        // «Has terminado» tapaba su informe y no había forma de guardar su PDF.
+        if let report = selectedReport {
             ScrollView {
                 preview(for: report)
                     .padding(24)
@@ -193,6 +233,14 @@ struct GradeReportDispatchSheet: View {
                     .frame(maxWidth: .infinity)
             }
             .background(Color.secondary.opacity(0.06))
+        } else if allSent {
+            ContentUnavailableView {
+                Label("Has terminado", systemImage: "checkmark.circle.fill")
+            } description: {
+                Text(withoutEmailCount == 0
+                     ? "Todos los informes están enviados."
+                     : "Quedan \(withoutEmailCount) alumnos sin correo. Elige uno en la lista para añadir su correo o guardar su PDF.")
+            }
         } else {
             ContentUnavailableView("Elige un alumno", systemImage: "person.crop.rectangle")
         }
@@ -202,6 +250,9 @@ struct GradeReportDispatchSheet: View {
         Section {
             LabeledContent("Evaluación", value: periodName)
             TextField("Asignatura", text: $subjectName, prompt: Text("Asignatura (p. ej. Educación Física)"))
+#if os(macOS)
+            saveAllButton
+#endif
         } footer: {
             Text("Para otra evaluación, cambia de pestaña en el Cuaderno. Las notas son las mismas que la columna Media.")
         }
@@ -267,6 +318,14 @@ struct GradeReportDispatchSheet: View {
     private func preview(for report: StudentGradeReport) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             banners(for: report)
+#if os(macOS)
+            if report.hasGrades {
+                HStack {
+                    Spacer()
+                    savePDFButton(for: report)
+                }
+            }
+#endif
             GradeReportPreviewCard(
                 report: report,
                 className: className,
@@ -289,7 +348,9 @@ struct GradeReportDispatchSheet: View {
                     emailEditorText = ""
                     emailEditorTarget = report
                 }
+#if os(iOS)
                 sharePDFButton(for: report, title: "Guardar PDF")
+#endif
             }
         } else if !GradeReportMail.canComposeInApp {
             GradeReportBanner(text: "Este dispositivo no tiene una cuenta configurada en Mail.", tint: .red) {
@@ -545,6 +606,15 @@ struct GradeReportDispatchSheet: View {
         }
     }
 
+    private func pdfData(for report: StudentGradeReport) -> Data? {
+        let narrative = narratives[report.studentId] ?? AppleFoundationGradeReportService.templateNarrative(for: report)
+        return StudentGradeReportPDFRenderer.pdfData(
+            report: report,
+            narrative: narrative,
+            context: .init(className: className, subjectName: subjectName, periodName: periodName)
+        )
+    }
+
     private func pdfURL(for report: StudentGradeReport) -> URL? {
         let narrative = narratives[report.studentId] ?? AppleFoundationGradeReportService.templateNarrative(for: report)
         return StudentGradeReportPDFRenderer.writeTemporaryFile(
@@ -626,6 +696,23 @@ struct GradeReportPDFFile: Transferable, @unchecked Sendable {
             guard let url else { throw CocoaError(.fileWriteUnknown) }
             return SentTransferredFile(url)
         }
+    }
+}
+
+/// PDF de un informe para el panel «Guardar como».
+struct GradeReportPDFDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.pdf] }
+    let data: Data
+
+    init(data: Data) { self.data = data }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else { throw CocoaError(.fileReadCorruptFile) }
+        self.data = data
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
     }
 }
 

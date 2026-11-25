@@ -72,7 +72,7 @@ struct StudentRubricInstrumentContent: View {
                         .font(.title3.weight(.bold))
                         .foregroundStyle(NotebookStyle.successTint)
                 }
-                Text("Cada indicador puntúa de 1 a 4. La nota del instrumento es la media de los indicadores respondidos.")
+                Text(rubricSubtitleText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -210,12 +210,25 @@ struct StudentRubricInstrumentContent: View {
         )
     }
 
-    private var averageText: String {
+    private var rawAverage: Double? {
         let values = sections.rubricIndices.compactMap {
             Double(model.items[$0].numberValue.replacingOccurrences(of: ",", with: "."))
         }
-        guard !values.isEmpty else { return "—" }
-        return String(format: "%.2f / 4", values.reduce(0, +) / Double(values.count))
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +) / Double(values.count)
+    }
+
+    private var rubricSubtitleText: String {
+        guard let avg = rawAverage else {
+            return "Cada indicador puntúa de 1 a 4 y se transpone automáticamente a nota sobre 10."
+        }
+        return "Media \(NotebookPhysicalMark.decimalText(avg)) / 4 · transpuesta automáticamente sobre 10."
+    }
+
+    private var averageText: String {
+        guard let avg = rawAverage else { return "—" }
+        let onTen = NotebookStructuredGrade.scoreOutOfTen(fromFourLevel: avg)
+        return "\(NotebookPhysicalMark.decimalText(onTen)) / 10"
     }
 }
 

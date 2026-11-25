@@ -400,11 +400,10 @@ extension NotebookModuleView {
     func uncachedDisplayValue(for item: NotebookTableRow, column: NotebookColumnDefinition) -> String {
         let gradeDrafts = bridge.optimisticGradeDrafts
         if column.inputKind.isStructuredInstrument {
-            if column.type == .numeric {
-                let grade = persistedNumericDisplay(for: item, column: column, gradeDrafts: gradeDrafts)
-                if !grade.isEmpty {
-                    return grade
-                }
+            let raw = persistedRawNumericText(for: item, columnId: column.id, gradeDrafts: gradeDrafts)
+            if let num = NotebookStructuredGrade.parse(raw) {
+                let onTen = NotebookStructuredGrade.rescaleIfNeeded(num, column: column)
+                return NotebookPhysicalMark.decimalText(onTen)
             }
             return persistedStructuredText(for: item, column: column)
         }

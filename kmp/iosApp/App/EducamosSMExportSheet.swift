@@ -7,9 +7,10 @@ import AppKit
 
 // MARK: - Export Sheet
 
-/// Sheet que guía al docente para exportar las notas del cuaderno al formato Educamos SM.
+/// Hoja simplificada según Apple HIG para exportar las calificaciones del Cuaderno a Educamos SM.
 ///
-/// Flujo: Importar plantilla → Revisar matching de alumnos e instrumentos → Generar y compartir xlsx.
+/// Detecta automáticamente las columnas y pestañas del Cuaderno, transpone las escalas 1-4 a nota sobre 10
+/// y oculta el ruido técnico para mostrar únicamente la información necesaria para exportar.
 struct EducamosSMExportSheet: View {
     let data: NotebookUiStateData
     let bridge: KmpBridge
@@ -28,11 +29,11 @@ struct EducamosSMExportSheet: View {
     @State private var isProcessing = false
     @State private var generatedFileURL: URL?
     @State private var savedToDownloadsPath: String?
-    /// Alumnos a los que les falta algún bloque de la evaluación (nota con *).
     @State private var partialStudents: [EducamosPartialStudent] = []
-    @State private var studentsWithoutComment = 0
     @State private var partialGradePolicy: EducamosPartialGradePolicy = .leaveEmpty
     @State private var partialPolicyLoaded = false
+    @State private var showUnmatchedColumns = false
+    @State private var showStudentDetails = false
 
     enum ExportStep {
         case selectFile
@@ -45,7 +46,6 @@ struct EducamosSMExportSheet: View {
         let educamosElement: EducamosSMElement
         var appColumn: NotebookColumnDefinition?
         let isCategorySA: Bool
-        /// Pestaña del Cuaderno de una «Media de SA» (un bloque o una pestaña suelta).
         var appTab: NotebookTab?
 
         var appTabTitle: String? { appTab?.title }
@@ -62,20 +62,7 @@ struct EducamosSMExportSheet: View {
             } else if educamosElement.isNotaFinal {
                 return "Nota de evaluación"
             }
-            return "-"
-        }
-
-        var kindDescription: String {
-            if educamosElement.isComentarios {
-                return "Comentario del profesor"
-            }
-            if educamosElement.isNotaFinal {
-                return "Nota final evaluación"
-            } else if isCategorySA {
-                return "Media Situación de Aprendizaje"
-            } else {
-                return "Instrumento de evaluación"
-            }
+            return "No exportar"
         }
     }
 
@@ -96,12 +83,12 @@ struct EducamosSMExportSheet: View {
         let educamosStudent: EducamosSMStudent
         var appStudent: Student?
         var grades: [StudentGradeEntry] = []
-        /// No se encontró por nombre y se tomó el alumno con el mismo número de orden.
         var matchedByOrder = false
 
         var hasMatch: Bool { appStudent != nil }
         var hasGrades: Bool { !grades.isEmpty }
         var hasComment: Bool { grades.contains { $0.isComment } }
+        var numericGradeCount: Int { grades.filter { !$0.isComment }.count }
     }
 
     var body: some View {
@@ -137,8 +124,7 @@ struct EducamosSMExportSheet: View {
 
     private var navigationTitle: String {
         switch step {
-        case .selectFile: return "Exportar a Educamos"
-        case .reviewMatching: return "Revisar exportación"
+        case .selectFile, .reviewMatching: return "Exportar a Educamos"
         case .export: return "Archivo listo"
         }
     }
@@ -159,18 +145,21 @@ struct EducamosSMExportSheet: View {
                 Button {
                     Task { await generateExport() }
                 } label: {
-                    Text("Generar")
-                        .opacity(isProcessing ? 0 : 1)
-                        .overlay {
-                            if isProcessing { ProgressView().controlSize(.small) }
-                        }
+                    if isProcessing {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Text("Exportar")
+                    }
                 }
+                .buttonStyle(.borderedProminent)
                 .disabled(!canGenerate)
-                .accessibilityLabel(isProcessing ? "Generando archivo" : "Generar archivo con \(exportSummary)")
+                .accessibilityLabel(isProcessing ? "Exportando archivo" : "Exportar \(exportSummary)")
             }
         case .export:
             ToolbarItem(placement: .confirmationAction) {
-                Button("Hecho") { dismiss() }
+                Button("Listo") { dismiss() }
+                    .buttonStyle(.borderedProminent)
             }
         }
     }
@@ -179,13 +168,12 @@ struct EducamosSMExportSheet: View {
         (totalGradesToExport > 0 || totalCommentsToExport > 0) && !isProcessing
     }
 
-    /// Error visible: icono en rojo y texto en el color principal, para que se lea bien.
     private func errorLabel(_ message: String) -> some View {
         Label {
             Text(message)
         } icon: {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(EvaluationDesign.danger)
         }
         .font(.callout)
     }
@@ -196,305 +184,302 @@ struct EducamosSMExportSheet: View {
         VStack(spacing: 24) {
             Spacer()
 
-            Image(systemName: "doc.badge.arrow.up")
-                .font(.system(size: 56))
+            Image(systemName: "square.and.arrow.up.on.square")
+                .font(.system(size: 48, weight: .regular))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
 
             VStack(spacing: 8) {
-                Text("Exportar notas a Educamos SM")
-                    .font(.headline)
+                Text("Plantilla de Educamos")
+                    .font(.title3.weight(.semibold))
 
-                Text("Selecciona el archivo .xlsx descargado de Educamos. La app completará las columnas de instrumentos, la media de la Situación de Aprendizaje, la nota final y el comentario de evaluación.")
+                Text("Selecciona el archivo .xlsx descargado de Educamos. Las columnas del Cuaderno se asocian solas y las escalas 1-4 se exportan sobre 10.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
+                    .frame(maxWidth: 400)
             }
 
             Button {
                 isFileImporterPresented = true
             } label: {
-                Label("Seleccionar archivo de Educamos", systemImage: "folder")
-                    .frame(maxWidth: .infinity)
+                Label("Seleccionar plantilla…", systemImage: "doc.badge.plus")
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .padding(.horizontal, 40)
 
             if let errorMessage {
                 errorLabel(errorMessage)
-                    .padding(.horizontal, 32)
+                    .frame(maxWidth: 400)
             }
 
             Spacer()
             Spacer()
         }
-        .padding()
+        .padding(32)
     }
 
-    // MARK: - Step 2: Review matching
+    // MARK: - Step 2: Review matching (Apple HIG)
 
     private var orderMatchedCount: Int { matchedStudents.filter(\.matchedByOrder).count }
-    private var unmatchedCount: Int { matchedStudents.filter { !$0.hasMatch }.count }
+    private var unmatchedStudentCount: Int { matchedStudents.filter { !$0.hasMatch }.count }
+    private var activeColumns: [MatchedColumn] { matchedColumns.filter(\.isMatched) }
+    private var inactiveColumns: [MatchedColumn] { matchedColumns.filter { !$0.isMatched } }
+    private var hasStudentIncidents: Bool { orderMatchedCount > 0 || unmatchedStudentCount > 0 }
 
     private var reviewMatchingView: some View {
-        List {
+        Form {
             if let errorMessage {
                 Section { errorLabel(errorMessage) }
             }
+
             if let template {
+                // 1. Cabecera compacta de contexto (1 fila en lugar de 6)
                 Section {
-                    LabeledContent("Materia", value: template.metadata.materia)
-                    LabeledContent("Evaluación", value: template.metadata.evaluacion)
-                    LabeledContent("Curso", value: template.metadata.cursoEscolar)
-                    LabeledContent("Alumnos en Educamos", value: "\(template.students.count)")
-                    LabeledContent("Alumnos en el Cuaderno", value: "\(filteredAppStudents.count)")
-                    Button("Cambiar archivo") { isFileImporterPresented = true }
+                    HStack(spacing: 16) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(templateHeadline(template))
+                                .font(.headline)
+                            Text(templateSubtitle(template))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .layoutPriority(1)
+
+                        Spacer(minLength: 8)
+
+                        Button("Cambiar…") {
+                            isFileImporterPresented = true
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                         .disabled(isProcessing)
-                } header: {
-                    Text("Plantilla de Educamos")
-                }
-
-                warningsSection
-
-                if orderMatchedCount > 0 || unmatchedCount > 0 {
-                    Section("Emparejamiento") {
-                        if orderMatchedCount > 0 {
-                            Label {
-                                Text(orderMatchedCount == 1
-                                     ? "1 alumno se ha emparejado por su número de orden, no por su nombre. Comprueba que es la misma persona."
-                                     : "\(orderMatchedCount) alumnos se han emparejado por su número de orden, no por su nombre. Comprueba que son las mismas personas.")
-                            } icon: {
-                                Image(systemName: "list.number").foregroundStyle(.orange)
-                            }
-                        }
-                        if unmatchedCount > 0 {
-                            Label {
-                                Text(unmatchedCount == 1
-                                     ? "1 alumno de Educamos no está en el Cuaderno. Su fila quedará sin rellenar."
-                                     : "\(unmatchedCount) alumnos de Educamos no están en el Cuaderno. Sus filas quedarán sin rellenar.")
-                            } icon: {
-                                Image(systemName: "person.crop.circle.badge.questionmark").foregroundStyle(.red)
-                            }
-                        }
                     }
+                    .padding(.vertical, 4)
                 }
 
+                // 2. Avisos accionables solo cuando requieren atención real
+                if !partialStudents.isEmpty || hasStudentIncidents {
+                    alertsSection
+                }
+
+                // 3. Columnas vinculadas automáticamente con el Cuaderno
                 Section {
-                    ForEach(matchedColumns) { col in
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 16) {
-                                columnTitleBlock(col)
-                                Spacer(minLength: 8)
-                                columnSourceView(col)
-                            }
-                            VStack(alignment: .leading, spacing: 8) {
-                                columnTitleBlock(col)
-                                columnSourceView(col)
+                    if activeColumns.isEmpty {
+                        ForEach(matchedColumns) { col in
+                            columnRow(col)
+                        }
+                    } else {
+                        ForEach(activeColumns) { col in
+                            columnRow(col)
+                        }
+
+                        if !inactiveColumns.isEmpty {
+                            DisclosureGroup(
+                                isExpanded: $showUnmatchedColumns
+                            ) {
+                                ForEach(inactiveColumns) { col in
+                                    columnRow(col)
+                                }
+                            } label: {
+                                Text(inactiveColumns.count == 1
+                                     ? "1 columna de Educamos sin correspondencia"
+                                     : "\(inactiveColumns.count) columnas de Educamos sin correspondencia")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
                             }
                         }
-                        .frame(minHeight: 44)
                     }
                 } header: {
-                    Text("Columnas detectadas")
+                    Text("Columnas a exportar")
                 } footer: {
-                    let matchedCount = matchedColumns.filter(\.isMatched).count
-                    Text("\(matchedCount) de \(matchedColumns.count) columnas emparejadas con el Cuaderno. Toca una columna para elegirla a mano; la app recordará tu elección en este grupo.")
+                    Text("Toca cualquier columna si quieres cambiar su correspondencia.")
                 }
 
+                // 4. Resumen compacto de exportación (sin volcar 30 filas por defecto)
                 Section {
-                    ForEach(matchedStudents) { match in
-                        studentRow(match)
+                    DisclosureGroup(isExpanded: $showStudentDetails) {
+                        ForEach(matchedStudents) { match in
+                            compactStudentRow(match)
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: hasStudentIncidents ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                                .foregroundStyle(hasStudentIncidents ? .orange : EvaluationDesign.success)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Se exportarán \(exportSummary)")
+                                    .font(.subheadline.weight(.medium))
+                                Text("\(matchedStudents.filter(\.hasMatch).count) de \(matchedStudents.count) alumnos emparejados")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 2)
                     }
-                } header: {
-                    Text("Emparejamiento de alumnos")
-                } footer: {
-                    let matchCount = matchedStudents.filter(\.hasMatch).count
-                    Text("\(matchCount) de \(matchedStudents.count) alumnos emparejados. Se escribirán \(exportSummary).")
                 }
             }
         }
+        .formStyle(.grouped)
     }
 
-    private var unmatchedSAs: [MatchedColumn] {
-        matchedColumns.filter { $0.isCategorySA && $0.appTab == nil }
-    }
-
-    /// Avisos antes de generar: bloques sin notas, alumnos sin comentario y SA sin pestaña.
     @ViewBuilder
-    private var warningsSection: some View {
+    private var alertsSection: some View {
         Section {
             if !partialStudents.isEmpty {
-                warningLabel(partialStudentsText)
-                Picker("Nota final de esos alumnos", selection: $partialGradePolicy) {
+                Label {
+                    Text(partialStudentsText)
+                        .font(.subheadline)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+
+                Picker("Nota final incompleta", selection: $partialGradePolicy) {
                     ForEach(EducamosPartialGradePolicy.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.menu)
-                .frame(minHeight: 44)
-                .accessibilityHint("Si eliges dejarla vacía, su nota final no se exporta")
                 .appOnChange(of: partialGradePolicy) { policy in
                     policy.save(classId: data.sheet.classId)
                     if let template { buildStudentMatches(template: template) }
                 }
-                DisclosureGroup("Ver alumnos") {
+
+                DisclosureGroup("Alumnos con bloques pendientes (\(partialStudents.count))") {
                     ForEach(partialStudents) { student in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(student.name)
-                            Text("Sin notas en \(ListFormatter.localizedString(byJoining: student.missingBlocks))")
-                                .font(.footnote)
+                        LabeledContent(student.name) {
+                            Text("Falta \(ListFormatter.localizedString(byJoining: student.missingBlocks))")
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        .accessibilityElement(children: .combine)
                     }
                 }
+                .font(.subheadline)
             }
-            if studentsWithoutComment > 0 {
-                warningLabel(studentsWithoutComment == 1
-                    ? "1 alumno sin comentario de evaluación. Su columna «Comentarios» quedará vacía."
-                    : "\(studentsWithoutComment) alumnos sin comentario de evaluación. Su columna «Comentarios» quedará vacía.")
-            }
-            ForEach(unmatchedSAs) { col in
-                warningLabel("\(col.educamosElement.shortName) no tiene pestaña: su columna quedará vacía. Elígela abajo.")
-            }
-            if partialStudents.isEmpty && studentsWithoutComment == 0 && unmatchedSAs.isEmpty {
+
+            if orderMatchedCount > 0 {
                 Label {
-                    Text("Todo completo: todos tienen nota en todos los bloques y comentario.")
+                    Text(orderMatchedCount == 1
+                         ? "1 alumno emparejado por número de lista; revísalo abajo."
+                         : "\(orderMatchedCount) alumnos emparejados por número de lista; revísalos abajo.")
+                        .font(.subheadline)
                 } icon: {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Image(systemName: "list.number")
+                        .foregroundStyle(.orange)
                 }
             }
-        } header: {
-            Text("Avisos")
-        } footer: {
-            if !partialStudents.isEmpty || studentsWithoutComment > 0 || !unmatchedSAs.isEmpty {
-                Text("Puedes generar igual. La app recuerda tus elecciones en este grupo.")
+
+            if unmatchedStudentCount > 0 {
+                Label {
+                    Text(unmatchedStudentCount == 1
+                         ? "1 alumno de Educamos no figura en este grupo."
+                         : "\(unmatchedStudentCount) alumnos de Educamos no figuran en este grupo.")
+                        .font(.subheadline)
+                } icon: {
+                    Image(systemName: "person.crop.circle.badge.questionmark")
+                        .foregroundStyle(EvaluationDesign.danger)
+                }
             }
         }
+    }
+
+    private func templateHeadline(_ template: EducamosSMTemplate) -> String {
+        let materia = template.metadata.materia.trimmingCharacters(in: .whitespacesAndNewlines)
+        let eval = formattedEvaluationName(template.metadata.evaluacion)
+        if materia.isEmpty { return eval }
+        if eval.isEmpty { return materia }
+        return "\(materia) · \(eval)"
+    }
+
+    private func templateSubtitle(_ template: EducamosSMTemplate) -> String {
+        var parts: [String] = []
+        let curso = template.metadata.cursoEscolar.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !curso.isEmpty { parts.append(curso) }
+        parts.append("\(template.students.count) alumnos")
+        return parts.joined(separator: " · ")
+    }
+
+    private func formattedEvaluationName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        if trimmed == trimmed.uppercased() {
+            return trimmed.lowercased().prefix(1).uppercased() + trimmed.lowercased().dropFirst()
+        }
+        return trimmed
     }
 
     private var partialStudentsText: String {
         let blocks = Set(partialStudents.flatMap(\.missingBlocks)).sorted()
         let names = ListFormatter.localizedString(byJoining: blocks)
         return partialStudents.count == 1
-            ? "1 alumno no tiene notas en \(names). Su nota de evaluación usa solo los demás bloques."
-            : "\(partialStudents.count) alumnos no tienen notas en \(names). Su nota de evaluación usa solo los demás bloques."
+            ? "1 alumno sin notas en \(names)."
+            : "\(partialStudents.count) alumnos sin notas en \(names)."
     }
 
-    private func warningLabel(_ text: String) -> some View {
-        Label {
-            Text(text)
-        } icon: {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Aviso: \(text)")
-    }
+    // MARK: - Filas limpias de columnas y alumnado
 
-    private func columnTitleBlock(_ col: MatchedColumn) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text(col.educamosElement.shortName)
-                    .font(.body.weight(.semibold))
-                Text("Columna \(col.id)")
-                    .font(.footnote.monospaced())
-                    .foregroundStyle(.secondary)
+    private func columnRow(_ col: MatchedColumn) -> some View {
+        HStack(spacing: 16) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(col.educamosElement.displayTitle)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                if let code = col.educamosElement.secondaryCode {
+                    Text(code)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else if col.isCategorySA {
+                    Text("SA")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.quaternary, in: Capsule())
+                }
             }
-            Text(col.kindDescription)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            .layoutPriority(1)
+
+            Spacer(minLength: 8)
+
+            columnSourceControl(col)
         }
+        .frame(minHeight: 36)
     }
 
     @ViewBuilder
-    private func columnSourceView(_ col: MatchedColumn) -> some View {
+    private func columnSourceControl(_ col: MatchedColumn) -> some View {
         if col.educamosElement.isInstrumento || col.educamosElement.isComentarios {
             columnPicker(for: col)
         } else if col.isCategorySA {
             tabPicker(for: col)
-        } else if col.isMatched {
-            Label {
-                Text(col.sourceTitle)
-            } icon: {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-            }
-            .font(.footnote)
         } else {
-            Text("Sin columna en el Cuaderno")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private func studentRow(_ match: StudentMatch) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("\(match.educamosStudent.orderNumber)")
-                .font(.footnote.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 24, alignment: .trailing)
-
-            VStack(alignment: .leading, spacing: 4) {
-                if !match.educamosStudent.rawName.isEmpty && match.educamosStudent.rawName != "\(match.educamosStudent.orderNumber)" {
-                    Text(match.educamosStudent.rawName)
-                        .font(.body)
-                }
-                if let student = match.appStudent {
-                    Text("Cuaderno: \(student.lastName), \(student.firstName)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    if match.matchedByOrder {
-                        Label {
-                            Text("Emparejado por número de orden")
-                        } icon: {
-                            Image(systemName: "list.number").foregroundStyle(.orange)
-                        }
-                        .font(.footnote.weight(.semibold))
-                    }
-                    Text(match.grades.isEmpty ? "Sin notas ni comentario registrados" : match.grades.map(\.displayLabel).joined(separator: " · "))
-                        .font(.footnote)
-                } else {
-                    Text("No está en el Cuaderno")
-                        .font(.footnote)
-                }
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(EvaluationDesign.success)
+                    .font(.footnote)
+                    .accessibilityHidden(true)
+                Text(col.sourceTitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-
-            Spacer(minLength: 8)
-
-            Image(systemName: studentStatusIcon(match))
-                .foregroundStyle(studentStatusColor(match))
-                .accessibilityHidden(true)
         }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityValue(studentStatusText(match))
     }
 
-    private func studentStatusIcon(_ match: StudentMatch) -> String {
-        guard match.hasMatch else { return "xmark.circle" }
-        if match.matchedByOrder || !match.hasGrades { return "exclamationmark.triangle.fill" }
-        return "checkmark.circle.fill"
-    }
-
-    private func studentStatusColor(_ match: StudentMatch) -> Color {
-        guard match.hasMatch else { return .red }
-        return match.matchedByOrder || !match.hasGrades ? .orange : .green
-    }
-
-    private func studentStatusText(_ match: StudentMatch) -> String {
-        guard match.hasMatch else { return "Sin coincidencia" }
-        if match.matchedByOrder { return "Emparejado por orden, compruébalo" }
-        return match.hasGrades ? "Emparejado con datos" : "Emparejado sin datos"
-    }
-
-
-    /// Menú para elegir a mano la columna del cuaderno de un instrumento de Educamos.
-    /// Menú de la pestaña de una «Media de SA»: bloques (con su evaluación) y pestañas sueltas.
     private func tabPicker(for col: MatchedColumn) -> some View {
         let tabs = data.sheet.tabs
+        let currentLabel = col.appTab.map { EducamosSATabMatcher.displayTitle($0, tabs: tabs) }
         return Menu {
             Button {
                 chooseTab(nil, for: col)
             } label: {
-                if col.appTab == nil { Label("Sin pestaña", systemImage: "checkmark") } else { Text("Sin pestaña") }
+                if col.appTab == nil {
+                    Label("No exportar", systemImage: "checkmark")
+                } else {
+                    Text("No exportar")
+                }
             }
             Divider()
             ForEach(EducamosSATabMatcher.candidateTabs(tabs), id: \.id) { tab in
@@ -502,36 +487,21 @@ struct EducamosSMExportSheet: View {
                 Button {
                     chooseTab(tab, for: col)
                 } label: {
-                    if tab.id == col.appTab?.id { Label(title, systemImage: "checkmark") } else { Text(title) }
+                    if tab.id == col.appTab?.id {
+                        Label(title, systemImage: "checkmark")
+                    } else {
+                        Text(title)
+                    }
                 }
             }
         } label: {
-            HStack(spacing: 4) {
-                if let tab = col.appTab {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).accessibilityHidden(true)
-                    Text(EducamosSATabMatcher.displayTitle(tab, tabs: tabs))
-                        .font(.subheadline.weight(.medium))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.trailing)
-                } else {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
-                    Text("Elegir pestaña")
-                        .font(.subheadline)
-                        .foregroundStyle(.primary)
-                }
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-            }
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
+            pickerLabel(title: currentLabel, isMatched: col.appTab != nil)
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
-        .accessibilityLabel("Pestaña para \(col.educamosElement.shortName)")
-        .accessibilityValue(col.appTab.map { EducamosSATabMatcher.displayTitle($0, tabs: tabs) } ?? "Sin pestaña. Su columna quedará vacía")
+        .help(currentLabel ?? "Sin pestaña asignada")
+        .accessibilityLabel("Situación de aprendizaje para \(col.educamosElement.displayTitle)")
+        .accessibilityValue(currentLabel ?? "No exportar")
     }
 
     private func columnPicker(for col: MatchedColumn) -> some View {
@@ -540,9 +510,9 @@ struct EducamosSMExportSheet: View {
                 chooseColumn(nil, for: col)
             } label: {
                 if col.appColumn == nil {
-                    Label("Sin columna", systemImage: "checkmark")
+                    Label("No exportar", systemImage: "checkmark")
                 } else {
-                    Text("Sin columna")
+                    Text("No exportar")
                 }
             }
 
@@ -560,31 +530,98 @@ struct EducamosSMExportSheet: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
-                if col.isMatched {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                    Text(col.sourceTitle)
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.trailing)
-                } else {
-                    Text("Elegir columna")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-            }
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
+            pickerLabel(title: col.appColumn?.title, isMatched: col.isMatched)
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
-        .accessibilityLabel("Columna del cuaderno para \(col.educamosElement.shortName)")
-        .accessibilityValue(col.isMatched ? col.sourceTitle : "Sin columna")
+        .help(col.appColumn?.title ?? "Sin columna asignada")
+        .accessibilityLabel("Columna del Cuaderno para \(col.educamosElement.displayTitle)")
+        .accessibilityValue(col.isMatched ? col.sourceTitle : "No exportar")
+    }
+
+    private func pickerLabel(title: String?, isMatched: Bool) -> some View {
+        HStack(spacing: 6) {
+            if isMatched, let title {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(EvaluationDesign.success)
+                    .font(.footnote)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            } else {
+                Text("Elegir…")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        }
+        .frame(maxWidth: 260, minHeight: 36, alignment: .trailing)
+        .contentShape(Rectangle())
+    }
+
+    private func compactStudentRow(_ match: StudentMatch) -> some View {
+        HStack(spacing: 12) {
+            Text("\(match.educamosStudent.orderNumber)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 20, alignment: .trailing)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(studentDisplayName(match))
+                    .font(.subheadline)
+                    .lineLimit(1)
+
+                if match.matchedByOrder, let student = match.appStudent {
+                    Text("Por orden → \(student.lastName), \(student.firstName)")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                } else if !match.hasMatch {
+                    Text("Sin coincidencia en el grupo")
+                        .font(.caption)
+                        .foregroundStyle(EvaluationDesign.danger)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            if match.hasMatch {
+                Text(studentSummaryBadge(match))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func studentDisplayName(_ match: StudentMatch) -> String {
+        let raw = match.educamosStudent.rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !raw.isEmpty && raw != "\(match.educamosStudent.orderNumber)" {
+            return raw
+        }
+        if let student = match.appStudent {
+            return "\(student.lastName), \(student.firstName)"
+        }
+        return "Alumno \(match.educamosStudent.orderNumber)"
+    }
+
+    private func studentSummaryBadge(_ match: StudentMatch) -> String {
+        let count = match.numericGradeCount
+        if count == 0 && !match.hasComment { return "Sin notas" }
+        var parts: [String] = []
+        if count > 0 {
+            parts.append(count == 1 ? "1 nota" : "\(count) notas")
+        }
+        if match.hasComment {
+            parts.append("comentario")
+        }
+        return parts.joined(separator: " + ")
     }
 
     // MARK: - Step 3: Export result
@@ -593,22 +630,24 @@ struct EducamosSMExportSheet: View {
         ScrollView {
             VStack(spacing: 24) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 56))
-                    .foregroundStyle(.green)
+                    .font(.system(size: 52))
+                    .foregroundStyle(EvaluationDesign.success)
                     .accessibilityHidden(true)
 
                 VStack(spacing: 8) {
                     Text("Archivo generado")
                         .font(.title2.weight(.semibold))
                     Text("Se han escrito \(exportSummary) en la plantilla de Educamos.")
+                        .font(.subheadline)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
                 }
                 .accessibilityElement(children: .combine)
 
                 #if os(iOS) && !targetEnvironment(macCatalyst)
-                Text("Usa «Compartir archivo» para guardarlo en Archivos o enviarlo al ordenador desde el que usas Educamos.")
-                    .font(.callout)
+                Text("Usa «Compartir archivo» para guardarlo en Archivos o enviarlo al equipo donde abras Educamos.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 #endif
 
@@ -621,18 +660,20 @@ struct EducamosSMExportSheet: View {
                         #endif
                     } label: {
                         Label {
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: 2) {
                                 Text("Guardado en Descargas")
+                                    .font(.subheadline.weight(.medium))
                                 Text(URL(fileURLWithPath: savedPath).lastPathComponent)
-                                    .font(.footnote)
+                                    .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                         } icon: {
-                            Image(systemName: "arrow.down.circle.fill").foregroundStyle(.green)
+                            Image(systemName: "arrow.down.circle.fill")
+                                .foregroundStyle(EvaluationDesign.success)
                         }
                     }
                     .padding(16)
-                    .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(EvaluationDesign.success.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 } else {
                     #if os(macOS) || targetEnvironment(macCatalyst)
                     if let url = generatedFileURL {
@@ -660,31 +701,28 @@ struct EducamosSMExportSheet: View {
                 if let errorMessage { errorLabel(errorMessage) }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Siguiente paso: subirlo a Educamos")
-                        .font(.headline)
-                    Label("Súbelo en la misma evaluación de Educamos de la que descargaste la plantilla.", systemImage: "1.circle")
-                    Label("No le cambies el nombre ni lo abras para editarlo en Excel: lleva dentro los datos de esa evaluación.", systemImage: "2.circle")
-                    Label("Revisa en Educamos que las notas y los comentarios aparecen en cada alumno.", systemImage: "3.circle")
+                    Text("Al subirlo a Educamos")
+                        .font(.subheadline.weight(.semibold))
+                    Label("Súbelo en la misma evaluación de la que descargaste la plantilla.", systemImage: "1.circle")
+                    Label("Conserva el archivo tal cual, sin reeditar su estructura en Excel.", systemImage: "2.circle")
                 }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
-                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .padding(24)
-            .frame(maxWidth: 560)
+            .frame(maxWidth: 520)
             .frame(maxWidth: .infinity)
         }
     }
 
-
     // MARK: - Data helpers
 
-    /// Alumnos de la app filtrados por el grupo actual del cuaderno.
     private var filteredAppStudents: [Student] {
         data.sheet.rows.map(\.student)
     }
-
-    // MARK: - Actions
 
     private func handleFileImport(_ result: Result<[URL], Error>) async {
         errorMessage = nil
@@ -700,6 +738,7 @@ struct EducamosSMExportSheet: View {
                 let parsed = try EducamosSMTemplateService.parse(from: url)
                 template = parsed
                 buildMatching(template: parsed)
+                showStudentDetails = hasStudentIncidents
                 withAnimation { step = .reviewMatching }
             } catch {
                 errorMessage = error.localizedDescription
@@ -710,31 +749,19 @@ struct EducamosSMExportSheet: View {
         }
     }
 
-    /// Columnas que se pueden emparejar: las ocultas (p. ej. «Marca» de una prueba
-    /// con baremo) no se exportan, solo su columna visible de nota.
-    private var selectableAppColumns: [NotebookColumnDefinition] {
-        data.sheet.columns.filter { !$0.isHidden }
-    }
-
     // MARK: - Elección manual recordada por grupo
 
     private var savedMappingKey: String {
         "educamos.sm.columnMapping.\(data.sheet.classId)"
     }
 
-    /// Clave estable del elemento de Educamos: su UUID o, si falta, su nombre corto.
-    private func mappingKey(for element: EducamosSMElement) -> String {
-        element.uuid ?? "name:\(element.shortName)"
-    }
-
-    /// Elecciones guardadas: id de columna, o cadena vacía si se eligió «Sin columna».
     private func savedMapping() -> [String: String] {
         UserDefaults.standard.dictionary(forKey: savedMappingKey) as? [String: String] ?? [:]
     }
 
     private func chooseColumn(_ appColumn: NotebookColumnDefinition?, for col: MatchedColumn) {
         var mapping = savedMapping()
-        mapping[mappingKey(for: col.educamosElement)] = appColumn?.id ?? ""
+        mapping[EducamosColumnMatcher.mappingKey(for: col.educamosElement)] = appColumn?.id ?? ""
         UserDefaults.standard.set(mapping, forKey: savedMappingKey)
 
         guard let index = matchedColumns.firstIndex(where: { $0.id == col.id }) else { return }
@@ -746,7 +773,7 @@ struct EducamosSMExportSheet: View {
 
     private func chooseTab(_ tab: NotebookTab?, for col: MatchedColumn) {
         var mapping = savedMapping()
-        mapping[mappingKey(for: col.educamosElement)] = tab.map { "tab:\($0.id)" } ?? ""
+        mapping[EducamosColumnMatcher.mappingKey(for: col.educamosElement)] = tab.map { "tab:\($0.id)" } ?? ""
         UserDefaults.standard.set(mapping, forKey: savedMappingKey)
 
         guard let index = matchedColumns.firstIndex(where: { $0.id == col.id }) else { return }
@@ -756,91 +783,28 @@ struct EducamosSMExportSheet: View {
         }
     }
 
-    /// Empareja columnas, pestañas de SA y alumnos de Educamos con los datos del cuaderno.
     private func buildMatching(template: EducamosSMTemplate) {
-        let candidates = selectableAppColumns
-        let saved = savedMapping()
+        let resolved = EducamosColumnMatcher.matchElements(
+            elements: template.elements,
+            tabs: data.sheet.tabs,
+            columns: data.sheet.columns,
+            savedMapping: savedMapping(),
+            excelEvaluation: template.metadata.evaluacion,
+            activeTabId: bridge.selectedNotebookTabId
+        )
 
-        // 1. Emparejar columnas e instrumentos
-        var columnMatches: [MatchedColumn] = []
-
-        for element in template.elements {
-            if element.isInstrumento {
-                // Primero la elección guardada; si no hay, el título que coincida con el nombre corto
-                let matchedCol: NotebookColumnDefinition?
-                if let savedId = saved[mappingKey(for: element)],
-                   savedId.isEmpty || candidates.contains(where: { $0.id == savedId }) {
-                    matchedCol = candidates.first { $0.id == savedId }
-                } else {
-                    matchedCol = candidates.first { col in
-                        col.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                            .localizedCaseInsensitiveCompare(element.shortName) == .orderedSame
-                    } ?? candidates.first { col in
-                        col.title.localizedCaseInsensitiveContains(element.shortName)
-                    }
-                }
-
-                columnMatches.append(MatchedColumn(
-                    id: element.columnLetter,
-                    educamosElement: element,
-                    appColumn: matchedCol,
-                    isCategorySA: false,
-                    appTab: nil
-                ))
-            } else if element.isCategoriaSA {
-                // Primero la elección guardada («tab:<id>», o vacía = sin pestaña); si no, por nombre
-                // («SA2 Hockey» → Hockey). Nunca una evaluación: su media es la nota final.
-                let tabs = data.sheet.tabs
-                let matchedTab: NotebookTab?
-                if let savedValue = saved[mappingKey(for: element)],
-                   savedValue.isEmpty || EducamosSATabMatcher.candidateTabs(tabs).contains(where: { "tab:\($0.id)" == savedValue }) {
-                    matchedTab = EducamosSATabMatcher.candidateTabs(tabs).first { "tab:\($0.id)" == savedValue }
-                } else {
-                    matchedTab = EducamosSATabMatcher.propose(shortName: element.shortName, tabs: tabs)
-                }
-
-                columnMatches.append(MatchedColumn(
-                    id: element.columnLetter,
-                    educamosElement: element,
-                    appColumn: nil,
-                    isCategorySA: true,
-                    appTab: matchedTab
-                ))
-            } else if element.isComentarios {
-                // Comentario del profesor: la elección guardada o «Comentario de evaluación» de la pestaña activa.
-                let textColumns = candidates.filter { $0.type == .text }
-                let matchedCol: NotebookColumnDefinition?
-                if let savedId = saved[mappingKey(for: element)],
-                   savedId.isEmpty || textColumns.contains(where: { $0.id == savedId }) {
-                    matchedCol = textColumns.first { $0.id == savedId }
-                } else {
-                    matchedCol = KmpBridge.evaluationCommentColumn(in: textColumns, tabId: bridge.selectedNotebookTabId)
-                        ?? KmpBridge.evaluationCommentColumn(in: textColumns, tabId: nil)
-                }
-
-                columnMatches.append(MatchedColumn(
-                    id: element.columnLetter,
-                    educamosElement: element,
-                    appColumn: matchedCol,
-                    isCategorySA: false,
-                    appTab: nil
-                ))
-            } else if element.isNotaFinal {
-                columnMatches.append(MatchedColumn(
-                    id: element.columnLetter,
-                    educamosElement: element,
-                    appColumn: nil,
-                    isCategorySA: false,
-                    appTab: nil
-                ))
-            }
+        matchedColumns = resolved.map { item in
+            MatchedColumn(
+                id: item.element.columnLetter,
+                educamosElement: item.element,
+                appColumn: item.appColumn,
+                isCategorySA: item.isCategorySA,
+                appTab: item.appTab
+            )
         }
-
-        matchedColumns = columnMatches
         buildStudentMatches(template: template)
     }
 
-    /// Empareja alumnos y reúne sus notas según las columnas emparejadas.
     private func buildStudentMatches(template: EducamosSMTemplate) {
         let appStudents = filteredAppStudents
         let columnMatches = matchedColumns
@@ -848,7 +812,6 @@ struct EducamosSMExportSheet: View {
             partialGradePolicy = EducamosPartialGradePolicy.load(classId: data.sheet.classId)
             partialPolicyLoaded = true
         }
-        // La nota final sale de la evaluación del Excel, no de la pestaña abierta.
         let evaluationTabId = EducamosFinalGradeSource.evaluationTabId(
             tabs: data.sheet.tabs,
             excelEvaluation: template.metadata.evaluacion,
@@ -856,7 +819,6 @@ struct EducamosSMExportSheet: View {
         )
         var partials: [EducamosPartialStudent] = []
 
-        // 2. Emparejar alumnos
         matchedStudents = template.students.map { educamosStudent in
             var matchedAppStudent: Student? = nil
 
@@ -886,7 +848,6 @@ struct EducamosSMExportSheet: View {
                 }
             }
 
-            // 3. Extraer calificaciones para las columnas emparejadas
             var studentGrades: [StudentGradeEntry] = []
 
             if let student = matchedAppStudent {
@@ -895,7 +856,7 @@ struct EducamosSMExportSheet: View {
                 for colMatch in columnMatches {
                     let el = colMatch.educamosElement
 
-                    // Comentario del profesor: texto tal cual.
+                    // Comentario del profesor
                     if el.isComentarios {
                         if let appCol = colMatch.appColumn {
                             let text = bridge.cellText(studentId: student.id, columnId: appCol.id)
@@ -909,31 +870,30 @@ struct EducamosSMExportSheet: View {
                             }
                         }
                     }
-                    // A) Instrumento individual
+                    // A) Instrumento individual (transpuesto automáticamente sobre 10 si su escala es 1-4)
                     else if let appCol = colMatch.appColumn {
-                        let raw: String = {
-                            switch appCol.type {
-                            case .rubric:
-                                let direct = bridge.rubricGradeText(studentId: student.id, column: appCol)
-                                return !direct.isEmpty ? direct : bridge.rubricGradeOnTenText(studentId: student.id, column: appCol)
-                            case .numeric, .calculated:
-                                return bridge.numericGradeText(studentId: student.id, column: appCol)
-                            default:
-                                return bridge.cellText(studentId: student.id, columnId: appCol.id)
-                            }
+                        let rubricRaw: String = {
+                            guard appCol.type == .rubric else { return "" }
+                            let direct = bridge.rubricGradeText(studentId: student.id, column: appCol)
+                            return !direct.isEmpty ? direct : bridge.rubricGradeOnTenText(studentId: student.id, column: appCol)
                         }()
+                        let numericRaw = bridge.numericGradeText(studentId: student.id, columnId: appCol.id)
 
-                        if let num = parseGradeNumber(raw) {
+                        if let scoreOnTen = EducamosGradeExtractor.gradeOutOfTen(
+                            row: tableRow,
+                            column: appCol,
+                            rubricText: rubricRaw,
+                            numericText: numericRaw
+                        ) {
                             studentGrades.append(StudentGradeEntry(
                                 columnLetter: el.columnLetter,
-                                value: .decimal(num),
-                                displayLabel: "\(el.shortName): \(IosFormatting.decimal(num))"
+                                value: .decimal(scoreOnTen),
+                                displayLabel: "\(el.shortName): \(IosFormatting.decimal(scoreOnTen))"
                             ))
                         }
                     }
                     // B) Media de Situación de Aprendizaje (SA)
                     else if colMatch.isCategorySA, let saTab = colMatch.appTab {
-                        // Media de esa pestaña (su situación de aprendizaje), no la de la pestaña abierta.
                         let saAverage = tableRow.flatMap {
                             NotebookEvaluation.shared.tabAverage(row: $0, columns: data.sheet.columns, tabId: saTab.id, numericDrafts: [:])
                         }
@@ -985,15 +945,12 @@ struct EducamosSMExportSheet: View {
         totalGradesToExport = matchedStudents.reduce(0) { $0 + $1.grades.filter { !$0.isComment }.count }
         totalCommentsToExport = matchedStudents.filter(\.hasComment).count
         partialStudents = partials
-        let hasCommentColumn = columnMatches.contains { $0.educamosElement.isComentarios && $0.appColumn != nil }
-        studentsWithoutComment = hasCommentColumn ? matchedStudents.filter { $0.hasMatch && !$0.hasComment }.count : 0
     }
 
-    /// Columnas que se pueden elegir: de texto para el comentario, todas para los instrumentos.
     private func pickerColumns(for col: MatchedColumn) -> [NotebookColumnDefinition] {
         col.educamosElement.isComentarios
-            ? selectableAppColumns.filter { $0.type == .text }
-            : selectableAppColumns
+            ? EducamosColumnMatcher.selectableCommentColumns(in: data.sheet.columns)
+            : EducamosColumnMatcher.selectableInstrumentColumns(in: data.sheet.columns)
     }
 
     private var exportSummary: String {
@@ -1001,21 +958,6 @@ struct EducamosSMExportSheet: View {
         guard totalCommentsToExport > 0 else { return grades }
         let comments = totalCommentsToExport == 1 ? "1 comentario" : "\(totalCommentsToExport) comentarios"
         return totalGradesToExport > 0 ? "\(grades) y \(comments)" : comments
-    }
-
-    /// Parsea una calificación numérica admitiendo formato decimal con coma o punto,
-    /// y eliminando automáticamente sufijos de escala como "/ 10" habituales en rúbricas.
-    private func parseGradeNumber(_ raw: String) -> Double? {
-        var cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return nil }
-
-        // Si viene con formato "9.38 / 10" o "9,38/10", tomar la parte anterior a la barra
-        if let slashIndex = cleaned.firstIndex(of: "/") {
-            cleaned = String(cleaned[..<slashIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        let normalized = cleaned.replacingOccurrences(of: ",", with: ".")
-        return Double(normalized)
     }
 
     private func normalizedTokens(_ text: String) -> [String] {

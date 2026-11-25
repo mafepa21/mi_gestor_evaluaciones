@@ -318,11 +318,11 @@ enum NotebookFormulaEditorValidator {
 
     private static func numericValue(for row: NotebookRow, column: NotebookColumnDefinition) -> Double? {
         if let value = row.persistedGrades.first(where: { $0.columnId == column.id })?.value?.doubleValue {
-            return value
+            return NotebookStructuredGrade.rescaleIfNeeded(value, column: column)
         }
         if let evaluationId = column.evaluationId?.int64Value,
            let value = row.cells.first(where: { $0.evaluationId == evaluationId })?.value?.doubleValue {
-            return value
+            return NotebookStructuredGrade.rescaleIfNeeded(value, column: column)
         }
         if column.type == .check,
            let value = row.persistedCells.first(where: { $0.columnId == column.id })?.boolValue?.boolValue {

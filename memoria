@@ -2053,6 +2053,16 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-11-25 - Simplificación Apple HIG de «Exportar a Educamos», autodetección de columnas por SA y transposición 1-4 → 0-10
+
+Resumen:
+- **Rediseño HIG y autodetección en «Exportar a Educamos» (`kmp/iosApp/App/EducamosSMExportSheet.swift`, `kmp/iosApp/App/EducamosEvaluationMatching.swift`, `kmp/iosApp/AppleShared/EducamosSMTemplateService.swift`).** `EducamosSMTemplateService` extrae ahora las descripciones completas de cada columna desde `xl/comments*.xml` y la hoja auxiliar de descripciones, además de vincular cada instrumento (`TipoColumna=14`) con la Situación de Aprendizaje (`TipoColumna=15`) que cierra su bloque. `EducamosColumnMatcher` empareja 1 a 1 sin duplicados usando descripción completa, siglas, prefijos y semántica pedagógica, evitando que una SA ausente en el Cuaderno robe columnas de otra SA. La hoja reduce la cabecera a una fila, elimina coordenadas internas del Excel y pliega las columnas sin correspondencia y el listado de 30 alumnos.
+- **Transposición automática 1-4 → 0-10 en Cuaderno y exportación (`kmp/iosApp/App/NotebookEditableTableCell.swift`, `NotebookModuleGridCells.swift`, `NotebookModuleDisplayFormatting.swift`, `ObservationGridInstrumentContent.swift`, `StudentRubricInstrumentContent.swift`, `StructuredInstrumentBulkEvaluationSheet.swift`, `NotebookColumnStatisticsSheet.swift`, `NotebookFormulaEditorSheet.swift`).** Los instrumentos evaluados del 1 al 4 (rejillas transversales, autoevaluaciones y coevaluaciones) siguen registrando niveles 1-4, pero muestran y exportan automáticamente su nota sobre 10 (`(nivel − 1) / 3 × 10`), idéntica a `rescaleNumericGrade` en la media de KMP. `EducamosGradeExtractor` corrige la exportación sobre 4 y soporta columnas `.text` con nota estructurada derivada.
+- **Validación.** Tests unitarios ampliados en `kmp/iosApp/PlannerTests/EducamosEvaluationMatchingTests.swift` y compilación verificada en `MiGestorKMPMac` y `MiGestorKMPiOS` mediante `./scripts/verify_apple_builds.sh`.
+
+Notas para futuras conversaciones:
+- En SQLite (`grades`) las rejillas 1-4 siguen guardando el valor crudo 1-4 para mantener compatibilidad total con datos existentes y Sync LAN; tanto KMP (`rescaleNumericGrade`) como SwiftUI (`NotebookStructuredGrade.rescaleIfNeeded` / `EducamosGradeExtractor`) aplican una única vez la conversión a 0-10.
+
 ### 2026-11-24 - Flujo del boletín a Educamos, «Cerrar evaluación» y pestaña de evaluación con pesos (PR #427, #428, #430)
 
 Resumen:

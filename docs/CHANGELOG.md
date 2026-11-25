@@ -13,6 +13,22 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Changed
+
+- «Exportar a Educamos» simplificado según Apple HIG:
+  - Cabecera compacta de una sola línea (materia, evaluación, curso, alumnado y botón «Cambiar…») eliminando las seis filas de metadatos redundantes, las letras internas de columna del Excel («Columna G, H…») y los subtítulos repetitivos.
+  - Detección automática inteligente de columnas del Cuaderno leyendo también las descripciones completas de Educamos (`xl/comments*.xml` y hoja «Descripción elementos y categor»), acotando cada instrumento a su Situación de Aprendizaje (sin robar columnas de otras SA), reconociendo siglas/prefijos/sinónimos bilingües y asignando 1 a 1 sin duplicados.
+  - Las columnas de Educamos sin correspondencia en el Cuaderno y el detalle individual del alumnado quedan recogidos en desplegables silenciosos para mostrar de entrada únicamente lo que se va a exportar.
+- Cuaderno e instrumentos 1-4 (rejillas transversales de observación, autoevaluación/coevaluación y evaluación masiva): aunque se sigan valorando del 1 al 4 por indicador, la nota mostrada en la celda del Cuaderno, en la cabecera del instrumento, en el portapapeles, en estadísticas y en el editor de fórmulas se transpone automáticamente sobre 10 (`(nivel − 1) / 3 × 10`), alineada con la media del Cuaderno.
+
+### Fixed
+
+- Exportar a Educamos: corregido el bug por el que las rejillas transversales y otros instrumentos en escala 1-4 se exportaban sobre 4 en lugar de sobre 10, así como la extracción de nota derivada en instrumentos estructurados almacenados sobre columnas `.text` (p. ej. autoevaluaciones).
+
+### Verification
+
+- `./scripts/verify_apple_builds.sh` (`MiGestorKMPMac` y `MiGestorKMPiOS` Simulator): BUILD SUCCEEDED. `EducamosEvaluationMatchingTests` (`MiGestorPlannerTests`, macOS): 7 pruebas ejecutadas, 0 fallos.
+
 ### Added
 
 - «Exportar a Educamos» con pestañas de evaluación:

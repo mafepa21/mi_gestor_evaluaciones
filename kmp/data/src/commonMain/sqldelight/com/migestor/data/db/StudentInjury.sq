@@ -1,0 +1,68 @@
+-- Lesiones con fecha de fin (migración 51).
+-- El DDL debe coincidir letra por letra con 51.sqm: el test de ruta canónica
+-- compara instalación nueva y migrada (defaults e índices incluidos).
+-- En producción PRAGMA foreign_keys = 0: el borrado de un alumno limpia sus lesiones
+-- con deleteInjuriesByStudent (ver StudentsRepositorySqlDelight.deleteStudent).
+CREATE TABLE IF NOT EXISTS student_injuries (
+    id TEXT NOT NULL PRIMARY KEY,
+    student_id INTEGER NOT NULL,
+    starts_on TEXT NOT NULL,
+    ends_on TEXT,
+    alternate_role TEXT NOT NULL DEFAULT 'NONE',
+    note TEXT NOT NULL DEFAULT '',
+    proof_delivered INTEGER NOT NULL DEFAULT 0,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_student_injuries_student ON student_injuries(student_id);
+
+selectAllInjuries:
+SELECT id, student_id, starts_on, ends_on, alternate_role, note, proof_delivered, is_deleted,
+       created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM student_injuries
+ORDER BY student_id, starts_on;
+
+selectInjuriesByStudent:
+SELECT id, student_id, starts_on, ends_on, alternate_role, note, proof_delivered, is_deleted,
+       created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM student_injuries
+WHERE student_id = ?
+ORDER BY starts_on;
+
+selectInjury:
+SELECT id, student_id, starts_on, ends_on, alternate_role, note, proof_delivered, is_deleted,
+       created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM student_injuries
+WHERE id = ?;
+
+upsertInjury:
+INSERT INTO student_injuries(id, student_id, starts_on, ends_on, alternate_role, note, proof_delivered, is_deleted,
+                             created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    student_id = excluded.student_id,
+    starts_on = excluded.starts_on,
+    ends_on = excluded.ends_on,
+    alternate_role = excluded.alternate_role,
+    note = excluded.note,
+    proof_delivered = excluded.proof_delivered,
+    is_deleted = excluded.is_deleted,
+    updated_at_epoch_ms = excluded.updated_at_epoch_ms,
+    device_id = excluded.device_id,
+    sync_version = excluded.sync_version;
+
+deleteInjury:
+DELETE FROM student_injuries WHERE id = ?;
+
+deleteInjuriesByStudent:
+DELETE FROM student_injuries WHERE student_id = ?;
+
+selectFlaggedStudentIds:
+SELECT id FROM students WHERE is_injured = 1;
+
+-- Marca derivada: sin tocar updated_at_epoch_ms del alumno (no debe viajar como edición).
+setStudentInjuredFlag:
+UPDATE students SET is_injured = ? WHERE id = ?;

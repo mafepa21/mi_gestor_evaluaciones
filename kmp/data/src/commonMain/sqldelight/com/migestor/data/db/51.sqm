@@ -1,0 +1,30 @@
+-- Migración 51: lesiones con fecha de fin y papel en clase. Solo aditiva.
+--
+-- Sin diagnóstico ni documentos: fechas, papel, nota corta y si entregó justificante.
+-- students.is_injured se mantiene como marca derivada («lesión activa hoy») que
+-- recalcula cada dispositivo; los ~30 usos actuales de la marca no cambian.
+-- Borrado lógico (is_deleted) para que viaje por Sync LAN como un cambio más.
+-- El DDL debe coincidir letra por letra con StudentInjury.sq (test de ruta canónica).
+CREATE TABLE IF NOT EXISTS student_injuries (
+    id TEXT NOT NULL PRIMARY KEY,
+    student_id INTEGER NOT NULL,
+    starts_on TEXT NOT NULL,
+    ends_on TEXT,
+    alternate_role TEXT NOT NULL DEFAULT 'NONE',
+    note TEXT NOT NULL DEFAULT '',
+    proof_delivered INTEGER NOT NULL DEFAULT 0,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_student_injuries_student ON student_injuries(student_id);
+
+-- Los alumnos ya marcados conservan la marca: una lesión «desde hoy, sin fecha de fin».
+-- Id fijo por alumno ('legacy-<id>') para que el iPad y el Mac, que migran cada uno
+-- por su cuenta, generen la misma fila y no se dupliquen al sincronizar.
+INSERT OR IGNORE INTO student_injuries(id, student_id, starts_on)
+SELECT 'legacy-' || id, id, date('now', 'localtime')
+FROM students
+WHERE is_injured = 1;

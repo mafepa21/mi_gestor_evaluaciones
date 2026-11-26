@@ -3,6 +3,7 @@ package com.migestor.data.di
 import app.cash.sqldelight.db.SqlDriver
 import com.migestor.data.db.AppDatabase
 import com.migestor.data.platform.wipeAllUserData
+import kotlinx.datetime.toLocalDateTime
 import com.migestor.data.repository.AttendanceRepositorySqlDelight
 import com.migestor.data.repository.AIAuditRepositorySqlDelight
 import com.migestor.data.repository.AcademicYearsRepositorySqlDelight
@@ -90,6 +91,9 @@ class KmpContainer(val driver: SqlDriver) {
         com.migestor.data.repository.InclusionTaskRepositorySqlDelight(database)
     val evaluationSessionRepository: com.migestor.shared.evaluationsession.EvaluationSessionRepository =
         com.migestor.data.repository.EvaluationSessionRepositorySqlDelight(database)
+    // Lesiones con fecha (migración 51). Viajan por Sync LAN con SchoolRecordsSync.
+    val studentInjuryRepository: com.migestor.shared.injury.StudentInjuryRepository =
+        com.migestor.data.repository.StudentInjuryRepositorySqlDelight(database)
     val meetingRepository: MeetingRepository = MeetingRepositorySqlDelight(database)
     val plannerWeekPlanRepository: PlannerWeekPlanRepository = PlannerWeekPlanRepositorySqlDelight(database)
 
@@ -217,6 +221,16 @@ class KmpContainer(val driver: SqlDriver) {
             supportMeasures = { studentId -> studentSupportMeasureRepository.listByStudent(studentId) },
         ),
         newId = { com.migestor.shared.evaluationsession.randomEvaluationSessionId() },
+    )
+
+    // Lesiones con fecha: «hoy» es el día local del dispositivo.
+    val studentInjuries = com.migestor.shared.injury.StudentInjuryUseCase(
+        repository = studentInjuryRepository,
+        newId = { com.migestor.shared.injury.StudentInjuryUseCase.randomId() },
+        today = {
+            kotlinx.datetime.Clock.System.now()
+                .toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date
+        },
     )
 
     /**

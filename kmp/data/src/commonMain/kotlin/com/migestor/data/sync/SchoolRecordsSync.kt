@@ -6,9 +6,13 @@ import com.migestor.shared.domain.MeetingAgreement
 import com.migestor.shared.domain.StudentSupportMeasure
 import com.migestor.shared.domain.StudentTutoringSession
 import com.migestor.shared.domain.TeacherTermNoteKeys
+import com.migestor.shared.injury.InjuryRole
+import com.migestor.shared.injury.StudentInjury
 import com.migestor.shared.sync.SyncAck
 import com.migestor.shared.sync.SyncChange
 import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDate
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -22,8 +26,8 @@ import kotlinx.serialization.json.longOrNull
 
 /**
  * Sync LAN de las actas y del seguimiento de Inclusión: reuniones, sus acuerdos,
- * medidas de apoyo, tutorías con familias, asignaturas y valoraciones del docente
- * por trimestre.
+ * medidas de apoyo, tutorías con familias, asignaturas, valoraciones del docente
+ * por trimestre y lesiones con fecha.
  *
  * La app Apple ya encolaba estos cambios, pero ningún lado sabía aplicarlos:
  * `SqlDelightSyncAdapter` los contaba como `ignored`, el iPad soltaba su cola
@@ -117,6 +121,21 @@ class SchoolRecordsSync(
                         put("termKey", JsonPrimitive(note.termKey))
                         put("note", JsonPrimitive(note.note))
                     }.toString(),
+                )
+            }
+        }
+
+        // Lesiones (migración 51): id de texto; las borradas viajan con isDeleted.
+        container.studentInjuryRepository.listAll().forEach { injury ->
+            live.getValue(STUDENT_INJURIES) += injury.id
+            val updatedAt = injury.trace.updatedAt.toEpochMilliseconds()
+            if (sinceEpochMs == 0L || updatedAt > sinceEpochMs) {
+                changes += SyncChange(
+                    entity = STUDENT_INJURIES,
+                    id = injury.id,
+                    updatedAtEpochMs = updatedAt,
+                    deviceId = injury.trace.deviceId ?: localDeviceId,
+                    payload = injuryPayload(injury),
                 )
             }
         }
@@ -236,6 +255,10 @@ class SchoolRecordsSync(
             }.onFailure { failed++ }
         }
         resetCaches()
+        // La marca «lesionado hoy» se deriva de las lesiones: se recalcula al recibirlas.
+        if (changes.any { it.entity == STUDENT_INJURIES }) {
+            runCatching { container.studentInjuries.reconcileFlags() }
+        }
         return SyncAck(
             applied = applied,
             conflictsResolvedByLww = conflicts,
@@ -253,6 +276,7 @@ class SchoolRecordsSync(
 
     private suspend fun apply(change: SyncChange): Outcome {
         if (change.entity == TERM_TEACHER_NOTES) return applyTermTeacherNote(change)
+        if (change.entity == STUDENT_INJURIES) return applyInjury(change)
         val id = change.id.toLongOrNull() ?: return Outcome.SKIPPED
         val payload = runCatching { json.parseToJsonElement(change.payload).jsonObject }.getOrNull()
             ?: error("payload ilegible: ${change.entity} ${change.id}")
@@ -387,7 +411,52 @@ class SchoolRecordsSync(
         return Outcome.APPLIED
     }
 
+    /**
+     * Lesión: LWW por `updated_at`. Una lesión nueva necesita `studentId` y `startsOn`;
+     * no se exige que el alumno exista ya (puede llegar después en el mismo lote).
+     */
+    private suspend fun applyInjury(change: SyncChange): Outcome {
+        val payload = runCatching { json.parseToJsonElement(change.payload).jsonObject }.getOrNull()
+            ?: error("payload ilegible: ${change.entity} ${change.id}")
+        val repository = container.studentInjuryRepository
+        val existing = repository.get(change.id)
+        if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() >= change.updatedAtEpochMs) return Outcome.STALE
+        val studentId = payload.longOrKeep("studentId", existing?.studentId) ?: return Outcome.SKIPPED
+        val startsOn = payload.text("startsOn", existing?.startsOn?.toString())
+            ?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return Outcome.SKIPPED
+        val endsOn = payload.textOrNull("endsOn", existing?.endsOn?.toString())
+            ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val createdAt = existing?.trace?.createdAt
+            ?: payload.longOrKeep("createdAtEpochMs", null)?.let(Instant::fromEpochMilliseconds)
+            ?: Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+        repository.save(
+            StudentInjury(
+                id = change.id,
+                studentId = studentId,
+                startsOn = startsOn,
+                endsOn = endsOn,
+                role = InjuryRole.fromStorage(payload.text("role", existing?.role?.name)),
+                note = payload.text("note", existing?.note) ?: "",
+                proofDelivered = payload.flag("proofDelivered", existing?.proofDelivered ?: false),
+                isDeleted = payload.flag("isDeleted", existing?.isDeleted ?: false),
+                trace = com.migestor.shared.domain.AuditTrace(
+                    createdAt = createdAt,
+                    updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs),
+                    deviceId = change.deviceId,
+                    syncVersion = (existing?.trace?.syncVersion ?: 0) + 1,
+                ),
+            ),
+        )
+        return Outcome.APPLIED
+    }
+
     private suspend fun delete(change: SyncChange): Boolean {
+        if (change.entity == STUDENT_INJURIES) {
+            val existing = container.studentInjuryRepository.get(change.id)
+            if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() > change.updatedAtEpochMs) return false
+            container.studentInjuryRepository.hardDelete(change.id)
+            return true
+        }
         if (change.entity == TERM_TEACHER_NOTES) {
             val (studentId, classId, termKey) = TeacherTermNoteKeys.parseSyncId(change.id) ?: return false
             val repository = container.studentTermTeacherNoteRepository
@@ -454,11 +523,27 @@ class SchoolRecordsSync(
         const val SUPPORT_MEASURES = "student_support_measures"
         const val TUTORING_SESSIONS = "student_tutoring_sessions"
         const val TERM_TEACHER_NOTES = "student_term_teacher_notes"
+        const val STUDENT_INJURIES = "student_injuries"
 
         /** En orden de aplicación: padres antes que hijos. */
-        val ENTITIES: List<String> = listOf(SUBJECT, MEETINGS, MEETING_AGREEMENTS, SUPPORT_MEASURES, TUTORING_SESSIONS, TERM_TEACHER_NOTES)
+        val ENTITIES: List<String> = listOf(SUBJECT, MEETINGS, MEETING_AGREEMENTS, SUPPORT_MEASURES, TUTORING_SESSIONS, TERM_TEACHER_NOTES, STUDENT_INJURIES)
 
         fun handles(entity: String): Boolean = entity in ENTITIES
+
+        /**
+         * Payload de una lesión. Lo usan el Mac (collect) y la app Apple al encolar
+         * (`KmpBridge+Injuries.swift`), así los dos lados mandan exactamente lo mismo.
+         */
+        fun injuryPayload(injury: StudentInjury): String = buildJsonObject {
+            put("studentId", JsonPrimitive(injury.studentId))
+            put("startsOn", JsonPrimitive(injury.startsOn.toString()))
+            put("endsOn", injury.endsOn?.let { JsonPrimitive(it.toString()) } ?: JsonNull)
+            put("role", JsonPrimitive(injury.role.name))
+            put("note", JsonPrimitive(injury.note))
+            put("proofDelivered", JsonPrimitive(injury.proofDelivered))
+            put("isDeleted", JsonPrimitive(injury.isDeleted))
+            put("createdAtEpochMs", JsonPrimitive(injury.trace.createdAt.toEpochMilliseconds()))
+        }.toString()
 
         /** Upserts por orden de padres a hijos; los borrados al final, de hijos a padres. */
         fun sortedForApply(changes: List<SyncChange>): List<SyncChange> {

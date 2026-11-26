@@ -37,32 +37,12 @@ enum WebSubmissionKeychain {
     @discardableResult
     static func save(privateKey: Data, reference: String) -> Bool {
         guard let cuenta = account(from: reference), privateKey.count == 32 else { return false }
-        let base: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: cuenta,
-        ]
-        SecItemDelete(base as CFDictionary)
-        var nuevo = base
-        nuevo[kSecValueData as String] = privateKey
-        // Sin sincronización con iCloud y solo accesible con el dispositivo
-        // desbloqueado: es material de descifrado, no una preferencia.
-        nuevo[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        return SecItemAdd(nuevo as CFDictionary, nil) == errSecSuccess
+        return AppSecretVault.shared.saveData(privateKey, service: service, account: cuenta)
     }
 
     static func load(reference: String) -> Data? {
-        guard let cuenta = account(from: reference) else { return nil }
-        let consulta: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: cuenta,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var resultado: CFTypeRef?
-        guard SecItemCopyMatching(consulta as CFDictionary, &resultado) == errSecSuccess,
-              let datos = resultado as? Data,
+        guard let cuenta = account(from: reference),
+              let datos = AppSecretVault.shared.loadData(service: service, account: cuenta),
               datos.count == 32 else { return nil }
         return datos
     }
@@ -70,12 +50,7 @@ enum WebSubmissionKeychain {
     @discardableResult
     static func delete(reference: String) -> Bool {
         guard let cuenta = account(from: reference) else { return false }
-        let consulta: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: cuenta,
-        ]
-        return SecItemDelete(consulta as CFDictionary) == errSecSuccess
+        return AppSecretVault.shared.delete(service: service, account: cuenta)
     }
 }
 

@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Bóveda cifrada con clave maestra única en el Llavero (`AppSecretVault.swift`): los secretos de Portal del alumnado (`WebPortalStore`), formularios web (`WebSubmissionKeychain`), buzón (`WebSubmissionInbox`) y sync iOS (`IosKeychainStore`) se guardan en un único fichero local cifrado con AES-256-GCM (`Application Support/MiGestor/secret-vault.enc`, permisos `0600`) protegido por **una sola clave maestra** en el Llavero (`Cuaderno Vivo (Bóveda de claves)`). Reduce los avisos de contraseña del Llavero en macOS al instalar una nueva versión firmada ad hoc a un único diálogo («Permitir siempre» desbloquea todo; «Denegar» bloquea sin insistir), migra y limpia las entradas antiguas al vuelo, y evita el aviso innecesario de `MacSyncBackgroundService.hasPairedDevice` consultando solo atributos (`exists(key:)`). Además, `scripts/package_mac_release.sh` admite `SIGN_IDENTITY` opcional para firmar localmente con certificado estable (0 avisos entre actualizaciones en tu Mac).
 - «Exportar a Educamos» simplificado según Apple HIG:
   - Cabecera compacta de una sola línea (materia, evaluación, curso, alumnado y botón «Cambiar…») eliminando las seis filas de metadatos redundantes, las letras internas de columna del Excel («Columna G, H…») y los subtítulos repetitivos.
   - Detección automática inteligente de columnas del Cuaderno leyendo también las descripciones completas de Educamos (`xl/comments*.xml` y hoja «Descripción elementos y categor»), acotando cada instrumento a su Situación de Aprendizaje (sin robar columnas de otras SA), reconociendo siglas/prefijos/sinónimos bilingües y asignando 1 a 1 sin duplicados.
@@ -28,6 +29,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./scripts/verify_apple_builds.sh` (`MiGestorKMPMac` y `MiGestorKMPiOS` Simulator): BUILD SUCCEEDED. `AppSecretVaultTests` (5 pruebas unitarias ejecutadas con XCTest): 5/5 PASSED, 0 fallos; `bash -n scripts/package_mac_release.sh`: OK.
 - `./scripts/verify_apple_builds.sh` (`MiGestorKMPMac` y `MiGestorKMPiOS` Simulator): BUILD SUCCEEDED. `EducamosEvaluationMatchingTests` (`MiGestorPlannerTests`, macOS): 9 pruebas ejecutadas, 0 fallos (incluye parseo completo de plantilla Educamos en valenciano y emparejamiento de autoevaluación/evaluación en valenciano).
 - `./scripts/verify_apple_builds.sh` (`MiGestorKMPMac` y `MiGestorKMPiOS` Simulator): BUILD SUCCEEDED. `EducamosEvaluationMatchingTests` (`MiGestorPlannerTests`, macOS): 7 pruebas ejecutadas, 0 fallos.
 

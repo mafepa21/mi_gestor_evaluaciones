@@ -482,13 +482,43 @@ final class LanSyncClient {
 }
 
 final class IosKeychainStore {
+    /// Servicios escritos por procesos externos (p. ej. el helper Java de macOS via `/usr/bin/security`)
+    /// que deben seguir leyéndose directamente del Llavero del sistema.
+    private static let directKeychainServices: Set<String> = [
+        "com.migestor.sync.desktop",
+    ]
+
     private let service: String
 
     init(service: String) {
         self.service = service
     }
 
+    private var usesDirectKeychain: Bool {
+        Self.directKeychainServices.contains(service)
+    }
+
+    /// Comprueba si existe la entrada sin pedir el secreto (en macOS no muestra
+    /// diálogo de contraseña del Llavero al consultar solo atributos).
+    func exists(key: String) -> Bool {
+        guard usesDirectKeychain else {
+            return AppSecretVault.shared.loadString(service: service, account: key) != nil
+        }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        let status = SecItemCopyMatching(query as CFDictionary, nil)
+        return status == errSecSuccess
+    }
+
     func loadString(key: String) -> String? {
+        guard usesDirectKeychain else {
+            return AppSecretVault.shared.loadString(service: service, account: key)
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -503,6 +533,10 @@ final class IosKeychainStore {
     }
 
     func saveString(_ value: String, key: String) {
+        guard usesDirectKeychain else {
+            AppSecretVault.shared.saveString(value, service: service, account: key)
+            return
+        }
         let data = Data(value.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -522,6 +556,10 @@ final class IosKeychainStore {
     }
 
     func delete(key: String) {
+        guard usesDirectKeychain else {
+            AppSecretVault.shared.delete(service: service, account: key)
+            return
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

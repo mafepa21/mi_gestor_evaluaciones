@@ -39,30 +39,16 @@ enum WebSubmissionInbox {
     static func readTokenName(formInstanceId: String) -> String { "lectura-\(formInstanceId)" }
 
     static func saveToken(_ token: String, name: String) -> Bool {
-        let base: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: name,
-        ]
-        SecItemDelete(base as CFDictionary)
-        var nuevo = base
-        nuevo[kSecValueData as String] = Data(token.utf8)
-        nuevo[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        return SecItemAdd(nuevo as CFDictionary, nil) == errSecSuccess
+        AppSecretVault.shared.saveString(token, service: service, account: name)
     }
 
     static func loadToken(name: String) -> String? {
-        let consulta: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: name,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var resultado: CFTypeRef?
-        guard SecItemCopyMatching(consulta as CFDictionary, &resultado) == errSecSuccess,
-              let datos = resultado as? Data else { return nil }
-        return String(data: datos, encoding: .utf8)
+        AppSecretVault.shared.loadString(service: service, account: name)
+    }
+
+    @discardableResult
+    static func deleteToken(name: String) -> Bool {
+        AppSecretVault.shared.delete(service: service, account: name)
     }
 
     static var accountKey: String? { loadToken(name: accountKeyName) }

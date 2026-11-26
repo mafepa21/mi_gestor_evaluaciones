@@ -22,8 +22,10 @@ enum MacSyncBackgroundService {
     }
 
     /// El helper guarda la contraseña del enlace en el llavero desktop.
+    /// Solo comprobamos existencia (sin leer el secreto) para no disparar el
+    /// diálogo de contraseña del Llavero en el arranque o cierre.
     static var hasPairedDevice: Bool {
-        IosKeychainStore(service: "com.migestor.sync.desktop").loadString(key: "paired-token") != nil
+        IosKeychainStore(service: "com.migestor.sync.desktop").exists(key: "paired-token")
     }
 
     /// El helper deja aquí la base del iPad pendiente de adoptar (ver `LocalSyncServer`).

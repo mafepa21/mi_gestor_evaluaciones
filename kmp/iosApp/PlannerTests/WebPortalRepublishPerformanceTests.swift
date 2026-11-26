@@ -157,7 +157,7 @@ final class WebPortalRepublishPerformanceTests: XCTestCase {
         let tokenName = "rendimiento-prueba-\(UUID().uuidString)"
         XCTAssertTrue(WebSubmissionInbox.saveToken(WebSubmissionInbox.randomToken(), name: tokenName))
         defer {
-            SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "com.migestor.buzon", kSecAttrAccount as String: tokenName] as CFDictionary)
+            WebSubmissionInbox.deleteToken(name: tokenName)
         }
 
         var samples: [Sample] = []

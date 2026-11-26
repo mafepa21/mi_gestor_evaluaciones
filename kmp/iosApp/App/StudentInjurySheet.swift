@@ -20,7 +20,8 @@ struct StudentInjurySheet: View {
     @State private var proofDelivered: Bool
     @State private var note: String
     @State private var isSaving = false
-    @State private var saveFailed = false
+    /// Última acción que falló: el aviso dice cuál y «Reintentar» repite esa.
+    @State private var failedAction: FailedAction?
     @State private var confirmDelete = false
 
     init(
@@ -48,6 +49,17 @@ struct StudentInjurySheet: View {
 
     private static let noteLimit = 140
 
+    private enum FailedAction {
+        case save, delete
+
+        var title: String {
+            switch self {
+            case .save: return "No se pudo guardar la lesión"
+            case .delete: return "No se pudo eliminar la lesión"
+            }
+        }
+    }
+
     private var endsBeforeStart: Bool {
         !hasNoEnd && Calendar.current.startOfDay(for: endsOn) < Calendar.current.startOfDay(for: startsOn)
     }
@@ -64,12 +76,12 @@ struct StudentInjurySheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                if saveFailed {
+                if let failedAction {
                     Section {
                         HStack(alignment: .firstTextBaseline, spacing: 16) {
                             Label {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("No se pudo guardar la lesión")
+                                    Text(failedAction.title)
                                         .font(.headline)
                                     Text("Nada ha cambiado. Lo que has escrito sigue aquí.")
                                         .font(.subheadline)
@@ -80,9 +92,14 @@ struct StudentInjurySheet: View {
                                     .foregroundStyle(.red)
                             }
                             Spacer(minLength: 8)
-                            Button("Reintentar") { save() }
-                                .buttonStyle(.bordered)
-                                .disabled(!canSave)
+                            Button("Reintentar") {
+                                switch failedAction {
+                                case .save: save()
+                                case .delete: deleteExisting()
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(isSaving || (failedAction == .save && !canSave))
                         }
                         .accessibilityElement(children: .combine)
                     }
@@ -188,7 +205,7 @@ struct StudentInjurySheet: View {
                 onFinished()
                 dismiss()
             } catch {
-                saveFailed = true
+                failedAction = .save
                 AppleInteractionFeedback.play(.error)
                 announce("No se pudo guardar la lesión. Nada ha cambiado.")
             }
@@ -205,8 +222,9 @@ struct StudentInjurySheet: View {
                 onFinished()
                 dismiss()
             } catch {
-                saveFailed = true
-                announce("No se pudo eliminar la lesión.")
+                failedAction = .delete
+                AppleInteractionFeedback.play(.error)
+                announce("No se pudo eliminar la lesión. Nada ha cambiado.")
             }
             isSaving = false
         }

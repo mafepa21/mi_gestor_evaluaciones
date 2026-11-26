@@ -1164,6 +1164,9 @@ struct AttendanceWorkspaceView: View {
                 classId: selectedClassId
             )
             bridge.status = target ? "Lesión activa para \(student.fullName)." : "Lesión desactivada para \(student.fullName)."
+            // La marca real ya está guardada: la local no debe tapar cambios posteriores
+            // («Ha vuelto», fin de la lesión al cambiar de día).
+            localInjuryStatuses[student.id] = nil
             AppleInteractionFeedback.play(.success)
         } catch {
             localInjuryStatuses[student.id] = current

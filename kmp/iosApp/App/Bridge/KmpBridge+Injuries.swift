@@ -60,13 +60,19 @@ final class StudentInjuryStore: ObservableObject {
 
     @Published private(set) var activeByStudent: [Int64: StudentInjurySnapshot] = [:]
     @Published private(set) var returningToday: [InjuryReturnNotice] = []
+    /// Sube en cada publicación: las vistas que leen lesiones no activas (historial,
+    /// programadas) se recargan con él.
+    @Published private(set) var version = 0
     /// Día al que corresponden los datos: si cambia el día, hay que recalcular.
     private(set) var loadedDay: Date?
+    /// Las lesiones se reencolan para Sync LAN una sola vez por arranque.
+    var didRequeueThisLaunch = false
 
     func publish(active: [Int64: StudentInjurySnapshot], returning: [InjuryReturnNotice], day: Date) {
         if activeByStudent != active { activeByStudent = active }
         if returningToday != returning { returningToday = returning }
         loadedDay = day
+        version += 1
     }
 }
 
@@ -110,7 +116,8 @@ extension KmpBridge {
         do {
             // Primera carga de este arranque: se reencolan todas las lesiones (son pocas).
             // Si el otro aparato aún no tenía la migración 51 y las ignoró, se ponen al día.
-            if StudentInjuryStore.shared.loadedDay == nil {
+            if !StudentInjuryStore.shared.didRequeueThisLaunch {
+                StudentInjuryStore.shared.didRequeueThisLaunch = true
                 for injury in try await container.studentInjuryRepository.listAll() {
                     enqueueInjury(injury)
                 }

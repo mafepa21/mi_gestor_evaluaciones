@@ -41,6 +41,8 @@ struct MacStudentsView: View {
     let bridge: KmpBridge
     @ObservedObject var studentsBridgeStore: StudentsBridgeStore
     @ObservedObject var store: MacStudentsStore
+    /// Al cambiar una lesión (ficha, sync, cambio de día) la tabla recarga su marca.
+    @ObservedObject private var injuryStore = StudentInjuryStore.shared
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -157,6 +159,10 @@ struct MacStudentsView: View {
             .reloadOnLanSync(.students) {
                 guard ownsStudentSideEffects else { return }
                 await reloadRows()
+            }
+            .appOnChange(of: injuryStore.version) { _, _ in
+                guard ownsStudentSideEffects, store.didBootstrap else { return }
+                Task { await reloadRows(preferredStudentId: store.localSelectedStudentId, showsLoading: false) }
             }
             .appOnChange(of: selectedClassId) { _, newClassId in
                 handleClassIdChange(newClassId)
@@ -1524,36 +1530,6 @@ struct MacStudentsView: View {
         }
     }
 
-    @MainActor
-    private func applyInjuryLocally(studentId: Int64, isInjured: Bool) {
-        store.rows = store.rows.map { row in
-            guard row.id == studentId else { return row }
-            let followUpLabel: String
-            if isInjured {
-                followUpLabel = "Lesión"
-            } else if row.incidentCount > 0 {
-                followUpLabel = "Incidencias"
-            } else {
-                followUpLabel = "Normal"
-            }
-
-            return KmpBridge.MacStudentRowSnapshot(
-                id: row.id,
-                student: row.student,
-                classId: row.classId,
-                className: row.className,
-                allClassMemberships: row.allClassMemberships,
-                followUpLabel: followUpLabel,
-                recentAttendanceLabel: row.recentAttendanceLabel,
-                averageText: row.averageText,
-                incidentCount: row.incidentCount,
-                lastObservationText: row.lastObservationText,
-                isInjured: isInjured,
-                isFollowUp: isInjured || row.incidentCount > 0,
-                workGroupName: row.workGroupName
-            )
-        }
-    }
 
     @MainActor
     private func saveQuickNote() async {

@@ -24,8 +24,16 @@ struct StudentInjuryCard: View {
 
     private var active: StudentInjurySnapshot? { injuryStore.activeByStudent[studentId] }
 
+    /// Lesión que empieza más adelante (no activa todavía): se ve aparte, no en el historial.
+    private var upcoming: StudentInjurySnapshot? {
+        let today = Calendar.current.startOfDay(for: Date())
+        return injuries
+            .filter { $0.id != active?.id && Calendar.current.startOfDay(for: $0.startsOn) > today }
+            .min { $0.startsOn < $1.startsOn }
+    }
+
     private var history: [StudentInjurySnapshot] {
-        injuries.filter { $0.id != active?.id }
+        injuries.filter { $0.id != active?.id && $0.id != upcoming?.id }
     }
 
     var body: some View {
@@ -38,6 +46,8 @@ struct StudentInjuryCard: View {
             case .loaded:
                 if let active {
                     activeCard(active)
+                } else if let upcoming {
+                    upcomingRow(upcoming)
                 } else {
                     emptyRow
                 }
@@ -51,7 +61,7 @@ struct StudentInjuryCard: View {
                 }
             }
         }
-        .task(id: TaskKey(studentId: studentId, active: active)) { await load() }
+        .task(id: TaskKey(studentId: studentId, version: injuryStore.version)) { await load() }
         .sheet(item: $editing) { target in
             StudentInjurySheet(
                 bridge: bridge,
@@ -65,7 +75,8 @@ struct StudentInjuryCard: View {
 
     private struct TaskKey: Equatable {
         let studentId: Int64
-        let active: StudentInjurySnapshot?
+        /// Sube cada vez que cambian las lesiones (guardar, sync, cambio de día).
+        let version: Int
     }
 
     // MARK: - Estados
@@ -99,6 +110,22 @@ struct StudentInjuryCard: View {
             }
             Spacer(minLength: 8)
             Button("Añadir lesión") { editing = SheetTarget(injury: nil) }
+                .buttonStyle(.bordered)
+        }
+        .frame(minHeight: 44)
+    }
+
+    private func upcomingRow(_ injury: StudentInjurySnapshot) -> some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Lesión programada").font(.subheadline.weight(.semibold))
+                Text("Empieza el \(StudentInjuryText.shortDate(injury.startsOn))"
+                     + (injury.role == .none ? "" : " · \(injury.role.title)"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button("Editar") { editing = SheetTarget(injury: injury) }
                 .buttonStyle(.bordered)
         }
         .frame(minHeight: 44)

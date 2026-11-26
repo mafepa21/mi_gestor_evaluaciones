@@ -1149,6 +1149,9 @@ struct MacAttendanceView: View {
                 classId: selectedClassId
             )
             bridge.status = newValue ? "Alumno marcado con lesión." : "Lesión retirada."
+            // La marca real ya está guardada: la local no debe tapar cambios posteriores
+            // («Ha vuelto», fin de la lesión al cambiar de día).
+            localInjuryStatuses[student.id] = nil
         } catch {
             localInjuryStatuses[student.id] = previousValue
             bridge.status = "No se pudo actualizar la lesión: \(error.localizedDescription)"

@@ -5008,6 +5008,9 @@ extension KmpBridge {
         #endif
         restartAutoSyncLoopIfPaired()
         reconcileAppleCalendarIfEnabled()
+        // Lesiones con fecha: si la app vuelve otro día, la marca «lesionado hoy» y
+        // «Vuelve hoy» se recalculan aunque no se pase por «Hoy».
+        Task { @MainActor [weak self] in await self?.refreshInjuriesIfDayChanged() }
         let isPaired = pairedSyncHost != nil && syncToken != nil
         if isPaired {
             // Al volver, lo primero es ponerse al día: si el docente edita antes,

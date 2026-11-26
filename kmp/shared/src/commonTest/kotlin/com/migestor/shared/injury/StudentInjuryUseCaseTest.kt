@@ -137,7 +137,11 @@ class StudentInjuryUseCaseTest {
         uc.save(StudentInjuryDraft(studentId = ana, startsOn = d("2026-11-26")), 1_000, "ipad")
         uc.reconcileFlags()
         assertTrue(pablo in repo.flagged)
-        uc.setInjured(pablo, injured = false, nowEpochMs = 2_000, deviceId = "ipad")
+        // Quitarla deja una lesión `legacy-` borrada y con fecha: así viaja por Sync LAN.
+        val tombstone = uc.setInjured(pablo, injured = false, nowEpochMs = 2_000, deviceId = "ipad").single()
+        assertEquals(StudentInjuryUseCase.legacyId(pablo), tombstone.id)
+        assertTrue(tombstone.isDeleted)
+        assertEquals(2_000L, tombstone.trace.updatedAt.toEpochMilliseconds())
         assertFalse(pablo in repo.flagged)
     }
 

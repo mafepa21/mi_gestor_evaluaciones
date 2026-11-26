@@ -112,8 +112,21 @@ class StudentInjuryUseCase(
             active.forEach { injury -> markReturned(injury.id, nowEpochMs, deviceId)?.let { changed += it } }
         }
         if (injuries.isEmpty() && !injured && studentId in repository.listFlaggedStudentIds()) {
-            repository.setInjuredFlag(studentId, false)
+            // Marca antigua sin lesiones: se guarda la lesión `legacy-` como borrada y con
+            // fecha de ahora. Así viaja por Sync LAN, pisa la `legacy-` del otro aparato
+            // (fecha 0) y desde ahí el alumno se calcula desde las lesiones en los dos.
+            val now = Instant.fromEpochMilliseconds(nowEpochMs)
+            val tombstone = StudentInjury(
+                id = legacyId(studentId),
+                studentId = studentId,
+                startsOn = date,
+                isDeleted = true,
+                trace = touched(null, now, deviceId),
+            )
+            repository.save(tombstone)
+            changed += tombstone
         }
+        reconcileStudent(studentId)
         return changed
     }
 
@@ -156,6 +169,9 @@ class StudentInjuryUseCase(
         )
 
     companion object {
+        /** Id de la lesión que crea la migración 51 para una marca antigua. */
+        fun legacyId(studentId: Long): String = "legacy-$studentId"
+
         /** Id nuevo con forma de UUID v4 (mismo formato que las juntas). */
         fun randomId(): String = com.migestor.shared.evaluationsession.randomEvaluationSessionId()
     }

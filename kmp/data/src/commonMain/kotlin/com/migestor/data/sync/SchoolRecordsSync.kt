@@ -66,6 +66,9 @@ class SchoolRecordsSync(
     suspend fun collect(sinceEpochMs: Long): Collected {
         val changes = mutableListOf<SyncChange>()
         val live = ENTITIES.associateWith { mutableSetOf<String>() }
+        // El helper del Mac puede llevar días abierto: la marca «lesionado hoy» se
+        // recalcula antes de mandar alumnos (barato; no hace nada si no cambió).
+        runCatching { container.studentInjuries.reconcileFlags() }
 
         container.subjectsRepository.listSubjects().forEach { subject ->
             live.getValue(SUBJECT) += subject.id.toString()
@@ -126,18 +129,17 @@ class SchoolRecordsSync(
         }
 
         // Lesiones (migración 51): id de texto; las borradas viajan con isDeleted.
+        // Se mandan siempre todas (son pocas): si el otro aparato aún no tenía la
+        // migración 51 y las ignoró, se ponen al día en cuanto se actualice.
         container.studentInjuryRepository.listAll().forEach { injury ->
             live.getValue(STUDENT_INJURIES) += injury.id
-            val updatedAt = injury.trace.updatedAt.toEpochMilliseconds()
-            if (sinceEpochMs == 0L || updatedAt > sinceEpochMs) {
-                changes += SyncChange(
-                    entity = STUDENT_INJURIES,
-                    id = injury.id,
-                    updatedAtEpochMs = updatedAt,
-                    deviceId = injury.trace.deviceId ?: localDeviceId,
-                    payload = injuryPayload(injury),
-                )
-            }
+            changes += SyncChange(
+                entity = STUDENT_INJURIES,
+                id = injury.id,
+                updatedAtEpochMs = injury.trace.updatedAt.toEpochMilliseconds(),
+                deviceId = injury.trace.deviceId ?: localDeviceId,
+                payload = injuryPayload(injury),
+            )
         }
 
         return Collected(changes, live)
@@ -420,8 +422,18 @@ class SchoolRecordsSync(
             ?: error("payload ilegible: ${change.entity} ${change.id}")
         val repository = container.studentInjuryRepository
         val existing = repository.get(change.id)
-        if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() >= change.updatedAtEpochMs) return Outcome.STALE
+        if (existing != null) {
+            val local = existing.trace.updatedAt.toEpochMilliseconds()
+            // Empate (p. ej. dos filas `legacy-` con fecha 0): desempata el deviceId,
+            // igual que `SqlDelightSyncAdapter.shouldApplyIncoming`.
+            if (local > change.updatedAtEpochMs) return Outcome.STALE
+            if (local == change.updatedAtEpochMs && change.deviceId <= (existing.trace.deviceId ?: "")) return Outcome.STALE
+        }
         val studentId = payload.longOrKeep("studentId", existing?.studentId) ?: return Outcome.SKIPPED
+        // No resucitar lesiones de un alumno ya borrado (las FK están apagadas).
+        if (container.syncTombstoneRepository.isDeletedAtOrAfter("student", studentId.toString(), change.updatedAtEpochMs)) {
+            return Outcome.SKIPPED
+        }
         val startsOn = payload.text("startsOn", existing?.startsOn?.toString())
             ?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return Outcome.SKIPPED
         val endsOn = payload.textOrNull("endsOn", existing?.endsOn?.toString())

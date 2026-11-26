@@ -24,7 +24,10 @@ CREATE INDEX IF NOT EXISTS idx_student_injuries_student ON student_injuries(stud
 -- Los alumnos ya marcados conservan la marca: una lesión «desde hoy, sin fecha de fin».
 -- Id fijo por alumno ('legacy-<id>') para que el iPad y el Mac, que migran cada uno
 -- por su cuenta, generen la misma fila y no se dupliquen al sincronizar.
+-- «Desde» = último cambio del alumno (viaja por sync, así coincide en los dos aparatos);
+-- si no lo hay, el día de la migración.
 INSERT OR IGNORE INTO student_injuries(id, student_id, starts_on)
-SELECT 'legacy-' || id, id, date('now', 'localtime')
+SELECT 'legacy-' || id, id,
+       COALESCE(date(NULLIF(updated_at_epoch_ms, 0) / 1000, 'unixepoch', 'localtime'), date('now', 'localtime'))
 FROM students
 WHERE is_injured = 1;

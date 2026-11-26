@@ -26,7 +26,7 @@ enum EvaluationClosingTerm: String, CaseIterable, Identifiable {
             return [.first, .second, .third][Int(String(digit))! - 1]
         }
         if folded.contains("primer") { return .first }
-        if folded.contains("segund") { return .second }
+        if folded.contains("segund") || folded.contains("segon") { return .second }
         if folded.contains("tercer") { return .third }
         return nil
     }

@@ -114,6 +114,7 @@ enum EducamosColumnMatcher {
     private static let stopWords: Set<String> = [
         "de", "del", "la", "las", "el", "los", "en", "y", "e", "o", "con", "sin",
         "por", "para", "a", "al", "un", "una", "su", "sus", "sa", "ud",
+        "d", "l", "els", "les", "i", "per", "avaluacio",
         "rubrica", "rejilla", "instrumento", "ficha", "lista", "cotejo", "prueba", "evaluacion"
     ]
 
@@ -396,15 +397,15 @@ enum EducamosColumnMatcher {
         let combinedSignals = Set([shortClean] + tokens(element.shortName) + (element.fullName.map(tokens) ?? []))
 
         let isSelfSignal = combinedSignals.contains(where: {
-            $0 == "aut" || $0 == "auto" || $0.hasPrefix("autoev")
+            $0 == "aut" || $0 == "auto" || $0.hasPrefix("autoev") || $0.hasPrefix("autoav")
         }) || (shortClean.hasPrefix("a") && shortClean.count == 2 && saTabTitle.map { fold($0).hasPrefix(String(shortClean.suffix(1))) } == true)
 
-        if isSelfSignal && (column.instrumentKind == .selfAssessment || colTokens.contains(where: { $0.hasPrefix("autoev") })) {
+        if isSelfSignal && (column.instrumentKind == .selfAssessment || colTokens.contains(where: { $0.hasPrefix("autoev") || $0.hasPrefix("autoav") })) {
             best = max(best, 86)
         }
 
-        let isPeerSignal = combinedSignals.contains(where: { $0 == "coe" || $0.hasPrefix("coev") })
-        if isPeerSignal && (column.instrumentKind == .peerAssessment || colTokens.contains(where: { $0.hasPrefix("coev") })) {
+        let isPeerSignal = combinedSignals.contains(where: { $0 == "coe" || $0.hasPrefix("coev") || $0.hasPrefix("coav") })
+        if isPeerSignal && (column.instrumentKind == .peerAssessment || colTokens.contains(where: { $0.hasPrefix("coev") || $0.hasPrefix("coav") })) {
             best = max(best, 86)
         }
 
@@ -481,7 +482,7 @@ enum EducamosColumnMatcher {
         return candidates.first { col in
             let norm = fold(col.title)
             let matchesTab = evaluationTabId == nil || col.sharedAcrossTabs || col.tabIds.contains(evaluationTabId!)
-            return matchesTab && (norm.contains("comentario") || norm.contains("sintesis") || norm.contains("observaciones"))
+            return matchesTab && (norm.contains("comentario") || norm.contains("comentari") || norm.contains("sintesis") || norm.contains("sintesi") || norm.contains("observaciones") || norm.contains("observacions"))
         }
     }
 

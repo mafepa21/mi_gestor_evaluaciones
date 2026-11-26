@@ -23,10 +23,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Exportar a Educamos: corregido el error «No se han encontrado alumnos en el archivo» al importar plantillas de Educamos SM en valenciano (p. ej. Tavernes, con cabeceras `Alumnes` y `Classe` en lugar de `Alumnos` y `Clase`). El parser localiza ahora la fila de cabecera y la columna de inicio mediante las claves técnicas independientes de idioma (`PersonaId` y `TipoColumna`) con respaldo para etiquetas localizadas; además se amplía el emparejamiento automático a autoevaluación/coevaluación/comentarios y evaluaciones en valenciano (`autoav`, `coav`, `comentari`, `observacions`, `segon`).
 - Exportar a Educamos: corregido el bug por el que las rejillas transversales y otros instrumentos en escala 1-4 se exportaban sobre 4 en lugar de sobre 10, así como la extracción de nota derivada en instrumentos estructurados almacenados sobre columnas `.text` (p. ej. autoevaluaciones).
 
 ### Verification
 
+- `./scripts/verify_apple_builds.sh` (`MiGestorKMPMac` y `MiGestorKMPiOS` Simulator): BUILD SUCCEEDED. `EducamosEvaluationMatchingTests` (`MiGestorPlannerTests`, macOS): 9 pruebas ejecutadas, 0 fallos (incluye parseo completo de plantilla Educamos en valenciano y emparejamiento de autoevaluación/evaluación en valenciano).
 - `./scripts/verify_apple_builds.sh` (`MiGestorKMPMac` y `MiGestorKMPiOS` Simulator): BUILD SUCCEEDED. `EducamosEvaluationMatchingTests` (`MiGestorPlannerTests`, macOS): 7 pruebas ejecutadas, 0 fallos.
 
 ### Added

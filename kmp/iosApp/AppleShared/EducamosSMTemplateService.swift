@@ -488,6 +488,33 @@ enum EducamosSMTemplateService {
         )
     }
 
+    private static let localizedStudentHeaderLabels: Set<String> = [
+        "alumnos", "alumnes", "alumnado", "alumnat", "students", "ikasleak"
+    ]
+
+    private static let localizedClassHeaderLabels: Set<String> = [
+        "clase", "classe", "class", "grupo", "grup", "taldea"
+    ]
+
+    /// Localiza la fila de cabecera del alumnado usando la clave técnica `PersonaId`
+    /// (independiente del idioma del centro) con respaldo por etiquetas localizadas.
+    private static func findHeaderRowIndex(in rows: [[String]]) -> Int? {
+        if let technicalIdx = rows.firstIndex(where: { row in
+            row.contains { $0.trimmingCharacters(in: .whitespacesAndNewlines) == "PersonaId" }
+        }) {
+            return technicalIdx
+        }
+        return rows.firstIndex(where: { row in
+            row.contains { cell in
+                let normalized = cell
+                    .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "es_ES"))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                return localizedStudentHeaderLabels.contains(normalized)
+            }
+        })
+    }
+
     private static func parseElements(
         from rows: [[String]],
         rowNumbers: [Int],
@@ -495,7 +522,7 @@ enum EducamosSMTemplateService {
         commentsByCellRef: [String: String]
     ) -> [EducamosSMElement] {
         guard let tipoColumnaRowIndex = rows.firstIndex(where: { $0.contains("TipoColumna") }),
-              let headerRowIndex = rows.firstIndex(where: { $0.contains("Alumnos") })
+              let headerRowIndex = findHeaderRowIndex(in: rows)
         else { return [] }
 
         let tipoColumnaRow = rows[tipoColumnaRowIndex]
@@ -505,7 +532,14 @@ enum EducamosSMTemplateService {
         let uuidRowIndex = tipoColumnaRowIndex + 1
         let uuidRow = uuidRowIndex < rows.count ? rows[uuidRowIndex] : []
 
-        guard let claseIdx = headerRow.firstIndex(of: "Clase") else { return [] }
+        let claseIdx = headerRow.firstIndex(where: { cell in
+            let normalized = cell
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "es_ES"))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            return localizedClassHeaderLabels.contains(normalized)
+        }) ?? tipoColumnaRow.firstIndex(of: "TipoColumna")
+        guard let claseIdx else { return [] }
         let startColIndex = claseIdx + 1
 
         struct DraftElement {
@@ -588,31 +622,47 @@ enum EducamosSMTemplateService {
         rowNumbers: [Int],
         claseMateriaId: String
     ) -> [EducamosSMStudent] {
-        guard let headerRowIndex = rows.firstIndex(where: { $0.contains("Alumnos") }) else {
+        guard let headerRowIndex = findHeaderRowIndex(in: rows) else {
             return []
         }
+
+        let headerRow = rows[headerRowIndex]
+        let personaIdColIndex = headerRow.firstIndex(where: {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines) == "PersonaId"
+        }) ?? 1
+        let claseColIndex = headerRow.firstIndex(where: { cell in
+            let normalized = cell
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "es_ES"))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            return localizedClassHeaderLabels.contains(normalized)
+        }) ?? 5
 
         let dataStartIndex = headerRowIndex + 1
         var students: [EducamosSMStudent] = []
 
         for rowIdx in dataStartIndex..<rows.count {
             let row = rows[rowIdx]
-            guard row.count >= 2 else { continue }
+            guard row.count > personaIdColIndex else { continue }
 
-            let personaId = row[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            let personaId = row[personaIdColIndex].trimmingCharacters(in: .whitespacesAndNewlines)
             guard personaId.contains("-") else { continue }
 
             var orderNumber = 0
             var rawName = ""
             var clase = ""
 
-            // Buscar orden y nombre en columnas 2, 3, 4
-            for colIdx in 2...min(4, row.count - 1) {
-                let val = row[colIdx].trimmingCharacters(in: .whitespacesAndNewlines)
-                if let num = Int(val), orderNumber == 0 {
-                    orderNumber = num
-                } else if !val.isEmpty && !val.contains("-") && rawName.isEmpty {
-                    rawName = val
+            // Buscar orden y nombre entre PersonaId y la columna de Clase
+            let nameSearchStart = personaIdColIndex + 1
+            let nameSearchEnd = min(claseColIndex - 1, row.count - 1)
+            if nameSearchStart <= nameSearchEnd {
+                for colIdx in nameSearchStart...nameSearchEnd {
+                    let val = row[colIdx].trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let num = Int(val), orderNumber == 0 {
+                        orderNumber = num
+                    } else if !val.isEmpty && !val.contains("-") && rawName.isEmpty {
+                        rawName = val
+                    }
                 }
             }
 
@@ -620,8 +670,8 @@ enum EducamosSMTemplateService {
                 orderNumber = students.count + 1
             }
 
-            if row.count > 5 {
-                clase = row[5].trimmingCharacters(in: .whitespacesAndNewlines)
+            if row.count > claseColIndex {
+                clase = row[claseColIndex].trimmingCharacters(in: .whitespacesAndNewlines)
             }
 
             let excelRowNumber = rowIdx < rowNumbers.count ? rowNumbers[rowIdx] : (rowIdx + 1)

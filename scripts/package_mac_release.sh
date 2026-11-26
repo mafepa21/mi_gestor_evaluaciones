@@ -6,7 +6,12 @@
 # .dmg listo para subir a GitHub.
 #
 # Uso: scripts/package_mac_release.sh
+#      SIGN_IDENTITY="Cuaderno Vivo Local" scripts/package_mac_release.sh
 # Resultado: build/release-mac/CuadernoVivo-<versión>.dmg y su .sha256
+#
+# Si no se indica SIGN_IDENTITY, firma en modo ad hoc («-»). Con un certificado
+# autofirmado local estable en Acceso a Llaveros, macOS conserva el permiso del
+# Llavero entre actualizaciones en tu Mac (0 avisos tras el primer «Permitir siempre»).
 #
 # El .pkg abre el asistente de instalación de macOS (scripts/mac-installer/):
 # cierra la app y su ayudante si están abiertos, borra la versión instalada y
@@ -30,6 +35,7 @@ PKG_WORK="${OUT_DIR}/pkg-work"
 INSTALLER_DIR="${PROJECT_ROOT}/scripts/mac-installer"
 BUNDLE_ID="com.migestor.mac"
 BUILD_LOG="${OUT_DIR}/xcodebuild.log"
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 
 VERSION="$(awk '/MiGestorKMPMac:/{t=1} t && /MARKETING_VERSION:/{gsub(/"/,"",$2); print $2; exit}' "${IOS_APP_DIR}/project.yml")"
 if [ -z "${VERSION}" ]; then
@@ -64,12 +70,16 @@ fi
 
 # 2. Firmar de dentro hacia fuera: primero el ayudante Command Center embebido
 #    (Compose Desktop, con su propio runtime de Java) y después la app principal.
-echo "[2/5] Firmando en modo ad hoc..."
+if [ "${SIGN_IDENTITY}" = "-" ]; then
+  echo "[2/5] Firmando en modo ad hoc..."
+else
+  echo "[2/5] Firmando con certificado «${SIGN_IDENTITY}»..."
+fi
 HELPER_PATH="${APP_PATH}/Contents/Resources/MiGestorCommandCenter.app"
 if [ -d "${HELPER_PATH}" ]; then
-  codesign --force --deep --sign - "${HELPER_PATH}"
+  codesign --force --deep --sign "${SIGN_IDENTITY}" "${HELPER_PATH}"
 fi
-codesign --force --sign - "${APP_PATH}"
+codesign --force --sign "${SIGN_IDENTITY}" "${APP_PATH}"
 codesign --verify --deep --strict "${APP_PATH}"
 
 # 3. Instalador .pkg: un componente con la app en /Applications y los

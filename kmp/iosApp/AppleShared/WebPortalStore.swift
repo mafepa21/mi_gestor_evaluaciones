@@ -135,77 +135,52 @@ struct WebPortalStore {
         return store
     }
 
-    // MARK: - K_tablon en el llavero
+    // MARK: - K_tablon en la bóveda (protegida por clave única en el Llavero)
 
-    private func keychainBase(portalId: String) -> [String: Any] {
-        [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: "tablon-\(portalId)",
-        ]
+    private func tablonAccount(portalId: String) -> String {
+        "tablon-\(portalId)"
     }
 
     @discardableResult
     func saveTablonKey(_ key: Data, portalId: String) -> Bool {
         guard key.count == 32 else { return false }
-        let base = keychainBase(portalId: portalId)
-        SecItemDelete(base as CFDictionary)
-        var nuevo = base
-        nuevo[kSecValueData as String] = key
-        // Sin iCloud y solo con el dispositivo desbloqueado, como el resto de claves.
-        nuevo[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        return SecItemAdd(nuevo as CFDictionary, nil) == errSecSuccess
+        return AppSecretVault.shared.saveData(key, service: keychainService, account: tablonAccount(portalId: portalId))
     }
 
     func tablonKey(portalId: String) -> Data? {
-        var consulta = keychainBase(portalId: portalId)
-        consulta[kSecReturnData as String] = true
-        consulta[kSecMatchLimit as String] = kSecMatchLimitOne
-        var resultado: CFTypeRef?
-        guard SecItemCopyMatching(consulta as CFDictionary, &resultado) == errSecSuccess,
-              let datos = resultado as? Data, datos.count == 32 else { return nil }
+        guard let datos = AppSecretVault.shared.loadData(service: keychainService, account: tablonAccount(portalId: portalId)),
+              datos.count == 32 else { return nil }
         return datos
     }
 
     @discardableResult
     func deleteTablonKey(portalId: String) -> Bool {
-        SecItemDelete(keychainBase(portalId: portalId) as CFDictionary) == errSecSuccess
+        AppSecretVault.shared.delete(service: keychainService, account: tablonAccount(portalId: portalId))
     }
 
     // MARK: Llave pendiente
     // Al reinvitar a quien ya tiene cuenta, la llave nueva espera aquí hasta que
     // canjee el código. Mientras, se sigue publicando con la actual.
 
-    private func pendingBase(portalId: String) -> [String: Any] {
-        var base = keychainBase(portalId: portalId)
-        base[kSecAttrAccount as String] = "tablon-pend-\(portalId)"
-        return base
+    private func pendingAccount(portalId: String) -> String {
+        "tablon-pend-\(portalId)"
     }
 
     @discardableResult
     func savePendingKey(_ key: Data, portalId: String) -> Bool {
         guard key.count == 32 else { return false }
-        let base = pendingBase(portalId: portalId)
-        SecItemDelete(base as CFDictionary)
-        var nuevo = base
-        nuevo[kSecValueData as String] = key
-        nuevo[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        return SecItemAdd(nuevo as CFDictionary, nil) == errSecSuccess
+        return AppSecretVault.shared.saveData(key, service: keychainService, account: pendingAccount(portalId: portalId))
     }
 
     func pendingKey(portalId: String) -> Data? {
-        var consulta = pendingBase(portalId: portalId)
-        consulta[kSecReturnData as String] = true
-        consulta[kSecMatchLimit as String] = kSecMatchLimitOne
-        var resultado: CFTypeRef?
-        guard SecItemCopyMatching(consulta as CFDictionary, &resultado) == errSecSuccess,
-              let datos = resultado as? Data, datos.count == 32 else { return nil }
+        guard let datos = AppSecretVault.shared.loadData(service: keychainService, account: pendingAccount(portalId: portalId)),
+              datos.count == 32 else { return nil }
         return datos
     }
 
     @discardableResult
     func deletePendingKey(portalId: String) -> Bool {
-        SecItemDelete(pendingBase(portalId: portalId) as CFDictionary) == errSecSuccess
+        AppSecretVault.shared.delete(service: keychainService, account: pendingAccount(portalId: portalId))
     }
 
     /// La pendiente pasa a ser la llave con la que se publica.

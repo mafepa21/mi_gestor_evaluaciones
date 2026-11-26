@@ -1050,40 +1050,12 @@ extension KmpBridge {
             throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No se encontró el alumno \(studentId)."])
         }
 
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        _ = try await container.studentsRepository.saveStudent(
-            id: KotlinLong(value: student.id),
-            firstName: student.firstName,
-            lastName: student.lastName,
-            email: student.email,
-            photoPath: student.photoPath,
-            isInjured: isInjured,
-            sex: student.sex,
-            sexSource: student.sexSource,
-            birthDate: student.birthDate,
-            updatedAtEpochMs: nowMs,
-            deviceId: localDeviceId,
-            syncVersion: student.trace.syncVersion + 1
-        )
-        try await refreshStudentsDirectory()
-        try await refreshDashboard()
-        enqueueLocalChange(
-            entity: "student",
-            id: "\(student.id)",
-            updatedAtEpochMs: nowMs,
-            payload: [
-                "id": student.id,
-                "firstName": student.firstName,
-                "lastName": student.lastName,
-                "email": student.email ?? NSNull(),
-                "photoPath": student.photoPath ?? NSNull(),
-                "isInjured": isInjured,
-                "sex": student.sex.name,
-                "sexSource": student.sexSource.name,
-                "birthDate": student.birthDate == nil ? NSNull() : student.birthDate!.description()
-            ]
-        )
+        // Lesiones con fecha (migración 51): la marca ya no se escribe a mano. Marcar
+        // crea una lesión desde hoy sin fecha de fin; quitar marca «ha vuelto». La
+        // marca `isInjured` la deriva KMP y la lesión viaja por Sync LAN.
+        try await setStudentInjured(studentId: student.id, injured: isInjured)
 
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         if let classId {
             enqueueRosterSnapshot(forClassId: classId, updatedAtEpochMs: nowMs)
         }

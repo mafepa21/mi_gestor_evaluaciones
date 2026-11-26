@@ -961,6 +961,12 @@ extension KmpBridge {
                 guard !Task.isCancelled else { return }
                 let entities = Set(capturedChanges.map(\.entity))
                 let plan = LanSyncRefreshPlan.steps(entities: entities)
+                // Lesiones: la marca «lesionado hoy» se recalcula al final del lote, cuando
+                // ya se han aplicado también los registros `student` (que traen su marca).
+                if entities.contains(SchoolRecordsSync.companion.STUDENT_INJURIES) || plan.students {
+                    await self.refreshInjuries()
+                    guard !Task.isCancelled else { return }
+                }
                 if plan.classes {
                     try await self.refreshClasses()
                     guard !Task.isCancelled else { return }
@@ -4195,6 +4201,14 @@ extension KmpBridge {
                 failedCount += 1
                 continue
             }
+        }
+        // Lesiones con fecha: la marca «lesionado hoy» se recalcula aquí, al final del
+        // lote y sin esperar al refresco en segundo plano (que se cancela si llega otro
+        // sync): los registros `student` aplicados arriba traen su propia marca.
+        if changes.contains(where: {
+            $0.entity == SchoolRecordsSync.companion.STUDENT_INJURIES || $0.entity == "student"
+        }) {
+            _ = try? await container.studentInjuries.reconcileFlags()
         }
         guard SyncLanApplyCloseCopy.isSuccessfulClose(failedCount: failedCount) else {
             let message = SyncLanApplyCloseCopy.failureStatusMessage(

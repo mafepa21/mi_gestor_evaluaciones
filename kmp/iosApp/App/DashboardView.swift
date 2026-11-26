@@ -16,6 +16,8 @@ import MiGestorKit
 struct DashboardView: View {
     let bridge: KmpBridge
     @ObservedObject var dashboardStore: DashboardBridgeStore
+    /// «Vuelve hoy» (lesiones con fecha) entra en Atención como fila extra.
+    @ObservedObject private var injuryStore = StudentInjuryStore.shared
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -232,7 +234,7 @@ struct DashboardView: View {
     }
 
     private func loadedContent(snapshot: DashboardSnapshot) -> some View {
-        let presentation = presentationCache.model(for: snapshot)
+        let presentation = presentationCache.model(for: snapshot, extraItems: DashboardAttentionItem.injuryReturns(injuryStore.returningToday))
         return Group {
             if isClassroomMode {
                 DashboardClassroomView(
@@ -449,6 +451,8 @@ struct DashboardView: View {
             inspectorKey = "pe_\(id)"
         case .attendance(let classId):
             inspectorKey = "attendance_\(classId)"
+        case .injuryReturn(let studentId):
+            inspectorKey = "injury_return_\(studentId)"
         case .none:
             inspectorKey = "none"
         }
@@ -508,7 +512,7 @@ struct DashboardView: View {
 
     private func openInspectorForCurrentSnapshot() {
         guard let snapshot = dashboardStore.dashboardSnapshot else { return }
-        if let first = presentationCache.model(for: snapshot).queue.first {
+        if let first = presentationCache.model(for: snapshot, extraItems: DashboardAttentionItem.injuryReturns(injuryStore.returningToday)).queue.first {
             inspectorSelection = first.inspector
         } else if let firstSession = snapshot.todaySessions.first {
             inspectorSelection = .session(firstSession.id)

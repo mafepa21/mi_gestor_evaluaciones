@@ -30,7 +30,7 @@ struct AttendanceCompactRow: View {
 
     private var identityAccessibilityValue: String {
         var parts = [currentOption?.label ?? "Sin pasar"]
-        if row.isInjured { parts.append("lesión activa") }
+        if row.isInjured { parts.append(row.injuryBadge ?? "lesión activa") }
         if row.record?.hasIncident == true { parts.append("con incidencia") }
         if let note = row.record?.note, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             parts.append("nota: \(note)")
@@ -73,8 +73,10 @@ struct AttendanceCompactRow: View {
                         // Badges de alerta rápida (Educación Física y seguimiento)
                         HStack(spacing: 6) {
                             if row.isInjured {
-                                Label("Lesión", systemImage: "bandage.fill")
-                                    .font(.caption2.weight(.bold))
+                                Label(row.injuryBadge ?? "Lesión", systemImage: "bandage.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
+                                    .accessibilityHidden(true)
                                     .foregroundStyle(.orange)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 1.5)

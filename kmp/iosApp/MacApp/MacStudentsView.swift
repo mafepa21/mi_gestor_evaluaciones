@@ -1016,14 +1016,9 @@ struct MacStudentsView: View {
                     }
 
                     inspectorSection("Condición física") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            MacStatusPill(
-                                label: selectedRow.isInjured ? "Lesión activa" : "Sin lesión",
-                                isActive: selectedRow.isInjured,
-                                tint: selectedRow.isInjured ? MacAppStyle.warningTint : MacAppStyle.successTint
-                            )
-                            injuryToggleButton(for: selectedRow)
-                        }
+                        // Lesión con fechas y papel en clase (migración 51).
+                        StudentInjuryCard(bridge: bridge, studentId: selectedRow.id, studentName: selectedRow.student.fullName)
+                            .id(selectedRow.id)
                     }
 
                     if store.profileLoadingStudentId == selectedRow.id {
@@ -1370,27 +1365,6 @@ struct MacStudentsView: View {
         }
     }
 
-    @ViewBuilder
-    private func injuryToggleButton(for row: KmpBridge.MacStudentRowSnapshot) -> some View {
-        if row.isInjured {
-            Button {
-                Task { await toggleSelectedStudentInjury(row) }
-            } label: {
-                Label("Quitar lesión", systemImage: "heart.slash")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-        } else {
-            Button {
-                Task { await toggleSelectedStudentInjury(row) }
-            } label: {
-                Label("Marcar lesión", systemImage: "bandage")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-        }
-    }
-
     @MainActor
     private func bootstrapStudents() async {
         guard !store.didBootstrap, !store.isBootstrapping else { return }
@@ -1578,27 +1552,6 @@ struct MacStudentsView: View {
                 isFollowUp: isInjured || row.incidentCount > 0,
                 workGroupName: row.workGroupName
             )
-        }
-    }
-
-    @MainActor
-    private func toggleSelectedStudentInjury(_ row: KmpBridge.MacStudentRowSnapshot) async {
-        let previousValue = row.isInjured
-        let newValue = !previousValue
-        selectedStudentId = row.id
-        store.localSelectedStudentId = row.id
-        applyInjuryLocally(studentId: row.id, isInjured: newValue)
-
-        do {
-            try await bridge.updateStudentInjuryStatus(
-                studentId: row.id,
-                isInjured: newValue,
-                classId: selectedClassId ?? row.classId
-            )
-            loadProfileForSelection(row.id)
-        } catch {
-            applyInjuryLocally(studentId: row.id, isInjured: previousValue)
-            store.errorMessage = error.localizedDescription
         }
     }
 

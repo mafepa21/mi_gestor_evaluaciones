@@ -37,6 +37,8 @@ struct MacDashboardView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let bridge: KmpBridge
     @ObservedObject var dashboardStore: DashboardBridgeStore
+    /// «Vuelve hoy» (lesiones con fecha) entra en Atención como fila extra.
+    @ObservedObject private var injuryStore = StudentInjuryStore.shared
     @ObservedObject var backupStore: MacBackupStore
     let bootstrap: AppleBridgeBootstrap
     var onNavigate: (MacDashboardDestination) -> Void = { _ in }
@@ -273,7 +275,8 @@ struct MacDashboardView: View {
     /// La asistencia de hoy sin pasar solo se conoce en Mac: entra en la lista
     /// de Atención como una fila más, con la misma lógica que el resto.
     private var extraAttentionItems: [DashboardAttentionItem] {
-        guard let classId = attendancePendingClassId else { return [] }
+        let injuryReturns = DashboardAttentionItem.injuryReturns(injuryStore.returningToday)
+        guard let classId = attendancePendingClassId else { return injuryReturns }
         return [
             DashboardAttentionItem(
                 id: "attendance-today-\(classId)",
@@ -288,7 +291,7 @@ struct MacDashboardView: View {
                     route: .module(.attendance, classId: classId, studentId: nil)
                 )
             )
-        ]
+        ] + injuryReturns
     }
 
     // MARK: Cabecera

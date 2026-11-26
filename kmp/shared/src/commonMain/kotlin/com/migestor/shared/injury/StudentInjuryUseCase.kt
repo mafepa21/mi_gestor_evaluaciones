@@ -28,14 +28,18 @@ class StudentInjuryUseCase(
             .filter { !it.isDeleted }
             .sortedWith(compareByDescending<StudentInjury> { it.startsOn }.thenByDescending { it.trace.updatedAt })
 
-    /** Lesión activa hoy de cada alumno lesionado (para etiquetas de Asistencia y ficha). */
+    /**
+     * Lesión activa hoy de cada alumno lesionado (una por alumno), para etiquetas de
+     * Asistencia y ficha. Lista y no Map: un `Map<Long, …>` exportado a Swift rompe al
+     * iterarlo (las claves no se convierten a `KotlinLong`) y cerraba la app.
+     */
     @Throws(Throwable::class)
-    suspend fun activeToday(): Map<Long, StudentInjury> {
+    suspend fun activeToday(): List<StudentInjury> {
         val date = today()
         return repository.listAll()
             .groupBy { it.studentId }
-            .mapNotNull { (studentId, list) -> StudentInjuryRules.activeOn(list, date)?.let { studentId to it } }
-            .toMap()
+            .mapNotNull { (_, list) -> StudentInjuryRules.activeOn(list, date) }
+            .sortedBy { it.studentId }
     }
 
     /** Alumnos que vuelven hoy (su lesión terminó ayer). */

@@ -124,7 +124,8 @@ extension KmpBridge {
             }
             let changed = try await container.studentInjuries.reconcileFlags()
             try await publishInjuries()
-            if !changed.isEmpty {
+            // `count` y no `isEmpty`: el Set de Kotlin llega como NSSet; no se itera.
+            if changed.count > 0 {
                 try await refreshStudentsDirectory()
             }
         } catch {
@@ -137,8 +138,8 @@ extension KmpBridge {
         let active = try await container.studentInjuries.activeToday()
         let returning = try await container.studentInjuries.returningToday()
         var byStudent: [Int64: StudentInjurySnapshot] = [:]
-        for (key, value) in active {
-            byStudent[key.int64Value] = injurySnapshot(value)
+        for injury in active {
+            byStudent[injury.studentId] = injurySnapshot(injury)
         }
         // Solo alumnos que existen: una lesión huérfana no debe salir sin nombre.
         var notices: [InjuryReturnNotice] = []

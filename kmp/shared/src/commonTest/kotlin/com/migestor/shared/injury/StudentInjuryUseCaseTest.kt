@@ -112,7 +112,7 @@ class StudentInjuryUseCaseTest {
         uc.save(StudentInjuryDraft(studentId = ana, startsOn = d("2026-11-26"), endsOn = d("2026-12-12")), 1_000, "ipad")
         uc.save(StudentInjuryDraft(studentId = ana, startsOn = d("2026-12-13")), 2_000, "ipad")
         assertTrue(uc.returningToday().isEmpty())
-        assertEquals(d("2026-12-13"), uc.activeToday()[ana]?.startsOn)
+        assertEquals(d("2026-12-13"), uc.activeToday().single { it.studentId == ana }.startsOn)
     }
 
     @Test

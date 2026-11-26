@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta · Lesiones con fecha</title>
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--fg:#1d1d1f;--mut:#6e6e73;--line:#e5e5ea;--acc:#0066cc;--ok:#1a7f37;--warn:#9a5b00;--err:#c41e3a;--chip:#e9e9ee;--inj:#b25000;--injbg:#fff1e0}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--card:#1c1c1e;--fg:#f5f5f7;--mut:#a1a1a6;--line:#38383a;--acc:#4da3ff;--ok:#4cd964;--warn:#ffb340;--err:#ff6961;--chip:#3a3a3c;--inj:#ffb340;--injbg:#3a2a12}}
+*{box-sizing:border-box}
+body{margin:0;font:1rem/1.45 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header.tabs{display:flex;gap:8px;padding:16px 24px;flex-wrap:wrap;align-items:center;background:var(--card);border-bottom:1px solid var(--line)}
+header.tabs b{margin-right:8px}
+header.tabs button{min-height:32px;padding:0 16px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;font:inherit;font-size:.875rem}
+header.tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.state{display:none;padding:24px}.state.on{display:block}
+.note{color:var(--mut);font-size:.875rem;margin:0 0 16px;max-width:720px}
+.sheet{background:var(--bg);border:1px solid var(--line);border-radius:24px;max-width:560px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.12)}
+.sheet.mac{border-radius:12px;max-width:480px}
+.nav{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;min-height:56px;background:var(--card);border-bottom:1px solid var(--line)}
+.nav h2{margin:0;font-size:1.0625rem}
+.link{color:var(--acc);background:none;border:none;font:inherit;min-height:44px;cursor:pointer;padding:0 8px}
+.link.b{font-weight:600}.link:disabled{color:var(--mut);cursor:not-allowed}
+.link.del{color:var(--err)}
+.body{padding:16px}
+.ctx{color:var(--mut);font-size:.875rem;margin:0 0 16px;padding:0 16px}
+.sec{margin-bottom:24px}
+.sec h3{margin:0 0 8px;padding:0 16px;font-size:.8125rem;color:var(--mut);font-weight:500}
+.group{background:var(--card);border-radius:12px;overflow:hidden}
+.row{display:flex;align-items:center;gap:16px;padding:8px 16px;min-height:48px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:none}
+.row .t{flex:1}
+.row .t small{display:block;color:var(--mut);font-size:.875rem}
+.row .v{color:var(--mut)}
+.row .v.acc{color:var(--acc)}
+.foot{color:var(--mut);font-size:.8125rem;padding:8px 16px 0;margin:0}
+.foot.err{color:var(--err)}
+.sw{width:51px;height:31px;border-radius:16px;background:var(--chip);position:relative;flex:none;border:none;cursor:pointer}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .15s}
+.sw[aria-checked=true]{background:var(--ok)}
+.sw[aria-checked=true]::after{left:22px}
+@media(prefers-reduced-motion:reduce){.sw::after{transition:none}}
+.date{min-height:36px;padding:0 12px;border-radius:8px;background:var(--chip);color:var(--fg);border:none;font:inherit}
+.date.bad{color:var(--err)}
+select.pick{min-height:36px;border:none;background:none;color:var(--acc);font:inherit;text-align:right;cursor:pointer}
+.count{color:var(--mut);font-size:.8125rem;text-align:right;padding:0 16px 8px}
+.chev{color:var(--mut)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;padding:16px}
+.chip{min-height:44px;padding:0 16px;border-radius:22px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;font-size:.9375rem;cursor:pointer}
+.chip[aria-checked=true]{background:var(--acc);border-color:var(--acc);color:#fff}
+textarea{width:100%;min-height:72px;border:none;background:transparent;color:var(--fg);font:inherit;padding:16px;resize:vertical}
+.btn{min-height:44px;padding:0 16px;border-radius:12px;border:none;background:var(--chip);color:var(--acc);font:inherit;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.pri{background:var(--acc);color:#fff}
+.btn.w{width:100%}
+.btn.destr{color:var(--err)}
+.macbar{display:flex;justify-content:flex-end;gap:8px;padding:16px;border-top:1px solid var(--line);background:var(--card)}
+.macbar .btn{min-height:32px;border-radius:8px}
+.banner{display:flex;gap:16px;align-items:center;padding:16px;margin:0 0 24px;border-radius:12px;background:color-mix(in srgb,var(--err) 12%,var(--card))}
+.banner .t{flex:1}
+.banner strong{display:block}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:8px;background:var(--injbg);color:var(--inj);font-size:.875rem;font-weight:600;white-space:normal}
+.card{background:var(--card);border-radius:12px;padding:16px}
+.card h4{margin:0 0 8px;font-size:1.0625rem}
+.card p{margin:0;color:var(--mut)}
+.actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.list{max-width:640px}
+.av{width:32px;height:32px;border-radius:50%;background:var(--chip);display:flex;align-items:center;justify-content:center;font-size:.8125rem;font-weight:600;flex:none}
+.att{display:flex;gap:8px}
+.att button{width:44px;height:44px;border:none;color:var(--fg);font:inherit;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:600;background:var(--chip);font-size:.875rem}
+.att button[aria-pressed=true]{background:var(--ok);color:#fff}
+.sk{height:16px;margin:16px;border-radius:8px;background:var(--line);animation:p 1.2s infinite alternate}
+@keyframes p{to{opacity:.4}}
+@media(prefers-reduced-motion:reduce){.sk{animation:none}}
+details summary{min-height:48px;display:flex;align-items:center;padding:0 16px;cursor:pointer;color:var(--acc)}
+dialog{border:none;border-radius:14px;padding:0;max-width:300px;background:var(--card);color:var(--fg);box-shadow:0 16px 48px rgba(0,0,0,.3)}
+dialog .dt{padding:24px 16px 16px;text-align:center}
+dialog .dt strong{display:block;margin-bottom:4px}
+dialog .dt p{margin:0;font-size:.8125rem;color:var(--mut)}
+dialog .db{display:flex;border-top:1px solid var(--line)}
+dialog .db button{flex:1;min-height:44px;background:none;border:none;font:inherit;color:var(--acc);cursor:pointer}
+dialog .db button+button{border-left:1px solid var(--line);font-weight:600}
+.today{max-width:640px}
+.ok{color:var(--ok)}.mut{color:var(--mut)}
+</style></head><body>
+
+<header class="tabs"><b>Estados</b>
+<button data-s="nueva" class="on">1 · Nueva lesión</button>
+<button data-s="sinfin">2 · Sin fecha de fin</button>
+<button data-s="invalida">3 · Fechas no válidas</button>
+<button data-s="errorg">4 · Error al guardar</button>
+<button data-s="ficha">5 · Ficha: lesión activa</button>
+<button data-s="fichavacia">6 · Ficha: sin lesión</button>
+<button data-s="cargando">7 · Ficha: cargando</button>
+<button data-s="asistencia">8 · Asistencia</button>
+<button data-s="hoy">9 · Hoy: vuelve hoy</button>
+<button data-s="mac">10 · Mac</button>
+<button data-s="terminahoy">11 · Ficha: último día</button>
+<button data-s="editar">12 · Editar y eliminar</button>
+</header>
+
+<!-- 1 NUEVA -->
+<section class="state on" id="nueva">
+<p class="note">Controles nativos: <code>Form</code> agrupado, <code>DatePicker</code> compacto, <code>Toggle</code>, <code>Picker</code> de menú para el papel y nota de hasta 140 caracteres. Se abre desde la ficha del alumno («Añadir lesión») o desde Asistencia (sustituye al interruptor «Lesión motriz activa»). Una sola tarea: decir hasta cuándo y qué hace en clase. «Guardar» es la única acción fuerte. Desde = hoy por defecto. El papel es opcional («Sin papel»).</p>
+<div class="sheet" role="dialog" aria-labelledby="t1">
+  <div class="nav"><button class="link">Cancelar</button><h2 id="t1">Lesión</h2><button class="link b">Guardar</button></div>
+  <div class="body">
+    <p class="ctx">Ana López · 2º ESO B (inventado)</p>
+    <div class="sec"><h3>FECHAS</h3><div class="group">
+      <div class="row"><span class="t">Desde</span><input type="date" class="date" value="2026-11-26" aria-label="Desde"></div>
+      <div class="row"><span class="t">Hasta</span><input type="date" class="date" value="2026-12-12" aria-label="Hasta"></div>
+      <div class="row"><span class="t">Sin fecha de fin</span><button class="sw" role="switch" aria-checked="false" aria-label="Sin fecha de fin"></button></div>
+    </div><p class="foot">El 13 dic deja de estar lesionada sola y «Hoy» te avisa.</p></div>
+    <div class="sec"><div class="group">
+      <div class="row"><label class="t" for="rÁrb">Papel en clase</label><select class="pick" id="rÁrb"><option>Sin papel</option><option selected>Árbitro</option><option>Cronometrador</option><option>Ayudante de material</option><option>Ficha teórica</option><option>Otro</option></select></div>
+      <div class="row"><span class="t">Justificante entregado</span><button class="sw" role="switch" aria-checked="true" aria-label="Justificante entregado"></button></div>
+    </div></div>
+    <div class="sec" style="margin-bottom:0"><h3>NOTA</h3><div class="group">
+      <textarea aria-label="Nota" maxlength="140" placeholder="Ej.: puede caminar, no correr">Puede caminar, no correr ni saltar.</textarea><div class="count" aria-hidden="true">35/140</div>
+    </div><p class="foot">Sin diagnósticos ni datos médicos. Solo lo que necesitas para la clase.</p></div>
+  </div>
+</div>
+</section>
+
+<!-- 2 SIN FIN -->
+<section class="state" id="sinfin">
+<p class="note">Con «Sin fecha de fin» la fila «Hasta» desaparece. La lesión sigue hasta que pulses «Ha vuelto» en la ficha. El pie lo explica para que no sorprenda.</p>
+<div class="sheet">
+  <div class="nav"><button class="link">Cancelar</button><h2>Lesión</h2><button class="link b">Guardar</button></div>
+  <div class="body">
+    <p class="ctx">Pablo García · 2º ESO B (inventado)</p>
+    <div class="sec"><h3>FECHAS</h3><div class="group">
+      <div class="row"><span class="t">Desde</span><input type="date" class="date" value="2026-11-26" aria-label="Desde"></div>
+      <div class="row"><span class="t">Sin fecha de fin</span><button class="sw" role="switch" aria-checked="true" aria-label="Sin fecha de fin"></button></div>
+    </div><p class="foot">Seguirá lesionado hasta que marques «Ha vuelto» en su ficha.</p></div>
+    <div class="sec" style="margin-bottom:0"><div class="group"><div class="row"><label class="t" for="rCro">Papel en clase</label><select class="pick" id="rCro"><option>Sin papel</option><option>Árbitro</option><option selected>Cronometrador</option><option>Ayudante de material</option><option>Ficha teórica</option><option>Otro</option></select></div></div></div>
+  </div>
+</div>
+</section>
+
+<!-- 3 INVALIDA -->
+<section class="state" id="invalida">
+<p class="note">Si «Hasta» queda antes que «Desde», la fecha se pinta en rojo, «Guardar» se apaga y el pie dice el motivo. VoiceOver oye el motivo en la fila «Hasta» y se anuncia al aparecer. No hay alertas que tapen la hoja.</p>
+<div class="sheet">
+  <div class="nav"><button class="link">Cancelar</button><h2>Lesión</h2><button class="link b" disabled aria-describedby="why">Guardar</button></div>
+  <div class="body">
+    <p class="ctx">Ana López · 2º ESO B (inventado)</p>
+    <div class="sec" style="margin-bottom:0"><h3>FECHAS</h3><div class="group">
+      <div class="row"><span class="t">Desde</span><input type="date" class="date" value="2026-11-26" aria-label="Desde"></div>
+      <div class="row"><span class="t">Hasta</span><input type="date" class="date bad" value="2026-11-20" aria-label="Hasta" aria-invalid="true" aria-describedby="why"></div>
+      <div class="row"><span class="t">Sin fecha de fin</span><button class="sw" role="switch" aria-checked="false" aria-label="Sin fecha de fin"></button></div>
+    </div><p class="foot err" id="why">«Hasta» no puede ser antes de «Desde».</p></div>
+  </div>
+</div>
+</section>
+
+<!-- 4 ERROR -->
+<section class="state" id="errorg">
+<p class="note">Si falla el guardado, la hoja no se cierra ni pierde lo escrito. Aviso fijo arriba con «Reintentar». VoiceOver lo anuncia.</p>
+<div class="sheet">
+  <div class="nav"><button class="link">Cancelar</button><h2>Lesión</h2><button class="link b">Guardar</button></div>
+  <div class="body">
+    <div class="banner" role="alert"><span class="t"><strong>No se pudo guardar la lesión</strong><span class="mut">Nada ha cambiado. Lo que has escrito sigue aquí.</span></span><button class="btn">Reintentar</button></div>
+    <p class="ctx">Ana López · 2º ESO B (inventado)</p>
+    <div class="sec" style="margin-bottom:0"><h3>FECHAS</h3><div class="group">
+      <div class="row"><span class="t">Desde</span><input type="date" class="date" value="2026-11-26" aria-label="Desde"></div>
+      <div class="row"><span class="t">Hasta</span><input type="date" class="date" value="2026-12-12" aria-label="Hasta"></div>
+    </div></div>
+  </div>
+</div>
+</section>
+
+<!-- 5 FICHA ACTIVA -->
+<section class="state" id="ficha">
+<p class="note">Ficha del alumno, bloque «Lesión». Lo importante en una línea: hasta cuándo y qué hace. «Ha vuelto» termina la lesión ayer (deja de estar activa ya). «Editar» abre la hoja. Borrar una lesión puesta por error está al final de la hoja de edición (estado 12), con confirmación. El historial va plegado. En la app, la confirmación es un <code>confirmationDialog</code> anclado al botón.</p>
+<div class="list">
+  <div class="card">
+    <span class="pill"><span aria-hidden="true">✚</span> Lesionada</span>
+    <h4 style="margin-top:8px">Hasta el 12 dic · Árbitro</h4>
+    <p>Desde el 26 nov · Justificante entregado</p>
+    <p style="margin-top:8px">«Puede caminar, no correr ni saltar.»</p>
+    <div class="actions"><button class="btn pri" onclick="dv.showModal()">Ha vuelto</button><button class="btn">Editar</button></div>
+  </div>
+  <div class="group" style="margin-top:16px"><details><summary>Lesiones anteriores (2)</summary>
+    <div class="row" role="group"><span class="t">3 – 17 oct 2026<small>Ficha teórica · justificante entregado</small></span></div>
+    <div class="row"><span class="t">12 – 15 sep 2026<small>Cronometrador · sin justificante</small></span></div>
+  </details></div>
+</div>
+<dialog id="dv"><div class="dt"><strong>¿Ana ha vuelto hoy?</strong><p>La lesión termina ayer y desde hoy cuenta como alumna sin lesión. Queda en su historial.</p></div><div class="db"><button onclick="dv.close()">Cancelar</button><button onclick="dv.close()">Ha vuelto</button></div></dialog>
+</section>
+
+<!-- 6 FICHA VACIA -->
+<section class="state" id="fichavacia">
+<p class="note">Sin lesión activa: el bloque es una sola fila discreta. Si hay lesiones anteriores, se ve el enlace al historial.</p>
+<div class="list"><div class="group">
+  <div class="row"><span class="t">Lesión<small>Sin lesión</small></span><button class="btn">Añadir lesión</button></div>
+</div></div>
+</section>
+
+<!-- 7 CARGANDO -->
+<section class="state" id="cargando">
+<p class="note">Mientras carga el bloque de lesión de la ficha (normalmente no se llega a ver).</p>
+<div class="list"><div class="card" role="status" aria-busy="true" aria-label="Cargando lesión"><div class="sk" style="width:30%;margin-left:0"></div><div class="sk" style="width:60%;margin-left:0"></div><div class="sk" style="width:45%;margin-left:0"></div></div></div>
+</section>
+
+<!-- 8 ASISTENCIA -->
+<section class="state" id="asistencia">
+<p class="note">Pase de lista: debajo del nombre, la etiqueta dice hasta cuándo y su papel. Así en pista sabes qué darle sin abrir nada. El alumno lesionado se pasa como presente; la lesión no es falta.</p>
+<div class="list"><div class="group">
+  <div class="row"><span class="av">AL</span><span class="t">Ana López<small><span class="pill"><span aria-hidden="true">✚</span> Lesionada hasta el 12 dic · Árbitro</span></small></span><span class="att" role="group" aria-label="Asistencia de Ana López"><button aria-pressed="true" aria-label="Presente">P</button><button aria-pressed="false" aria-label="Ausente">A</button><button aria-pressed="false" aria-label="Retraso">R</button></span></div>
+  <div class="row"><span class="av">PG</span><span class="t">Pablo García<small><span class="pill"><span aria-hidden="true">✚</span> Lesionado sin fecha de fin · Cronometrador</span></small></span><span class="att" role="group" aria-label="Asistencia de Pablo García"><button aria-pressed="true" aria-label="Presente">P</button><button aria-pressed="false" aria-label="Ausente">A</button><button aria-pressed="false" aria-label="Retraso">R</button></span></div>
+  <div class="row"><span class="av">LM</span><span class="t">Lucía Martín</span><span class="att" role="group" aria-label="Asistencia de Lucía Martín"><button aria-pressed="true" aria-label="Presente">P</button><button aria-pressed="false" aria-label="Ausente">A</button><button aria-pressed="false" aria-label="Retraso">R</button></span></div>
+</div></div>
+</section>
+
+<!-- 9 HOY -->
+<section class="state" id="hoy">
+<p class="note">«Hoy» › Atención, el día después del «hasta». Una fila por alumno que vuelve. Tocar la fila abre su ficha. «Marcar como visto» va en el deslizamiento de la fila (y en las acciones de VoiceOver). Desaparece sola al día siguiente.</p>
+<div class="today"><div class="sec"><h3>ATENCIÓN</h3><div class="group">
+  <div class="row" role="link" tabindex="0" aria-label="Vuelve hoy: Ana López, 2º ESO B. Lesión del 26 de noviembre al 12 de diciembre. Abre su ficha."><span class="av" aria-hidden="true">AL</span><span class="t">Vuelve hoy: Ana López<small>2º ESO B · lesión del 26 nov al 12 dic</small></span><span class="chev" aria-hidden="true">›</span></div>
+</div></div></div>
+</section>
+
+<!-- 10 MAC -->
+<section class="state" id="mac">
+<p class="note">En Mac la hoja es más estrecha (480 pt) y los botones van abajo a la derecha. Intro = Guardar, Esc = Cancelar. Mismo contenido que en iPad. En edición aparece «Eliminar lesión…» a la izquierda, con confirmación destructiva. En la app: <code>Form</code> con <code>.formStyle(.grouped)</code> y los botones en la barra del sistema.</p>
+<div class="sheet mac">
+  <div class="body">
+    <p class="ctx" style="padding:0;font-weight:600;color:var(--fg)">Lesión · Ana López <span class="mut" style="font-weight:400">· 2º ESO B (inventado)</span></p>
+    <div class="sec"><div class="group">
+      <div class="row"><span class="t">Desde</span><input type="date" class="date" value="2026-11-26" aria-label="Desde"></div>
+      <div class="row"><span class="t">Hasta</span><input type="date" class="date" value="2026-12-12" aria-label="Hasta"></div>
+      <div class="row"><span class="t">Sin fecha de fin</span><button class="sw" role="switch" aria-checked="false" aria-label="Sin fecha de fin"></button></div>
+      <div class="row"><label class="t" for="rmac">Papel en clase</label><select class="pick" id="rmac"><option>Sin papel</option><option selected>Árbitro</option><option>Cronometrador</option><option>Ayudante de material</option><option>Ficha teórica</option><option>Otro</option></select></div>
+      <div class="row"><span class="t">Justificante entregado</span><button class="sw" role="switch" aria-checked="true" aria-label="Justificante entregado"></button></div>
+    </div></div>
+    <div class="group"><textarea aria-label="Nota">Puede caminar, no correr ni saltar.</textarea></div>
+    <p class="foot" style="padding-left:0">Sin diagnósticos ni datos médicos.</p>
+  </div>
+  <div class="macbar"><button class="btn destr" style="margin-right:auto">Eliminar lesión…</button><button class="btn">Cancelar</button><button class="btn pri">Guardar</button></div>
+</div>
+</section>
+
+<!-- 11 TERMINA HOY -->
+<section class="state" id="terminahoy">
+<p class="note">El día del «hasta» todavía está lesionada. La ficha lo dice para que lo tengas en cuenta en la clase de hoy. Mañana «Hoy» avisará de que vuelve.</p>
+<div class="list"><div class="card">
+  <span class="pill"><span aria-hidden="true">✚</span> Último día</span>
+  <h4 style="margin-top:8px">Hoy es su último día · Árbitro</h4>
+  <p>Desde el 26 nov · Justificante entregado</p>
+  <div class="actions"><button class="btn pri">Ha vuelto</button><button class="btn">Editar</button></div>
+</div></div>
+</section>
+
+<!-- 12 EDITAR -->
+<section class="state" id="editar">
+<p class="note">Hoja en modo edición (iPad). Igual que la nueva, con una sección final «Eliminar lesión» en rojo, solo para lesiones puestas por error. Pide confirmación destructiva y avisa de que también sale del historial.</p>
+<div class="sheet">
+  <div class="nav"><button class="link">Cancelar</button><h2>Editar lesión</h2><button class="link b">Guardar</button></div>
+  <div class="body">
+    <p class="ctx">Ana López · 2º ESO B (inventado)</p>
+    <div class="sec"><div class="group">
+      <div class="row"><span class="t">Desde</span><input type="date" class="date" value="2026-11-26" aria-label="Desde"></div>
+      <div class="row"><span class="t">Hasta</span><input type="date" class="date" value="2026-12-12" aria-label="Hasta"></div>
+    </div></div>
+    <div class="sec" style="margin-bottom:0"><div class="group"><button class="btn destr w" style="background:none" onclick="de.showModal()">Eliminar lesión…</button></div></div>
+  </div>
+</div>
+<dialog id="de"><div class="dt"><strong>¿Eliminar esta lesión?</strong><p>Úsalo solo si la pusiste por error. También desaparece de su historial.</p></div><div class="db"><button onclick="de.close()">Cancelar</button><button style="color:var(--err)" onclick="de.close()">Eliminar</button></div></dialog>
+</section>
+
+<script>
+const dv=document.getElementById('dv'),de=document.getElementById('de');
+document.querySelectorAll('header.tabs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('header.tabs button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.state').forEach(s=>s.classList.toggle('on',s.id===b.dataset.s));
+});
+document.querySelectorAll('.sw').forEach(s=>s.onclick=()=>s.setAttribute('aria-checked',s.getAttribute('aria-checked')!=='true'));
+document.querySelectorAll('.att').forEach(g=>g.querySelectorAll('button').forEach(b=>b.onclick=()=>{g.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed','false'));b.setAttribute('aria-pressed','true')}));
+document.querySelectorAll('.chips').forEach(g=>g.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
+  const was=c.getAttribute('aria-checked')==='true';
+  g.querySelectorAll('.chip').forEach(x=>x.setAttribute('aria-checked','false'));
+  c.setAttribute('aria-checked',String(!was));
+}));
+</script>
+</body></html>

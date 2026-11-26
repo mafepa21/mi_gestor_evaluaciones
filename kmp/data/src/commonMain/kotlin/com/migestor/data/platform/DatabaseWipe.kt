@@ -88,7 +88,9 @@ enum class WipeCategory(
             // Valoraciones del docente: sin esto quedarían huérfanas al borrar alumnado.
             "student_term_teacher_notes",
             // Filas de alumnado en las juntas: sin esto quedarían huérfanas al borrar alumnado.
-            "evaluation_session_students"
+            "evaluation_session_students",
+            // Lesiones con fecha (migración 51).
+            "student_injuries"
         )
     ),
     RUBRICS(

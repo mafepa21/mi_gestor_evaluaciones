@@ -119,6 +119,7 @@
 		1CE2E6B16C6F676B65D50109 /* RubricEvaluationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A866C1384FDBACD5D7ED109B /* RubricEvaluationView.swift */; };
 		1CE7969670E1B97AF23C5114 /* KmpBridge+NotebookClosing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E5BA3343E7178D5A8E97830 /* KmpBridge+NotebookClosing.swift */; };
 		1D1917CF929A91AF0CF4C5C2 /* RoundRobinScheduleGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80FEFA5A4D29C8ABD4D46784 /* RoundRobinScheduleGenerator.swift */; };
+		1D2F77E394291D359338585A /* StudentInjurySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16C8651DBFD051BB44AC7ADE /* StudentInjurySheet.swift */; };
 		1D4E76525C067EC5CF838B87 /* PlannerWorkspaceViewModel+Schedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEAAF5669D2AF30F91887B74 /* PlannerWorkspaceViewModel+Schedule.swift */; };
 		1DD64E29F1E15C07CF123EA7 /* TutoringShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = D332467A125C50215481D20B /* TutoringShared.swift */; };
 		1E0CCE81083A1420776AE50E /* PlannerSequenceGanttView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D56DE443EAEED31903DC305 /* PlannerSequenceGanttView.swift */; };
@@ -209,6 +210,7 @@
 		35AF2B7E59ACB518BD851B4F /* NotebookCompactCommandBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B06388784ADA4E7EFF4FDB4 /* NotebookCompactCommandBar.swift */; };
 		35CE08146C413A10B6E6B72A /* NotebookCellStampCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06247DBCEF5FCAED33273150 /* NotebookCellStampCatalog.swift */; };
 		35E4CB3140B5AC23435486FE /* DashboardDispatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCF119E0DE892DBACD7073A3 /* DashboardDispatchView.swift */; };
+		366406CD96C9A01E16F4576E /* StudentInjuryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFDF0FBB26CB1C3DEC0BBA7A /* StudentInjuryCard.swift */; };
 		36B5311C8168ECCC33A3C844 /* BulletinBaseBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDC7CB42E7D8319EA5E77B7 /* BulletinBaseBridgeTests.swift */; };
 		36BAB911C91FE8E529E29FE4 /* MacBackupsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 320C2ED322845177EEDADD11 /* MacBackupsView.swift */; };
 		3711F5724155435831A41F98 /* SdaSituationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68E09552D03E6F4A5A8FDD5D /* SdaSituationPickerSheet.swift */; };
@@ -649,6 +651,7 @@
 		9AA8BC06ED560D826F02901B /* AttendanceWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 284EFC5D21CE71AE69E43094 /* AttendanceWorkspaceView.swift */; };
 		9AD8982CE0A5E97DF5F1628F /* TournamentPhaseTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = F266D6B0064869EB735A4D40 /* TournamentPhaseTimeline.swift */; };
 		9AFEF1D8CE80DFB68F1D38FB /* AppleAISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F8916B5C4C8F6DBC133D2B /* AppleAISettingsView.swift */; };
+		9B090B2E1E990E062196B714 /* StudentInjuryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFDF0FBB26CB1C3DEC0BBA7A /* StudentInjuryCard.swift */; };
 		9B35E3F2A1902328316396AA /* ScheduleImportModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85AD42D18AFCD452127D549 /* ScheduleImportModels.swift */; };
 		9B9E77209733E8409CF0EA12 /* PhysicalTestScaleEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABEAFA7B950CAE267617F3C4 /* PhysicalTestScaleEditor.swift */; };
 		9BA7ED9C76B86AD76FFDE027 /* WebPortalStudentPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90D48EF326D9C9B94D29BDA7 /* WebPortalStudentPreviewSheet.swift */; };
@@ -727,6 +730,7 @@
 		AF65A163476461639913FA8E /* PlannerWorkspaceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 282FEB62319DAF8B963180EB /* PlannerWorkspaceViewModel.swift */; };
 		B01252AA878F99C736D23E0B /* SettingsDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56F2CF5E5B8BFCE0959388B9 /* SettingsDiagnosticsView.swift */; };
 		B03BBD24BF12AEB83C998D52 /* StudentGradeReportPDFRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F54B4DCB4D82F9D8FC700A74 /* StudentGradeReportPDFRendererTests.swift */; };
+		B084DC6C0FC85FCB0CFF1589 /* KmpBridge+Injuries.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC070DAB96AAE7CD219CD44B /* KmpBridge+Injuries.swift */; };
 		B0E1302F3B9A1C94FD25615B /* SettingsSectionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AF5F802820D600F56AC6F2D /* SettingsSectionCard.swift */; };
 		B0E826181DFA287ECBDB84D5 /* SupportMeasureShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA7EEE397867C9AB1B682637 /* SupportMeasureShared.swift */; };
 		B0F7E34005E02379B30B1143 /* PlannerWorkspaceViewModel+MonthBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54C86C64A594DC6C7C61B90D /* PlannerWorkspaceViewModel+MonthBoard.swift */; };
@@ -849,6 +853,7 @@
 		CC34E88C2A11979EEB5E667A /* CalendarDuplicatePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5333C1A2F380B75E03914FC6 /* CalendarDuplicatePlanner.swift */; };
 		CC871883DB2586C8F0FD5293 /* KmpBridge+WebForms.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAB9EAD726530D8C61519E3E /* KmpBridge+WebForms.swift */; };
 		CC8AEDA5D4D172631A66F545 /* OnboardingStudentsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED64B03A28FA13E012596D4E /* OnboardingStudentsSheet.swift */; };
+		CCD602C3121FB7F117AB04FD /* StudentInjurySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16C8651DBFD051BB44AC7ADE /* StudentInjurySheet.swift */; };
 		CCFA2118A66B1F215C10EBF2 /* ProjectionStrings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76885B1F919929F4DBC201C8 /* ProjectionStrings.swift */; };
 		CD959B6BD954F2CD55627CD4 /* MeetingsShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DFC26768A94C315D01AF726 /* MeetingsShared.swift */; };
 		CDC3B54E23F7F0ED4B5303D9 /* PlannerCopySessionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB9CFB8F48275F1DBC3C8AE /* PlannerCopySessionSheet.swift */; };
@@ -937,6 +942,7 @@
 		E0A17412BF8CA33CB80F5177 /* DashboardTimeProgressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5836C34851EFA0CF3652288 /* DashboardTimeProgressBar.swift */; };
 		E0D4C1A413AD8A52EDFBDCC7 /* AppleFoundationGradeReportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F839BD15BABC87CD263D846 /* AppleFoundationGradeReportService.swift */; };
 		E11C883BCE69B05FE0FBC324 /* DiaryWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ED9D8451FE6172EFBD59BC5 /* DiaryWorkspaceView.swift */; };
+		E230B37CCDFB9CF469A3DA72 /* KmpBridge+Injuries.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC070DAB96AAE7CD219CD44B /* KmpBridge+Injuries.swift */; };
 		E27E8289EECC90601506ADB9 /* NotebookMacLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E833F8E8281D5E3F4BFB0F /* NotebookMacLayout.swift */; };
 		E2ADABA4A2D7196AD73A4549 /* WebPortalPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 189942B4AE6622BAF98B5F34 /* WebPortalPublisher.swift */; };
 		E2CB4ECBBCF7AAA93E919B88 /* NotebookFormulaDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3716454133E66DF1346826BF /* NotebookFormulaDisplay.swift */; };
@@ -1173,6 +1179,7 @@
 		16469D20A02679E669EF5AFE /* PlannerWorkspaceViewModel+Report.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+Report.swift"; sourceTree = "<group>"; };
 		1654FDFE854393BEEABC4CF6 /* WebPortalTournamentSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPortalTournamentSettings.swift; sourceTree = "<group>"; };
 		16B3416B13C2DC4F0CB25512 /* KmpBridge+PhysicalTestsHome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+PhysicalTestsHome.swift"; sourceTree = "<group>"; };
+		16C8651DBFD051BB44AC7ADE /* StudentInjurySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentInjurySheet.swift; sourceTree = "<group>"; };
 		16E3DD63D6D3D2C2C4A53366 /* LearningSituationDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningSituationDetailView.swift; sourceTree = "<group>"; };
 		175B5FDF38C1A27B10791B10 /* WebPortalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPortalTests.swift; sourceTree = "<group>"; };
 		176AD8D600DA329A94E245C4 /* PageGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageGeometry.swift; sourceTree = "<group>"; };
@@ -1546,6 +1553,7 @@
 		A9A2227E2644C8AFEC65949F /* AppleAIPremiumSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAIPremiumSupport.swift; sourceTree = "<group>"; };
 		AB675F6B09F4B1FBCCB62056 /* BulletinBaseReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BulletinBaseReportView.swift; sourceTree = "<group>"; };
 		ABEAFA7B950CAE267617F3C4 /* PhysicalTestScaleEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalTestScaleEditor.swift; sourceTree = "<group>"; };
+		AC070DAB96AAE7CD219CD44B /* KmpBridge+Injuries.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+Injuries.swift"; sourceTree = "<group>"; };
 		AC2F0852F9CAA60482FA9785 /* PlannerWorkspaceViewModel+WeekBoard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+WeekBoard.swift"; sourceTree = "<group>"; };
 		AC668CD391F7F480808E327E /* WebPortalTournamentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPortalTournamentsView.swift; sourceTree = "<group>"; };
 		AC7C9F4E4DD0E148ACD0A165 /* SchoolCalendarPreset2026_2027.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchoolCalendarPreset2026_2027.swift; sourceTree = "<group>"; };
@@ -1699,6 +1707,7 @@
 		ED64B03A28FA13E012596D4E /* OnboardingStudentsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingStudentsSheet.swift; sourceTree = "<group>"; };
 		EE3C26A04796CFACD4AB0C44 /* ScheduleWeekGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleWeekGridView.swift; sourceTree = "<group>"; };
 		EE833FAF7AFEF3300C335970 /* RubricFamilyPDFAndCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubricFamilyPDFAndCatalogTests.swift; sourceTree = "<group>"; };
+		EFDF0FBB26CB1C3DEC0BBA7A /* StudentInjuryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentInjuryCard.swift; sourceTree = "<group>"; };
 		F035CAC00EAA31C09AF292D1 /* GroupStageKnockoutScheduleGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupStageKnockoutScheduleGenerator.swift; sourceTree = "<group>"; };
 		F0BFD8699A1E65C7A09163CF /* NotebookAverageEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookAverageEditorSheet.swift; sourceTree = "<group>"; };
 		F0D53C0F7E51FE144808FD67 /* LomloeCriteriaCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LomloeCriteriaCatalog.swift; sourceTree = "<group>"; };
@@ -2147,6 +2156,7 @@
 				214D549C163ADFF0B572F9CE /* KmpBridge+EvaluationSession.swift */,
 				B5C5AAB0D7FED188229CF573 /* KmpBridge+GradeReports.swift */,
 				FA4C02C9A27EECEB3EFDABCB /* KmpBridge+Inclusion.swift */,
+				AC070DAB96AAE7CD219CD44B /* KmpBridge+Injuries.swift */,
 				821B86EBC3A6F3E280190B15 /* KmpBridge+LearningSituations.swift */,
 				212337E509470CFD689BB7F8 /* KmpBridge+Meetings.swift */,
 				A682E1CAE862C15E3F1B2065 /* KmpBridge+Notebook.swift */,
@@ -2493,6 +2503,8 @@
 				19AC8A7CB1AD6510405F668A /* StructuredInstrumentBulkEvaluationSheet.swift */,
 				E1C9C5D5DA053AAA5AE6AF09 /* StudentGradeReportPDFRenderer.swift */,
 				964764E602D3B6EF684BD755 /* StudentImportSheet.swift */,
+				EFDF0FBB26CB1C3DEC0BBA7A /* StudentInjuryCard.swift */,
+				16C8651DBFD051BB44AC7ADE /* StudentInjurySheet.swift */,
 				CD2E6198F8A34293A814CE88 /* StudentProfile360Sheet.swift */,
 				B8E171DE6E69C0B8DA060197 /* StudentProfilesWorkspaceView.swift */,
 				E85D639D7643C83C84F0D6A0 /* StudentRubricInstrumentContent.swift */,
@@ -2516,34 +2528,6 @@
 				7B6269F60689E51D017ECE88 /* Tournament */,
 			);
 			path = App;
-			sourceTree = "<group>";
-		};
-		"TEMP_00480548-58FE-4E06-B794-78F1EE8FC3B0" /* .claude */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = .claude;
-			sourceTree = "<group>";
-		};
-		"TEMP_4868F937-38C5-4890-AA9D-27FC23FA356D" /* .claude */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = .claude;
-			sourceTree = "<group>";
-		};
-		"TEMP_8CF0421F-73F0-4825-A5B2-12F36C1C98FF" /* .claude */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = .claude;
-			sourceTree = "<group>";
-		};
-		"TEMP_EC0ACBF5-8F60-4E1B-959C-342611CDFCE3" /* .claude */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = .claude;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -3010,6 +2994,7 @@
 				4F181AD13A8E02C765C342DC /* KmpBridge+EvaluationSession.swift in Sources */,
 				AB972306B65F348DC4612491 /* KmpBridge+GradeReports.swift in Sources */,
 				F181B43D0F42AA126CAF7A0C /* KmpBridge+Inclusion.swift in Sources */,
+				E230B37CCDFB9CF469A3DA72 /* KmpBridge+Injuries.swift in Sources */,
 				B64842392C9E24E8C2221378 /* KmpBridge+LearningSituations.swift in Sources */,
 				099689EBA9E98BA1364417F4 /* KmpBridge+Meetings.swift in Sources */,
 				F3EF2A03225D74BCCF271EFC /* KmpBridge+Notebook.swift in Sources */,
@@ -3290,6 +3275,8 @@
 				BB437283F9856CD528A8D157 /* StudentEmailImportSheet.swift in Sources */,
 				00CF69AD9268E4ADAD4AE29E /* StudentGradeReportPDFRenderer.swift in Sources */,
 				620D07C339E42E89597D4757 /* StudentImportSheet.swift in Sources */,
+				9B090B2E1E990E062196B714 /* StudentInjuryCard.swift in Sources */,
+				CCD602C3121FB7F117AB04FD /* StudentInjurySheet.swift in Sources */,
 				5980AF103BC140E68048ACDC /* StudentProfile360Sheet.swift in Sources */,
 				BC2B7AE09356DAEE25AAB21B /* StudentProfilesWorkspaceView.swift in Sources */,
 				D91AFC9D2D96FFCE3A2AF2CF /* StudentRubricInstrumentContent.swift in Sources */,
@@ -3511,6 +3498,7 @@
 				F5F13A0DC24D4A62A0831C1D /* KmpBridge+EvaluationSession.swift in Sources */,
 				9F55551286A93F89BE2BEC31 /* KmpBridge+GradeReports.swift in Sources */,
 				A570921304CA10A584E502E9 /* KmpBridge+Inclusion.swift in Sources */,
+				B084DC6C0FC85FCB0CFF1589 /* KmpBridge+Injuries.swift in Sources */,
 				80AB8A54BCEB9D6E00C4EB6C /* KmpBridge+LearningSituations.swift in Sources */,
 				9997DB2E60398DAC601544E2 /* KmpBridge+Meetings.swift in Sources */,
 				E795C42BAAE0E7DC85E39B52 /* KmpBridge+Notebook.swift in Sources */,
@@ -3792,6 +3780,8 @@
 				3476F2AB7F19E3F96DCD28F5 /* StudentEmailImportSheet.swift in Sources */,
 				70563E97993A2DF9A69D59A3 /* StudentGradeReportPDFRenderer.swift in Sources */,
 				107B33FECB5C4C30230B96D1 /* StudentImportSheet.swift in Sources */,
+				366406CD96C9A01E16F4576E /* StudentInjuryCard.swift in Sources */,
+				1D2F77E394291D359338585A /* StudentInjurySheet.swift in Sources */,
 				AA07DE1145FDD17B964237AB /* StudentProfile360Sheet.swift in Sources */,
 				8A83E0FD7E5A964AAB5A36A1 /* StudentProfilesWorkspaceView.swift in Sources */,
 				63D04717FA020450A53B00BF /* StudentRubricInstrumentContent.swift in Sources */,

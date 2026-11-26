@@ -72,11 +72,36 @@ struct DashboardInspectorContent: View {
                         }
                     }
                 }
+            case .injuryReturn(let studentId):
+                injuryReturnDetail(studentId: studentId)
             case .none:
                 unavailable("Elige una fila para ver su detalle.")
             }
         } else {
             unavailable("Sin datos")
+        }
+    }
+
+    /// «Vuelve hoy»: alumno cuya lesión terminó ayer.
+    @ViewBuilder
+    private func injuryReturnDetail(studentId: Int64) -> some View {
+        if let notice = StudentInjuryStore.shared.returningToday.first(where: { $0.studentId == studentId }) {
+            VStack(alignment: .leading, spacing: DashboardStyle.Spacing.s2) {
+                Text("Vuelve hoy: \(notice.studentName)").font(DashboardStyle.Typography.headline)
+                Text(InjuryReturnNotice.rangeText(notice.injury))
+                    .font(DashboardStyle.Typography.subheadline)
+                    .foregroundStyle(.secondary)
+                Text("Su lesión terminó ayer. Desde hoy cuenta sin lesión.")
+                    .font(DashboardStyle.Typography.subheadline)
+                    .foregroundStyle(.secondary)
+                actions {
+                    navigationButton("Ver ficha", "person.crop.circle", prominent: true) {
+                        onOpenModule(.students, nil, studentId)
+                    }
+                }
+            }
+        } else {
+            unavailable("Ya no hay aviso para este alumno.")
         }
     }
 

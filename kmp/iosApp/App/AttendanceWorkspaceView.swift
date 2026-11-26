@@ -5,6 +5,8 @@ import MiGestorKit
 struct AttendanceWorkspaceView: View {
     let bridge: KmpBridge
     @ObservedObject var attendanceStore: AttendanceBridgeStore
+    /// Lesiones activas hoy, para la etiqueta «hasta el 12 dic · Árbitro».
+    @ObservedObject private var injuryStore = StudentInjuryStore.shared
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @EnvironmentObject var layoutState: WorkspaceLayoutState
@@ -101,7 +103,8 @@ struct AttendanceWorkspaceView: View {
                 id: student.id,
                 student: student,
                 isInjured: isStudentInjured(student),
-                record: record
+                record: record,
+                injuryBadge: injuryStore.activeByStudent[student.id].map { StudentInjuryText.badge($0) }
             )
         }
     }
@@ -796,11 +799,9 @@ struct AttendanceWorkspaceView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Educación Física")
                             .font(.headline)
-                        Toggle("Lesión motriz activa", isOn: Binding(
-                            get: { isStudentInjured(student) },
-                            set: { _ in Task { await toggleStudentInjury(student) } }
-                        ))
-                        .tint(.orange)
+                        // Lesión con fechas y papel (sustituye al interruptor «Lesión motriz activa»).
+                        StudentInjuryCard(bridge: bridge, studentId: student.id, studentName: student.fullName)
+                            .id(student.id)
                         .padding(12)
                         .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
@@ -1163,6 +1164,9 @@ struct AttendanceWorkspaceView: View {
                 classId: selectedClassId
             )
             bridge.status = target ? "Lesión activa para \(student.fullName)." : "Lesión desactivada para \(student.fullName)."
+            // La marca real ya está guardada: la local no debe tapar cambios posteriores
+            // («Ha vuelto», fin de la lesión al cambiar de día).
+            localInjuryStatuses[student.id] = nil
             AppleInteractionFeedback.play(.success)
         } catch {
             localInjuryStatuses[student.id] = current

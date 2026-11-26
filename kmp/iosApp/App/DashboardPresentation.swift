@@ -14,6 +14,8 @@ enum DashboardInspectorSelection: Hashable {
     case pe(String)
     /// Fila de Atención sin alerta detrás (asistencia de hoy sin pasar, solo Mac).
     case attendance(classId: Int64)
+    /// «Vuelve hoy»: su lesión terminó ayer (lesiones con fecha, migración 51).
+    case injuryReturn(studentId: Int64)
 }
 
 // MARK: - Atención
@@ -571,6 +573,39 @@ struct DashboardPresentation {
             alertStudentsCount: alertCount,
             alertDetail: alertDetail
         )
+    }
+}
+
+// MARK: - Lesiones: «Vuelve hoy»
+
+extension DashboardAttentionItem {
+    /// Filas «Vuelve hoy: Ana López» para Atención. Entran como pendientes: es un
+    /// aviso para la clase de hoy, no un riesgo. Desaparecen solas al día siguiente.
+    static func injuryReturns(_ notices: [InjuryReturnNotice]) -> [DashboardAttentionItem] {
+        notices.map { notice in
+            DashboardAttentionItem(
+                id: "injury-return-\(notice.injury.id)",
+                kind: .pending,
+                title: "Vuelve hoy: \(notice.studentName)",
+                detail: InjuryReturnNotice.rangeText(notice.injury),
+                classId: nil,
+                studentId: notice.studentId,
+                inspector: .injuryReturn(studentId: notice.studentId),
+                action: DashboardAttentionAction(
+                    title: "Ver ficha",
+                    route: .module(.students, classId: nil, studentId: notice.studentId)
+                )
+            )
+        }
+    }
+}
+
+extension InjuryReturnNotice {
+    /// «Lesión del 26 nov al 12 dic».
+    static func rangeText(_ injury: StudentInjurySnapshot) -> String {
+        let start = StudentInjuryText.shortDate(injury.startsOn)
+        guard let endsOn = injury.endsOn else { return "Lesión desde el \(start)" }
+        return "Lesión del \(start) al \(StudentInjuryText.shortDate(endsOn))"
     }
 }
 

@@ -17,6 +17,9 @@ extension KmpBridge {
     /// valores que ninguna vista leía, y se llama tras muchas acciones
     /// (guardar asistencia, editar alumnado) y tras cada sync.
     func refreshDashboard() async throws {
+        // Lesiones con fecha: si la app sigue abierta de un día para otro, la marca
+        // «lesionado hoy» se recalcula aquí (barato: no hace nada el mismo día).
+        await refreshInjuriesIfDayChanged()
         let stats = try await container.dashboardRepository.getStats()
         let text = "Alumnos \(stats.totalStudents) · Clases \(stats.totalClasses) · Eval \(stats.totalEvaluations)"
         if statsText != text {
@@ -25,6 +28,7 @@ extension KmpBridge {
     }
 
     func loadDashboard(mode: DashboardMode) async throws {
+        await refreshInjuriesIfDayChanged()
         dashboardFilters = DashboardFilters(
             classId: dashboardFilters.classId,
             severity: dashboardFilters.severity,

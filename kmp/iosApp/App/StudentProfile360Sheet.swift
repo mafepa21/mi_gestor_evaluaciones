@@ -58,8 +58,6 @@ struct StudentProfile360Sheet: View {
     @State private var educationalInsight: StudentInsightDraft? = nil
     @State private var isLoading = true
     @State private var isGeneratingInsight = false
-    @State private var isTogglingInjury = false
-    @State private var injuryError: String?
     @State private var showCopiedAlert = false
     @State private var showTutoringSheet = false
     @State private var duaAdaptation: DUAAdaptationDraft? = nil
@@ -804,68 +802,16 @@ struct StudentProfile360Sheet: View {
 
     private var diversityHealthSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Tarjeta interactiva de Lesión / Aptitud Física
-            let isInjured = currentStudent?.isInjured ?? false
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Label("Aptitud y Salud en Educación Física", systemImage: "figure.run")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
+            // Lesión con fechas y papel en clase (migración 51). La hoja y el
+            // historial viven en `StudentInjuryCard`.
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Aptitud y Salud en Educación Física", systemImage: "figure.run")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
 
-                    Spacer()
-
-                    Button {
-                        toggleInjury()
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: isInjured ? "heart.fill" : "bandage")
-                            Text(isInjured ? "Retirar lesión" : "Marcar lesión")
-                        }
-                        .font(.caption.weight(.bold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(isInjured ? Color.green.opacity(0.15) : Color.red.opacity(0.12))
-                        .foregroundStyle(isInjured ? Color.green : Color.red)
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-                    .frame(minHeight: 44)
-                    .disabled(isTogglingInjury)
-                }
-
-                if let injuryError {
-                    Text(injuryError)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.red)
-                }
-
-                if isInjured {
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.title3)
-                            .foregroundStyle(Color.red)
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Alumno marcado actualmente en seguimiento de lesión o limitación motriz.")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                            Text("Requiere adaptación de tareas prácticas y registro en actas de evaluación continua.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(12)
-                    .background(Color.red.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                } else {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(Color.green)
-                        Text("Apto para la práctica física normal sin limitaciones declaradas.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
+                if let student = currentStudent {
+                    StudentInjuryCard(bridge: bridge, studentId: student.id, studentName: student.fullName)
+                        .id(student.id)
                 }
             }
             .padding(16)
@@ -1135,25 +1081,6 @@ struct StudentProfile360Sheet: View {
         guard let index = currentStudentIndex, index < allStudents.count - 1 else { return }
         let nextStudent = allStudents[index + 1]
         onNavigateToStudent(nextStudent.id)
-    }
-
-    private func toggleInjury() {
-        guard let student = currentStudent, !isTogglingInjury else { return }
-        isTogglingInjury = true
-        Task { @MainActor in
-            do {
-                try await bridge.updateStudentInjuryStatus(
-                    studentId: student.id,
-                    isInjured: !student.isInjured,
-                    classId: classId
-                )
-                injuryError = nil
-                await loadProfileData()
-            } catch {
-                injuryError = Self.injurySaveFailureMessage
-            }
-            isTogglingInjury = false
-        }
     }
 
     private func loadProfileData() async {

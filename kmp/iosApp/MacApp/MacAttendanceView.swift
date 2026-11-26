@@ -33,6 +33,8 @@ struct MacAttendanceToolbarActions {
 struct MacAttendanceView: View {
     let bridge: KmpBridge
     @ObservedObject var attendanceStore: AttendanceBridgeStore
+    /// Lesiones activas hoy, para la etiqueta «hasta el 12 dic · Árbitro».
+    @ObservedObject private var injuryStore = StudentInjuryStore.shared
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -99,7 +101,8 @@ struct MacAttendanceView: View {
                 id: student.id,
                 student: student,
                 isInjured: isStudentInjured(student),
-                record: record
+                record: record,
+                injuryBadge: injuryStore.activeByStudent[student.id].map { StudentInjuryText.badge($0) }
             )
         }
     }
@@ -850,22 +853,9 @@ struct MacAttendanceView: View {
                     }
 
                     inspectorSection("Condición física") {
-                        MacStatusPill(
-                            label: isStudentInjured(student) ? "Lesión activa" : "Sin lesión",
-                            isActive: isStudentInjured(student),
-                            tint: isStudentInjured(student) ? MacAppStyle.warningTint : MacAppStyle.successTint
-                        )
-                        Button {
-                            Task { await toggleInjuryStatus(for: student) }
-                        } label: {
-                            Label(
-                                isStudentInjured(student) ? "Quitar lesión" : "Marcar lesión",
-                                systemImage: isStudentInjured(student) ? "heart.slash" : "bandage"
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(savingInjuryStudentIds.contains(student.id))
+                        // Lesión con fechas y papel en clase (migración 51).
+                        StudentInjuryCard(bridge: bridge, studentId: student.id, studentName: student.fullName)
+                            .id(student.id)
                     }
 
                     inspectorSection("Histórico reciente") {
@@ -1159,6 +1149,9 @@ struct MacAttendanceView: View {
                 classId: selectedClassId
             )
             bridge.status = newValue ? "Alumno marcado con lesión." : "Lesión retirada."
+            // La marca real ya está guardada: la local no debe tapar cambios posteriores
+            // («Ha vuelto», fin de la lesión al cambiar de día).
+            localInjuryStatuses[student.id] = nil
         } catch {
             localInjuryStatuses[student.id] = previousValue
             bridge.status = "No se pudo actualizar la lesión: \(error.localizedDescription)"

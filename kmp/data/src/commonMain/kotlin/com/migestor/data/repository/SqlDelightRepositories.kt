@@ -514,6 +514,8 @@ class StudentsRepositorySqlDelight(
             db.evaluationSessionQueries.deleteSessionStudentsByStudent(studentId)
             // Igual con sus valoraciones del docente por trimestre.
             db.appDatabaseQueries.deleteTermTeacherNotesByStudent(studentId)
+            // Y con sus lesiones (migración 51).
+            db.studentInjuryQueries.deleteInjuriesByStudent(studentId)
             db.appDatabaseQueries.deleteStudent(studentId)
         }
     }

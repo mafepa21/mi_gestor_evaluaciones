@@ -2617,6 +2617,12 @@ class SqlDelightSyncAdapter(
             }.onFailure { failed++ }
         }
 
+        // Lesiones con fecha: la marca «lesionado hoy» se recalcula al final del lote,
+        // cuando ya se han aplicado también los registros `student` (que traen su marca).
+        if (changes.any { it.entity == SchoolRecordsSync.STUDENT_INJURIES || it.entity == "student" }) {
+            runCatching { container.studentInjuries.reconcileFlags() }
+        }
+
         return SyncAck(
             applied = applied,
             conflictsResolvedByLww = conflicts,

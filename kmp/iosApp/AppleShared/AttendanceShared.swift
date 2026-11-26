@@ -175,6 +175,8 @@ struct AttendanceEntryRow: Identifiable {
     let student: Student
     let isInjured: Bool
     let record: KmpBridge.AttendanceRecordSnapshot?
+    /// «Lesionado hasta el 12 dic · Árbitro». `nil` si no hay lesión con fecha.
+    var injuryBadge: String? = nil
 }
 
 struct AttendanceAlert: Identifiable {

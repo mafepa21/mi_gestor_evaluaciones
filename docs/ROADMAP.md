@@ -41,6 +41,7 @@ Prioridad: alta.
   Pendiente: los quizzes no se autocorrigen. `QuizQuestionDraft` importa pregunta y opciones pero no la respuesta correcta, y `saveResponses` solo deriva nota para la rejilla de observacion 1-4 y la checklist proporcional. Faltan clave de respuestas, contrato de autoria en el DOCX, puntuacion por pregunta, versionado de la clave y derivacion local verificable. Detalle en `docs/importacion_documentos_sa.md`.
 - Asistencia: flujo diario rapido y consistente.
 - Alumnado: perfiles utiles, busqueda y datos relevantes.
+  Avance (2026-11-26): lesiones con fecha de fin, papel en clase y aviso «Vuelve hoy»; la marca `is_injured` pasa a derivarse de las fechas (migración 51). Pendiente fase 2: decidir si las notas de los días de lesión salen de la media.
   Avance: registro y seguimiento de medidas de respuesta educativa Nivel III/IV (Decreto 104/2018 + Orden 20/2019, CV) en la ficha de alumno de iOS/iPadOS y macOS, con badge en el Cuaderno y aviso determinista de revision anual, sin IA generativa ni contenido clinico persistido. Verificado con builds reales macOS e iOS Simulator (BUILD SUCCEEDED en ambos).
 - Planificacion: sesiones, situaciones de aprendizaje y continuidad docente.
   Avance: la secuenciación de sesiones usa un contrato semanal `LONG BLOCK`/`SHORT BLOCK` con actividades CLIL estructuradas, preview ejecutable y asignación automática a franjas consecutivas o simples según la duración real del grupo.

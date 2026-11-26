@@ -13,6 +13,22 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Added
+
+- **Lesiones con fecha de fin** (iPad y Mac): la lesión deja de ser un sí/no. Hoja «Lesión» con desde/hasta o «sin fecha de fin», papel en clase (árbitro, cronometrador, ayudante de material, ficha teórica, otro), casilla «Justificante entregado» y nota corta sin datos médicos (`StudentInjurySheet`). La ficha del alumno y los inspectores de Asistencia (iPad y Mac) y Alumnado (Mac) muestran «Hasta el 12 dic · Árbitro», «Ha vuelto», «Editar» e historial (`StudentInjuryCard`). Asistencia pinta «Lesionado hasta el 12 dic · Árbitro». La lesión se quita sola el día siguiente al «hasta» y «Hoy» › Atención avisa «Vuelve hoy». Los interruptores rápidos de siempre siguen funcionando (crean una lesión desde hoy sin fecha de fin o marcan «ha vuelto»). Maqueta: `docs/maquetas/lesiones-con-fecha/mockup/index.html`. ADR: `kmp/docs/architecture/ADR-2026-11-26-lesiones-con-fecha.md`.
+
+### Data
+
+- Migración 51 (`51.sqm`, `StudentInjury.sq`), solo aditiva: tabla `student_injuries` con borrado lógico. Las marcas antiguas pasan a una lesión `legacy-<id>` sin fecha de fin. `students.is_injured` queda como marca derivada que recalcula `StudentInjuryUseCase` sin tocar `updated_at` del alumno. Sync LAN por `SchoolRecordsSync` (LWW con desempate por `deviceId`; se mandan siempre todas las lesiones). Borrar un alumno borra sus lesiones.
+
+### Fixed
+
+- Lesiones: al arrancar con lesiones activas la app se cerraba al iterar en Swift un `Map<Long, …>` de Kotlin; ahora el caso de uso devuelve una lista (encontrado en QA del Mac con datos inventados).
+
+### Verification
+
+- Lesiones con fecha: `./gradlew :shared:desktopTest :data:desktopTest` OK (9 pruebas nuevas de reglas y caso de uso, 8 de migración, repositorio y Sync LAN; 0 fallos en las dos suites). `./scripts/verify_apple_builds.sh` OK (macOS e iOS simulador). `xcodebuild test -scheme MiGestorPlannerTests` (macOS, sobre 65508829, antes de los arreglos de revisión): 853 pruebas, 1 fallo ajeno (`testBachilleratoSA2BadmintonSessionsImportBothRoutes` lee un documento personal del Escritorio). QA en Mac con copia aislada y alumnado inventado: la migración y el recálculo al abrir funcionan (marca puesta y quitada según fechas) y apareció el cierre corregido arriba; no se pudieron hacer capturas porque la copia aislada se queda esperando permiso del llavero. Sin QA en iPad. Revisiones: `ui-reviewer` (maqueta), `architect` (migración y sync) y `reviewer` (código), con sus hallazgos aplicados.
+
 ### Changed
 
 - Bóveda cifrada con clave maestra única en el Llavero (`AppSecretVault.swift`): los secretos de Portal del alumnado (`WebPortalStore`), formularios web (`WebSubmissionKeychain`), buzón (`WebSubmissionInbox`) y sync iOS (`IosKeychainStore`) se guardan en un único fichero local cifrado con AES-256-GCM (`Application Support/MiGestor/secret-vault.enc`, permisos `0600`) protegido por **una sola clave maestra** en el Llavero (`Cuaderno Vivo (Bóveda de claves)`). Reduce los avisos de contraseña del Llavero en macOS al instalar una nueva versión firmada ad hoc a un único diálogo («Permitir siempre» desbloquea todo; «Denegar» bloquea sin insistir), migra y limpia las entradas antiguas al vuelo, y evita el aviso innecesario de `MacSyncBackgroundService.hasPairedDevice` consultando solo atributos (`exists(key:)`). Además, `scripts/package_mac_release.sh` admite `SIGN_IDENTITY` opcional para firmar localmente con certificado estable (0 avisos entre actualizaciones en tu Mac).

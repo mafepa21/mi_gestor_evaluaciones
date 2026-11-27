@@ -117,6 +117,55 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertFalse(draft.warnings.contains { $0.contains("No se ha podido interpretar") })
     }
 
+    private func tableXML(_ rows: [[String]]) -> String {
+        let body = rows.map { row in
+            "<w:tr>" + row.map { "<w:tc><w:p><w:r><w:t xml:space=\"preserve\">\($0)</w:t></w:r></w:p></w:tc>" }.joined() + "</w:tr>"
+        }.joined()
+        return "<w:tbl>\(body)</w:tbl>"
+    }
+
+    /// Un instrumento de observación con varias tablas repetía `obs_i0`… y el id del ítem
+    /// chocaba con UNIQUE al crear la columna en el Cuaderno.
+    func testObservationInstrumentWithSeveralTablesGetsUniqueFieldKeys() throws {
+        let body = [
+            paragraph("1. Teacher observation grid - CE 2.1 - 20%"),
+            tableXML([["Indicador", "1", "2", "3", "4"], ["Postura", "a", "b", "c", "d"], ["Equilibrio", "a", "b", "c", "d"]]),
+            tableXML([["Indicador", "1", "2", "3", "4"], ["Diálogo", "a", "b", "c", "d"], ["Roles", "a", "b", "c", "d"]]),
+        ].joined(separator: "\n")
+        let docxURL = try makeDocx(named: "observacion-varias-tablas", body: body)
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: Data(contentsOf: docxURL)
+        )
+        let instrument = try XCTUnwrap(draft.instruments.first)
+
+        XCTAssertEqual(instrument.observationFields.map(\.title), ["Postura", "Equilibrio", "Diálogo", "Roles"])
+        XCTAssertEqual(instrument.observationFields.compactMap(\.key), ["obs_i0", "obs_i1", "obs_i2", "obs_i3"])
+    }
+
+    /// Dos rejillas sesión × indicador en el mismo instrumento siguen la numeración de
+    /// sesiones y conservan la forma `obs_s<N>_i<M>` que agrupa la nota en KMP.
+    func testSessionGridsInSeveralTablesContinueSessionNumbering() throws {
+        let header = ["Alumno/a", "Momento", "Postura", "Diálogo", "Nota (1-4)"]
+        let body = [
+            paragraph("1. Teacher observation grid - CE 2.1 - 20%"),
+            tableXML([header, ["", "U03", "", "", ""], ["", "U04", "", "", ""]]),
+            tableXML([header, ["", "U05", "", "", ""]]),
+        ].joined(separator: "\n")
+        let docxURL = try makeDocx(named: "observacion-sesiones-varias-tablas", body: body)
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: Data(contentsOf: docxURL)
+        )
+        let keys = try XCTUnwrap(draft.instruments.first).observationFields.compactMap(\.key)
+
+        XCTAssertEqual(keys, ["obs_s0_i0", "obs_s0_i1", "obs_s1_i0", "obs_s1_i1", "obs_s2_i0", "obs_s2_i1"])
+    }
+
     func testSeveralWordDocumentsMergeIntoOneReview() throws {
         let instrumentos = try makeDocx(named: "instrumentos", body: [
             paragraph("1. Rúbrica de juego - CE 2.2 - 100%"),

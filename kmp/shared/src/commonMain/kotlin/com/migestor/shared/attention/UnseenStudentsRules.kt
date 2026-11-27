@@ -31,8 +31,9 @@ object UnseenStudentsRules {
     fun latest(records: List<ContactRecord>): ContactRecord? = records.maxByOrNull { it.date }
 
     /**
-     * ¿Está sin mirar? Con registro: si desde él han pasado [WINDOW_DAYS] días contados.
-     * Sin registro: si lleva en el grupo al menos ese plazo (o no se sabe cuándo entró).
+     * ¿Está sin mirar? Se cuenta desde lo más reciente entre su último registro y el día
+     * en que entró al grupo: un alta reciente no sale hasta cumplir el plazo, aunque
+     * traiga registros antiguos. Sin registro ni fecha de alta: sale.
      */
     fun isUnseen(
         last: ContactRecord?,
@@ -40,9 +41,8 @@ object UnseenStudentsRules {
         today: LocalDate,
         nonTeaching: Set<LocalDate>,
     ): Boolean {
-        if (last != null) return countedDays(last.date, today, nonTeaching) >= WINDOW_DAYS
-        if (enrolledOn == null) return true
-        return countedDays(enrolledOn, today, nonTeaching) >= WINDOW_DAYS
+        val start = listOfNotNull(last?.date, enrolledOn).maxOrNull() ?: return true
+        return countedDays(start, today, nonTeaching) >= WINDOW_DAYS
     }
 
     /** Orden de la lista: primero con medida, luego sin ningún registro, luego más días. */

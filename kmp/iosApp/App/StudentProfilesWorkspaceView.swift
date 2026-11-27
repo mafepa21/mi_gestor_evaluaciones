@@ -49,6 +49,8 @@ struct StudentProfilesWorkspaceView: View {
     @State private var trackingFilter: StudentTrackingFilter = .todos
     /// Alumnado «Sin mirar» del grupo elegido (o de todos los grupos sin elegir ninguno).
     @State private var unseenStudentIds: Set<Int64> = []
+    /// «Calculando…» o el aviso de error del filtro «Sin mirar».
+    @State private var unseenFilterNote: String?
     @ObservedObject private var unseenStore = UnseenStudentsStore.shared
     @State private var profile: KmpBridge.StudentProfileSnapshot?
     @State private var isLoadingProfile = false
@@ -114,15 +116,20 @@ struct StudentProfilesWorkspaceView: View {
     }
 
     /// Ids «Sin mirar» del grupo elegido, o de todos los grupos si no hay ninguno elegido.
-    private func loadUnseenStudentIds() async -> Set<Int64> {
+    /// `nil` si la tarea se canceló (cambio de grupo o de filtro): no se pinta un resultado a medias.
+    private func loadUnseenStudentIds() async -> (ids: Set<Int64>, failedGroups: Int)? {
         let classIds = selectedClassId.map { [$0] } ?? studentsBridgeStore.classes.map(\.id)
         var ids = Set<Int64>()
+        var failed = 0
         for classId in classIds {
-            if let result = try? await bridge.unseenStudents(classId: classId) {
-                ids.formUnion(result.unseen.map(\.studentId))
+            do {
+                ids.formUnion(try await bridge.unseenStudents(classId: classId).unseen.map(\.studentId))
+            } catch {
+                failed += 1
             }
+            if Task.isCancelled { return nil }
         }
-        return ids
+        return (ids, failed)
     }
 
     private func scheduleSearchDebounce() {
@@ -407,8 +414,18 @@ struct StudentProfilesWorkspaceView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .task(id: "\(trackingFilter.rawValue)|\(selectedClassId ?? -1)|\(unseenStore.version)") {
-                    guard trackingFilter == .sinMirar else { return }
-                    unseenStudentIds = await loadUnseenStudentIds()
+                    guard trackingFilter == .sinMirar else { unseenFilterNote = nil; return }
+                    unseenFilterNote = "Calculando…"
+                    guard let result = await loadUnseenStudentIds() else { return }
+                    unseenStudentIds = result.ids
+                    unseenFilterNote = result.failedGroups > 0
+                        ? "No se pudo calcular \(result.failedGroups) grupo(s). Vuelve a elegir el filtro para reintentar."
+                        : nil
+                }
+                if let unseenFilterNote {
+                    Text(unseenFilterNote)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
             .padding(.horizontal, 14)

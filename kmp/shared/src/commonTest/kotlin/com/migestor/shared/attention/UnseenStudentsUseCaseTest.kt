@@ -118,6 +118,16 @@ class UnseenStudentsUseCaseTest {
     }
 
     @Test
+    fun unAltaRecienteConRegistrosAntiguosNoSaleTodavia() = runTest {
+        val repo = FakeRepository(
+            students = listOf(ana),
+            contacts = listOf(ContactRecord(1, ContactKind.GRADE, d("2026-09-20"))),
+            starts = mapOf(1L to d("2026-11-20")),
+        )
+        assertTrue(UnseenStudentsUseCase(repo) { d("2026-11-27") }.unseenForClass(10, emptyList(), emptyList()).unseen.isEmpty())
+    }
+
+    @Test
     fun diasContadosExcluyenElDiaDeInicio() {
         assertEquals(0, UnseenStudentsRules.countedDays(d("2026-11-27"), d("2026-11-27"), emptySet()))
         assertEquals(1, UnseenStudentsRules.countedDays(d("2026-11-26"), d("2026-11-27"), emptySet()))

@@ -62,15 +62,37 @@ final class UnseenStudentsStore: ObservableObject {
     /// Sube con cada cambio (observación guardada, «Visto»): las listas se recargan.
     @Published private(set) var version = 0
     private(set) var loadedDay: Date?
+    /// Hay un cálculo del resumen de «Hoy» en marcha (evita calcularlo dos veces a la vez).
+    var isRefreshingSummaries = false
 
-    func publish(_ summaries: [UnseenGroupSummary], day: Date) {
+    /// Resultado por grupo, válido mientras no cambien el día ni `version`.
+    struct CachedReport {
+        let day: Date
+        let version: Int
+        let unseen: [UnseenStudentRow]
+        let seen: [SeenStudentRow]
+        let total: Int
+    }
+    var cache: [Int64: CachedReport] = [:]
+
+    /// Publica el resumen solo si nada cambió mientras se calculaba (`version`).
+    func publish(_ summaries: [UnseenGroupSummary], day: Date, computedAt version: Int) {
+        guard version == self.version else { return }
         if self.summaries != summaries { self.summaries = summaries }
         loadedDay = day
     }
 
+    func clearSummaries(day: Date) {
+        if !summaries.isEmpty { summaries = [] }
+        loadedDay = day
+    }
+
+    func markNotLoaded() { loadedDay = nil }
+
     func bump() {
         version += 1
         loadedDay = nil
+        cache.removeAll()
     }
 }
 
@@ -173,9 +195,20 @@ extension KmpBridge {
     // MARK: - Lista de un grupo
 
     /// Alumnado sin mirar del grupo (sin los «Vistos») y los «Vistos» vigentes.
-    func unseenStudents(classId: Int64) async throws -> (unseen: [UnseenStudentRow], seen: [SeenStudentRow], total: Int) {
+    /// Se guarda en caché por grupo hasta que cambie el día o algo (`bump()`).
+    /// `globalEvents`: eventos no lectivos generales ya leídos (para no pedirlos por grupo).
+    func unseenStudents(
+        classId: Int64,
+        globalEvents: [CalendarEvent]? = nil
+    ) async throws -> (unseen: [UnseenStudentRow], seen: [SeenStudentRow], total: Int) {
+        let store = UnseenStudentsStore.shared
+        let today = Calendar.current.startOfDay(for: Date())
+        let version = store.version
+        if let cached = store.cache[classId], cached.day == today, cached.version == version {
+            return (cached.unseen, cached.seen, cached.total)
+        }
         let seenMap = UnseenSeenStore.active(classId: classId)
-        let nonTeaching = try await nonTeachingDaysIso(classId: classId)
+        let nonTeaching = try await nonTeachingDaysIso(classId: classId, globalEvents: globalEvents)
         // El cálculo sin «Vistos» sirve para listar también los ocultos con su nombre.
         let report = try await container.unseenStudents.unseenForClass(
             classId: classId,
@@ -191,7 +224,12 @@ extension KmpBridge {
             }
             unseen.append(row(student, classId: classId))
         }
-        return (unseen, seen.sorted { $0.until < $1.until }, Int(report.totalStudents))
+        let sortedSeen = seen.sorted { $0.until < $1.until }
+        let total = Int(report.totalStudents)
+        if store.version == version {
+            store.cache[classId] = .init(day: today, version: version, unseen: unseen, seen: sortedSeen, total: total)
+        }
+        return (unseen, sortedSeen, total)
     }
 
     /// Último registro del alumno en el grupo (ficha y Alumnado).
@@ -224,22 +262,44 @@ extension KmpBridge {
     func refreshUnseenSummariesIfNeeded() async {
         let today = Calendar.current.startOfDay(for: Date())
         let store = UnseenStudentsStore.shared
-        guard store.loadedDay != today else { return }
+        guard store.loadedDay != today, !store.isRefreshingSummaries else { return }
         guard Calendar.current.component(.weekday, from: today) == 6 else {
-            store.publish([], day: today)
+            store.clearSummaries(day: today)
             return
         }
+        store.isRefreshingSummaries = true
+        defer { store.isRefreshingSummaries = false }
+        let version = store.version
+        guard let globalEvents = try? await plannerNonTeachingCalendarEvents(classId: nil) else { return }
         var summaries: [UnseenGroupSummary] = []
+        var anyFailed = false
         for schoolClass in classes {
-            guard let result = try? await unseenStudents(classId: schoolClass.id), !result.unseen.isEmpty else { continue }
-            summaries.append(UnseenGroupSummary(
-                classId: schoolClass.id,
-                className: schoolClass.name,
-                count: result.unseen.count,
-                previewNames: result.unseen.map(\.name)
-            ))
+            if Task.isCancelled { return }
+            do {
+                let result = try await unseenStudents(classId: schoolClass.id, globalEvents: globalEvents)
+                guard !result.unseen.isEmpty else { continue }
+                // Vista previa por días sin registro, no por medida: el orden no delata a nadie.
+                let preview = result.unseen
+                    .sorted { ($0.daysSinceLast ?? Int.max) > ($1.daysSinceLast ?? Int.max) }
+                    .map(\.name)
+                summaries.append(UnseenGroupSummary(
+                    classId: schoolClass.id,
+                    className: schoolClass.name,
+                    count: result.unseen.count,
+                    previewNames: preview
+                ))
+            } catch {
+                anyFailed = true
+            }
         }
-        store.publish(summaries, day: today)
+        // Si un grupo falló se enseña lo que hay, pero no se da el día por cargado.
+        store.publish(summaries, day: today, computedAt: version)
+        if anyFailed { store.markNotLoaded() }
+    }
+
+    /// Lanza el resumen sin hacer esperar a «Hoy».
+    func scheduleUnseenSummariesRefresh() {
+        Task { @MainActor [weak self] in await self?.refreshUnseenSummariesIfNeeded() }
     }
 
     // MARK: - Acciones
@@ -266,7 +326,7 @@ extension KmpBridge {
     /// Recarga listas y fichas y, si es viernes, el resumen de «Hoy».
     private func afterUnseenChange() {
         UnseenStudentsStore.shared.bump()
-        Task { @MainActor [weak self] in await self?.refreshUnseenSummariesIfNeeded() }
+        scheduleUnseenSummariesRefresh()
     }
 
     // MARK: - Ayudas
@@ -284,9 +344,10 @@ extension KmpBridge {
     }
 
     /// Días no lectivos (globales y del grupo) de los últimos 120 días, en ISO.
-    private func nonTeachingDaysIso(classId: Int64) async throws -> [String] {
-        let events = try await plannerNonTeachingCalendarEvents(classId: nil)
-            + plannerNonTeachingCalendarEvents(classId: classId)
+    private func nonTeachingDaysIso(classId: Int64, globalEvents: [CalendarEvent]? = nil) async throws -> [String] {
+        let global: [CalendarEvent]
+        if let globalEvents { global = globalEvents } else { global = try await plannerNonTeachingCalendarEvents(classId: nil) }
+        let events = global + (try await plannerNonTeachingCalendarEvents(classId: classId))
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let earliest = calendar.date(byAdding: .day, value: -120, to: today) ?? today

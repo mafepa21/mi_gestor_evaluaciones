@@ -20,6 +20,10 @@ SELECT e.student_id,
 FROM notebook_cell_entries e
 LEFT JOIN notebook_columns c ON c.id = e.column_id
 WHERE e.class_id = ?
+  -- Una celda borrada conserva su fila: solo cuenta si tiene algo dentro.
+  AND (TRIM(COALESCE(e.value_text, '')) != '' OR TRIM(COALESCE(e.note, '')) != ''
+       OR TRIM(COALESCE(e.value_icon, '')) != '' OR TRIM(COALESCE(e.value_ordinal, '')) != ''
+       OR e.value_bool IS NOT NULL)
 GROUP BY e.student_id;
 
 lastRubricByStudent:

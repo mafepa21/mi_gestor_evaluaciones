@@ -30,7 +30,8 @@ extension KmpBridge {
     func loadDashboard(mode: DashboardMode) async throws {
         await refreshInjuriesIfDayChanged()
         // «Sin mirar» (los viernes): una vez al día o tras guardar una observación.
-        await refreshUnseenSummariesIfNeeded()
+        // Sin esperar: «Hoy» se pinta ya y la fila llega cuando termina el cálculo.
+        scheduleUnseenSummariesRefresh()
         dashboardFilters = DashboardFilters(
             classId: dashboardFilters.classId,
             severity: dashboardFilters.severity,

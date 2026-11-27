@@ -1,6 +1,8 @@
 import SwiftUI
 #if os(iOS)
 import UIKit
+#else
+import AppKit
 #endif
 
 /// Lista «Sin mirar» de un grupo (maqueta `docs/maquetas/alumnos-invisibles/`, estados
@@ -64,7 +66,7 @@ struct UnseenStudentsListView: View {
             if unseen.isEmpty && seen.isEmpty {
                 UnseenEmptyState(
                     title: "Todos mirados",
-                    message: "Todo el grupo tiene algún registro tuyo en los últimos 14 días lectivos.",
+                    message: "Todo el grupo tiene algún registro tuyo en las últimas 2 semanas.",
                     systemImage: "checkmark.circle",
                     actionTitle: nil,
                     action: nil
@@ -103,7 +105,7 @@ struct UnseenStudentsListView: View {
             } header: {
                 Text("\(className) · \(unseen.count) de \(total)")
             } footer: {
-                Text("Sin nota, observación ni comentario en 14 días lectivos (no cuentan vacaciones ni festivos). Pasar lista sin escribir nada no cuenta.")
+                Text("Sin nota, observación ni comentario en 2 semanas (no cuentan vacaciones ni festivos del calendario). Pasar lista sin escribir nada no cuenta.")
             }
 
             if !seen.isEmpty {
@@ -327,6 +329,9 @@ struct LastContactLine: View {
         }
         .font(.subheadline)
         .task(id: "\(classId)|\(studentId)|\(store.version)") {
+            // Al cambiar de alumno no se debe ver ni un instante la línea del anterior.
+            text = nil
+            isOverdue = false
             if let line = try? await bridge.lastContactLine(classId: classId, studentId: studentId) {
                 text = line.text
                 isOverdue = line.isOverdue
@@ -365,12 +370,14 @@ private struct UnseenEmptyState: View {
 }
 
 /// Pantalla compartida o proyectada: se esconde la marca de «tiene medida».
+/// En Mac no se puede saber si se comparte la pantalla: se esconde con más de una
+/// pantalla conectada (proyector o monitor externo).
 enum UnseenScreenShare {
     @MainActor static var isActive: Bool {
         #if os(iOS)
         return UIScreen.main.isCaptured || UIScreen.screens.count > 1
         #else
-        return false
+        return NSScreen.screens.count > 1
         #endif
     }
 }

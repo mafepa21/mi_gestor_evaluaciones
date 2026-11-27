@@ -72,6 +72,8 @@ struct MacStudentsView: View {
     @State private var searchDebounceTask: Task<Void, Never>?
     /// «Alumnos invisibles»: filas «Sin mirar» por alumno (grupo elegido o todos).
     @State private var unseenByStudent: [Int64: UnseenStudentRow] = [:]
+    /// «Calculando…» o el aviso de error del filtro «Sin mirar».
+    @State private var unseenFilterNote: String?
     @ObservedObject private var unseenStore = UnseenStudentsStore.shared
 
     private var filteredRows: [KmpBridge.MacStudentRowSnapshot] {
@@ -697,15 +699,26 @@ struct MacStudentsView: View {
             .labelsHidden()
             .fixedSize()
             .task(id: "\(store.trackingFilter)|\(selectedClassId ?? -1)|\(unseenStore.version)") {
-                guard store.trackingFilter == "sin_mirar" else { return }
+                guard store.trackingFilter == "sin_mirar" else { unseenFilterNote = nil; return }
+                unseenFilterNote = "Calculando…"
                 let classIds = selectedClassId.map { [$0] } ?? studentsBridgeStore.classes.map(\.id)
                 var rows: [Int64: UnseenStudentRow] = [:]
+                var failed = 0
                 for classId in classIds {
-                    guard let result = try? await bridge.unseenStudents(classId: classId) else { continue }
-                    for row in result.unseen where rows[row.studentId] == nil { rows[row.studentId] = row }
+                    do {
+                        for row in try await bridge.unseenStudents(classId: classId).unseen where rows[row.studentId] == nil {
+                            rows[row.studentId] = row
+                        }
+                    } catch {
+                        failed += 1
+                    }
+                    // Cambio de grupo o de filtro a mitad: no se pinta un resultado a medias.
+                    if Task.isCancelled { return }
                 }
                 unseenByStudent = rows
+                unseenFilterNote = failed > 0 ? "No se pudo calcular \(failed) grupo(s)." : nil
             }
+            .help(unseenFilterNote ?? "")
     }
 
     @ViewBuilder

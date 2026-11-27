@@ -15,10 +15,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Grupos por nivel de habilidad** (iPad y Mac, tablero de grupos del Cuaderno): marca «Fuerte» o «Necesita apoyo» por alumno desde el menú contextual, las acciones de VoiceOver o «Seleccionar» → «Marcar». Cada alumno marcado lleva su icono (SF Symbol con etiqueta de voz) y cada grupo resume «1 fuerte · 1 apoyo · Técnica 6,8». «Agrupar automáticamente» gana el criterio «Por nivel técnico»: el docente elige qué rúbricas o columnas cuentan como Técnica, Comportamiento y Liderazgo (sugeridas por nombre o tipo, recordadas en el equipo), y el reparto pone un líder por grupo, reparte el comportamiento bajo y equilibra la técnica; las marcas suben o bajan el nivel. Sin nota de técnica se usa la media. Maqueta: `docs/maquetas/grupos_nivel_habilidad_2026-11-27.html`.
 - **Lesiones con fecha de fin** (iPad y Mac): la lesión deja de ser un sí/no. Hoja «Lesión» con desde/hasta o «sin fecha de fin», papel en clase (árbitro, cronometrador, ayudante de material, ficha teórica, otro), casilla «Justificante entregado» y nota corta sin datos médicos (`StudentInjurySheet`). La ficha del alumno y los inspectores de Asistencia (iPad y Mac) y Alumnado (Mac) muestran «Hasta el 12 dic · Árbitro», «Ha vuelto», «Editar» e historial (`StudentInjuryCard`). Asistencia pinta «Lesionado hasta el 12 dic · Árbitro». La lesión se quita sola el día siguiente al «hasta» y «Hoy» › Atención avisa «Vuelve hoy». Los interruptores rápidos de siempre siguen funcionando (crean una lesión desde hoy sin fecha de fin o marcan «ha vuelto»). Maqueta: `docs/maquetas/lesiones-con-fecha/mockup/index.html`. ADR: `kmp/docs/architecture/ADR-2026-11-26-lesiones-con-fecha.md`.
 
 ### Data
 
+- Migración 52 (`52.sqm`, `StudentGroupMark.sq`), solo aditiva: tabla `student_group_marks` con clave natural (alumno, grupo-clase). Quitar la marca guarda `NONE`. Viaja por Sync LAN en `SchoolRecordsSync` (`student_group_marks`, LWW con desempate por `deviceId`, se manda siempre entera). Borrar alumno o grupo limpia sus marcas; entra en `DatabaseWipe`. Esquema versión 53.
 - Migración 51 (`51.sqm`, `StudentInjury.sq`), solo aditiva: tabla `student_injuries` con borrado lógico. Las marcas antiguas pasan a una lesión `legacy-<id>` sin fecha de fin. `students.is_injured` queda como marca derivada que recalcula `StudentInjuryUseCase` sin tocar `updated_at` del alumno. Sync LAN por `SchoolRecordsSync` (LWW con desempate por `deviceId`; se mandan siempre todas las lesiones). Borrar un alumno borra sus lesiones.
 
 ### Fixed

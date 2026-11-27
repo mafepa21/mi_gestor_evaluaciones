@@ -979,6 +979,10 @@ extension KmpBridge {
                     try await self.refreshSubjects()
                     guard !Task.isCancelled else { return }
                 }
+                // Marcas Fuerte / Necesita apoyo: el tablero de grupos las relee.
+                if entities.contains(SchoolRecordsSync.companion.STUDENT_GROUP_MARKS) {
+                    NotificationCenter.default.post(name: .workGroupMarksDidChange, object: nil)
+                }
                 if plan.rubrics {
                     try await self.refreshRubrics()
                     guard !Task.isCancelled else { return }

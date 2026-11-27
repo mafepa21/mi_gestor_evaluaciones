@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Grupos por nivel de habilidad</title>
+<style>
+/* Tokens de la app (macOS / iPadOS) */
+:root{--bg:#f2f2f7;--card:#fff;--fill:#f2f2f7;--fg:#1c1c1e;--mut:#6e6e73;--line:#e5e5ea;--acc:#0071e3;--accfg:#fff;--ok:#1f7a35;--warn:#8a4d00;--warnbg:#fff3dc;--err:#d70015;--errbg:#ffe9eb;--star:#a35a00;--help:#5b3fbf}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#000;--card:#1c1c1e;--fill:#2c2c2e;--fg:#f2f2f7;--mut:#98989d;--line:#38383a;--acc:#0a84ff;--ok:#30d158;--warn:#ffb340;--warnbg:#3a2c00;--err:#ff453a;--errbg:#3b1210;--star:#ffb340;--help:#bf9bff}}
+:root[data-theme="dark"]{--bg:#000;--card:#1c1c1e;--fill:#2c2c2e;--fg:#f2f2f7;--mut:#98989d;--line:#38383a;--acc:#0a84ff;--ok:#30d158;--warn:#ffb340;--warnbg:#3a2c00;--err:#ff453a;--errbg:#3b1210;--star:#ffb340;--help:#bf9bff}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.4 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header.top{padding:32px 16px 8px;max-width:1200px;margin:auto}
+header.top h1{margin:0;font-size:28px}header.top p{margin:8px 0 0;color:var(--mut);max-width:760px}
+.theme{position:fixed;top:16px;right:16px;display:flex;gap:8px}
+.theme button{min-height:32px;padding:0 12px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit}
+h2.part{max-width:1200px;margin:48px auto 0;padding:0 16px;font-size:20px}
+p.partnote{max-width:1200px;margin:4px auto 0;padding:0 16px;color:var(--mut)}
+.stage{max-width:1200px;margin:16px auto 0;padding:0 16px}
+.frame{background:var(--bg);border:1px solid var(--line);border-radius:24px;padding:16px;overflow:hidden}
+.label{font-size:12px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin:0 0 8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+
+/* Barra de acciones */
+.bar{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.btn{min-height:44px;padding:0 16px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;font-size:14px;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.btn.circ{width:44px;padding:0;justify-content:center}
+.btn.prim{background:var(--acc);color:var(--accfg);border-color:var(--acc);font-weight:600}
+.btn[disabled]{opacity:.4;cursor:default}
+.spacer{flex:1}
+
+/* Sin grupo */
+.strip{display:flex;align-items:center;gap:8px;background:var(--card);border-radius:16px;padding:8px 12px;min-height:48px;margin-bottom:8px}
+.strip .t{font-size:14px;font-weight:600;color:var(--mut);white-space:nowrap}
+
+/* Tablero */
+.board{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+@media(max-width:700px){.board{grid-template-columns:1fr}}
+.card{background:var(--card);border-radius:16px;padding:8px;display:flex;flex-direction:column;gap:4px;min-height:220px}
+.card .head{display:flex;align-items:center;gap:8px;min-height:32px}
+.card .name{font-weight:600;font-size:17px}
+.count{font-size:12px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--fill)}
+.more{margin-left:auto;width:44px;height:44px;display:grid;place-items:center;color:var(--mut)}
+.meta{font-size:12px;color:var(--mut);display:flex;gap:8px;flex-wrap:wrap;min-height:18px;align-items:center}
+.meta b{font-weight:600;color:var(--fg)}
+.meta .s{color:var(--star)}.meta .h{color:var(--help)}
+.chips{display:grid;gap:4px;margin-top:4px}
+.chip{display:flex;align-items:center;gap:6px;min-height:44px;padding:0 8px;border-radius:8px;background:var(--fill);font-size:14px;cursor:context-menu;position:relative}
+.chip .n{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip .mk{font-size:13px;font-weight:600}
+.chip .mk.s{color:var(--star)}.chip .mk.h{color:var(--help)}
+.chip.sel{outline:1.5px solid var(--acc);background:color-mix(in srgb,var(--acc) 14%,transparent)}
+.strip .chip{display:inline-flex}
+
+/* Menú contextual */
+.menu{position:absolute;z-index:5;top:34px;left:24px;min-width:240px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.18);padding:4px;font-size:14px}
+.menu div{padding:6px 12px;border-radius:6px;display:flex;gap:8px;align-items:center}
+.menu div:hover{background:var(--fill)}
+.menu hr{border:0;border-top:1px solid var(--line);margin:4px 8px}
+.menu .chk{width:14px;color:var(--acc)}
+
+/* Barra de selección */
+.selbar{display:flex;gap:8px;align-items:center;margin:16px auto 0;width:max-content;padding:8px;border-radius:28px;background:var(--card);box-shadow:0 6px 16px rgba(0,0,0,.15)}
+.selbar .t{font-weight:600;font-size:14px;padding-left:8px}
+
+/* Hoja (Form) */
+.sheet{background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden;max-width:520px}
+.sheet .nav{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--card)}
+.sheet .nav b{font-size:16px}
+.sheet .nav a{color:var(--acc);text-decoration:none;font-size:15px}
+.sheet .nav a.ok{font-weight:600}
+.sheet .nav a.off{color:var(--mut);opacity:.5}
+.form{padding:16px}
+.sec{margin-bottom:24px}
+.sec .h{font-size:12px;text-transform:uppercase;color:var(--mut);margin:0 16px 6px}
+.sec .f{font-size:12px;color:var(--mut);margin:6px 16px 0}
+.rows{background:var(--card);border-radius:12px;overflow:hidden}
+.row{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;border-top:1px solid var(--line);font-size:15px}
+.row:first-child{border-top:0}
+.row .v{margin-left:auto;color:var(--mut);display:flex;align-items:center;gap:6px}
+.row .v.warn{color:var(--warn)}
+.row .chev{color:var(--mut)}
+.row .ck{margin-left:auto;color:var(--acc);font-weight:600}
+.row .sub{font-size:12px;color:var(--mut);display:block}
+.row.dis{color:var(--mut)}
+.step{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-left:auto}
+.step span{width:44px;height:32px;display:grid;place-items:center}
+.step span+span{border-left:1px solid var(--line)}
+.tg{margin-left:auto;width:44px;height:26px;border-radius:13px;background:var(--ok);position:relative}
+.tg::after{content:"";position:absolute;top:2px;right:2px;width:22px;height:22px;border-radius:50%;background:#fff}
+.tg.off{background:var(--line)}.tg.off::after{right:auto;left:2px}
+.tg.dis{opacity:.4}
+.seg{display:grid;grid-template-columns:repeat(2,1fr);gap:0;border-radius:9px;background:var(--fill);padding:2px;margin:8px 16px}
+.radio{margin-left:auto;color:var(--acc);font-weight:700}
+.banner{display:flex;gap:8px;align-items:flex-start;background:var(--warnbg);color:var(--warn);border-radius:12px;padding:12px 16px;font-size:14px;margin-bottom:24px}
+.toast{display:inline-flex;gap:12px;align-items:center;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:28px;padding:8px 8px 8px 16px;font-size:15px;font-weight:600}.toast .ic{color:var(--err)}
+.toast button{min-height:44px;padding:0 16px;border-radius:22px;border:0;background:var(--acc);color:#fff;font:inherit;font-size:15px}
+
+/* Skeleton */
+.sk{height:32px;border-radius:8px;background:var(--fill);animation:p 1.2s infinite alternate}
+.skh{height:18px;width:60%;border-radius:6px;background:var(--fill);animation:p 1.2s infinite alternate}
+@keyframes p{to{opacity:.45}}
+
+.notes{max-width:1200px;margin:16px auto 0;padding:0 16px;color:var(--mut);font-size:14px}
+.notes li{margin:4px 0}
+</style></head><body>
+
+<div class="theme"><button onclick="document.documentElement.dataset.theme='light'">Claro</button><button onclick="document.documentElement.dataset.theme='dark'">Oscuro</button></div>
+
+<header class="top">
+<h1>Grupos por nivel de habilidad</h1>
+<p>Maqueta del tablero de grupos del Cuaderno y de la hoja «Agrupar automáticamente». Datos inventados. Pulsa con el botón derecho (o mantén pulsado) sobre un alumno para ver el menú.</p>
+</header>
+
+<!-- ============ 1. TABLERO CON DATOS ============ -->
+<h2 class="part">1 · Tablero con marcas (con datos)</h2>
+<p class="partnote">Cada alumno marcado lleva un icono y la tarjeta del grupo resume cuántos fuertes y cuántos de apoyo tiene, más la media de técnica.</p>
+<div class="stage"><div class="frame">
+  <div class="bar">
+    <button class="btn">Seleccionar</button>
+    <button class="btn">＋ Nuevo grupo</button>
+    <button class="btn circ">⋯</button>
+    <span class="spacer"></span>
+    <button class="btn prim">✦ Agrupar automáticamente</button>
+  </div>
+  <div class="strip"><span class="t">Sin grupo · 1</span><span class="chip"><span class="n">Ortega, Lucía</span><span class="mk h" title="Necesita apoyo">✋</span></span></div>
+  <div class="board">
+    <div class="card">
+      <div class="head"><span class="name">Grupo 1</span><span class="count">5</span><span class="more">⋯</span></div>
+      <div class="meta"><span class="s">★ <b>1</b> fuerte</span><span class="h">✋ <b>1</b> apoyo</span><span>Técnica <b>6,8</b></span></div>
+      <div class="chips">
+        <div class="chip" id="demoChip" oncontextmenu="toggleMenu(event)"><span class="n">Benítez, Pablo</span><span class="mk s" title="Fuerte">★</span>
+          <div class="menu" id="menu" hidden>
+            <div>→ Mover a…</div>
+            <hr>
+            <div><span class="chk">✓</span><span class="s" style="color:var(--star)">★</span> Fuerte</div>
+            <div><span class="chk"></span><span style="color:var(--help)">✋</span> Necesita apoyo</div>
+            <div><span class="chk"></span>Sin marca</div>
+          </div>
+        </div>
+        <div class="chip"><span class="n">Castro, Irene</span></div>
+        <div class="chip"><span class="n">Díaz, Hugo</span></div>
+        <div class="chip"><span class="n">Esteban, Marta</span></div>
+        <div class="chip"><span class="n">Fuentes, Leo</span><span class="mk h" title="Necesita apoyo">✋</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="head"><span class="name">Grupo 2</span><span class="count">5</span><span class="more">⋯</span></div>
+      <div class="meta"><span class="s">★ <b>1</b> fuerte</span><span class="h">✋ <b>1</b> apoyo</span><span>Técnica <b>6,6</b></span></div>
+      <div class="chips">
+        <div class="chip"><span class="n">García, Nora</span><span class="mk s">★</span></div>
+        <div class="chip"><span class="n">Herrera, Álex</span></div>
+        <div class="chip"><span class="n">Iglesias, Sara</span><span class="mk h">✋</span></div>
+        <div class="chip"><span class="n">Jiménez, Rubén</span></div>
+        <div class="chip"><span class="n">López, Ana</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="head"><span class="name">Grupo 3</span><span class="count">4</span><span class="more">⋯</span></div>
+      <div class="meta"><span class="s">★ <b>1</b> fuerte</span><span>Técnica <b>6,9</b></span></div>
+      <div class="chips">
+        <div class="chip"><span class="n">Martín, Diego</span><span class="mk s">★</span></div>
+        <div class="chip"><span class="n">Navarro, Eva</span></div>
+        <div class="chip"><span class="n">Pérez, Raúl</span></div>
+        <div class="chip"><span class="n">Ruiz, Clara</span></div>
+      </div>
+    </div>
+  </div>
+</div></div>
+<ul class="notes">
+<li>El icono va siempre con texto en el resumen y con etiqueta de voz («Benítez, Pablo, fuerte»). No depende solo del color.</li>
+<li>«Técnica 6,8» solo aparece si hay instrumentos de técnica con nota. Si no, la línea muestra solo las marcas.</li>
+<li>El menú contextual añade la marca debajo de «Mover a…». También sale en las acciones de VoiceOver.</li>
+<li><b>Nota de aprobación (revisión HIG):</b> los iconos son SF Symbols (<code>star.fill</code>, <code>hand.raised.fill</code>) con etiqueta de voz y fuentes que siguen Dynamic Type; fichas y botones de 44 pt en iPad (32 pt en Mac); Toggle, Picker y Stepper nativos; el error se anuncia a VoiceOver; la carga respeta «Reducir movimiento»; barra de selección en Liquid Glass con «Listo» como única acción destacada.</li>
+</ul>
+
+<!-- ============ 2. SELECCIÓN MÚLTIPLE ============ -->
+<h2 class="part">2 · Marcar a varios a la vez</h2>
+<p class="partnote">Con «Seleccionar», la barra flotante gana un menú «Marcar».</p>
+<div class="stage"><div class="frame">
+  <div class="chips" style="max-width:360px">
+    <div class="chip sel"><span style="color:var(--acc)">●</span><span class="n">Herrera, Álex</span></div>
+    <div class="chip sel"><span style="color:var(--acc)">●</span><span class="n">Jiménez, Rubén</span></div>
+    <div class="chip"><span style="color:var(--mut)">○</span><span class="n">López, Ana</span></div>
+  </div>
+  <div class="selbar"><span class="t">2 seleccionados</span><button class="btn">→ Mover a…</button><button class="btn">★ Marcar ▾</button><button class="btn prim">Listo</button></div>
+</div></div>
+
+<!-- ============ 3. HOJA AGRUPAR ============ -->
+<h2 class="part">3 · Hoja «Agrupar automáticamente»</h2>
+<p class="partnote">El criterio nuevo «Por nivel técnico» sale primero cuando hay notas de técnica. Al elegirlo aparece la sección «Qué notas usar».</p>
+<div class="stage"><div class="grid2">
+  <div>
+    <p class="label">Con datos</p>
+    <div class="sheet">
+      <div class="nav"><a href="#">Cancelar</a><b>Agrupar automáticamente</b><a href="#" class="ok">Crear grupos</a></div>
+      <div class="form">
+        <div class="sec"><div class="h">Tamaño</div><div class="rows"><div class="row">5 grupos<span class="step"><span>−</span><span>＋</span></span></div></div><div class="f">Unos 5 alumnos por grupo.</div></div>
+        <div class="sec"><div class="h">Criterio</div><div class="rows">
+          <div class="row">Por nivel técnico<span class="radio">✓</span></div>
+          <div class="row">Heterogéneos por nota</div>
+          <div class="row">Homogéneos por nota</div>
+          <div class="row">Azar equilibrado</div>
+        </div></div>
+        <div class="sec"><div class="h">Qué notas usar</div><div class="rows">
+          <div class="row" onclick="picker.showModal()" style="cursor:pointer">Técnica<span class="v">3 instrumentos <span class="chev">›</span></span></div>
+          <div class="row">Comportamiento<span class="v">1 instrumento <span class="chev">›</span></span></div>
+          <div class="row">Liderazgo<span class="v">1 instrumento <span class="chev">›</span></span></div>
+        </div><div class="f">22 de 24 alumnos tienen nota de técnica. Los otros 2 usan su media.</div></div>
+        <div class="sec"><div class="h">Reparto</div><div class="rows">
+          <div class="row">Un líder en cada grupo<span class="tg"></span></div>
+          <div class="row">Repartir comportamiento bajo<span class="tg"></span></div>
+          <div class="row">Mezclar chicos y chicas<span class="tg"></span></div>
+          <div class="row">Repartir alumnado lesionado<span class="tg"></span></div>
+        </div><div class="f">Las marcas ★ Fuerte y ✋ Apoyo siempre cuentan: 4 fuertes y 3 de apoyo en este curso.</div></div>
+        <div class="sec" style="margin-bottom:0"><div class="h">Situación de aprendizaje</div><div class="rows"><div class="row">Asociar a<span class="v">Ninguna <span class="chev">⌃⌄</span></span></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <p class="label">Sin instrumentos de técnica ni liderazgo</p>
+    <div class="sheet">
+      <div class="nav"><a href="#">Cancelar</a><b>Agrupar automáticamente</b><a href="#" class="ok">Crear grupos</a></div>
+      <div class="form">
+        <div class="sec"><div class="h">Criterio</div><div class="rows">
+          <div class="row">Por nivel técnico<span class="radio">✓</span></div>
+          <div class="row">Heterogéneos por nota</div>
+          <div class="row">Homogéneos por nota</div>
+          <div class="row">Azar equilibrado</div>
+        </div></div>
+        <div class="sec"><div class="h">Qué notas usar</div><div class="rows">
+          <div class="row">Técnica<span class="v warn">Elegir <span class="chev">›</span></span></div>
+          <div class="row">Comportamiento<span class="v">1 instrumento <span class="chev">›</span></span></div>
+          <div class="row">Liderazgo<span class="v warn">Elegir <span class="chev">›</span></span></div>
+        </div><div class="f">No encontré instrumentos de técnica. Elige alguno o se usará la media de cada alumno.</div></div>
+        <div class="sec" style="margin-bottom:0"><div class="h">Reparto</div><div class="rows">
+          <div class="row dis">Un líder en cada grupo<span class="tg off dis"></span></div>
+          <div class="row">Repartir comportamiento bajo<span class="tg"></span></div>
+        </div><div class="f">Para repartir líderes, elige un instrumento de liderazgo.</div></div>
+      </div>
+    </div>
+
+    <p class="label" style="margin-top:24px">Curso sin alumnado</p>
+    <div class="frame">
+      <div class="bar"><button class="btn">Seleccionar</button><button class="btn">＋ Nuevo grupo</button><span class="spacer"></span><button class="btn prim" disabled>✦ Agrupar automáticamente</button></div>
+      <p style="color:var(--mut);text-align:center;margin:24px 0">Este curso aún no tiene alumnado.</p>
+    </div>
+  </div>
+</div></div>
+
+<dialog id="picker" style="border:0;padding:0;border-radius:16px;background:transparent">
+  <div class="sheet" style="width:420px">
+    <div class="nav"><a href="#" onclick="picker.close();return false">‹ Atrás</a><b>Técnica</b><span style="width:48px"></span></div>
+    <div class="form">
+      <div class="sec"><div class="h">Rúbricas e instrumentos con nota</div><div class="rows">
+        <div class="row"><span>Rúbrica técnica de pase<span class="sub">Rúbrica · Sugerida</span></span><span class="ck">✓</span></div>
+        <div class="row"><span>Rúbrica técnica de bote<span class="sub">Rúbrica · Sugerida</span></span><span class="ck">✓</span></div>
+        <div class="row"><span>Circuito de habilidad<span class="sub">Observación · Sugerida</span></span><span class="ck">✓</span></div>
+        <div class="row"><span>Actitud en clase<span class="sub">Rúbrica</span></span></div>
+        <div class="row"><span>Examen teórico<span class="sub">Prueba escrita</span></span></div>
+      </div><div class="f">Sugeridas por su nombre o su tipo. Se recuerda tu elección en este equipo.</div></div>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ 4. CARGANDO Y ERROR ============ -->
+<h2 class="part">4 · Cargando y error al guardar</h2>
+<div class="stage"><div class="grid2">
+  <div>
+    <p class="label">Cargando el curso</p>
+    <div class="frame">
+      <div class="board" style="grid-template-columns:repeat(2,1fr)">
+        <div class="card"><div class="skh"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
+        <div class="card"><div class="skh"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <p class="label">No se pudo guardar la marca</p>
+    <div class="frame" style="display:grid;place-items:center;min-height:160px">
+      <span class="toast" role="alert"><span class="ic">⚠︎</span>No se pudo guardar la marca <button>Reintentar</button></span>
+    </div>
+    <ul class="notes" style="padding-left:16px">
+      <li>La marca vuelve a como estaba. Nada queda a medias.</li>
+      <li>No hay red en juego: se guarda en el equipo y luego se sincroniza.</li>
+    </ul>
+  </div>
+</div></div>
+
+<ul class="notes" style="margin-bottom:64px">
+<li><b>Cómo reparte «Por nivel técnico»:</b> 1) pone un líder en cada grupo (los de mejor nota de liderazgo); 2) reparte a los de comportamiento más bajo; 3) reparte al resto en serpiente por nota de técnica (las marcas Fuerte y Apoyo cuentan como nivel alto y bajo); 4) mezcla chicos y chicas y lesionados; 5) iguala tamaños.</li>
+<li>En macOS la hoja es una ventana de 480 × 560 como mínimo. En iPad usa los detents nativos.</li>
+</ul>
+
+<script>
+const picker=document.getElementById('picker');
+function toggleMenu(e){e.preventDefault();const m=document.getElementById('menu');m.hidden=!m.hidden}
+</script>
+</body></html>

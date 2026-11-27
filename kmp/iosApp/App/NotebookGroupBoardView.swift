@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import MiGestorKit
 #if os(macOS)
 import AppKit
@@ -341,6 +342,12 @@ struct NotebookGroupBoardView: View {
     @State private var isSelecting = false
     @State private var selectedStudentIds = Set<Int64>()
     @State private var deleteTargetId: Int64?
+    /// Marcas Fuerte / Necesita apoyo del curso, por id de alumno (sin «sin marca»).
+    @State private var marks: [Int64: WorkGroupMarkUI] = [:]
+    /// Nota de técnica por alumno con las columnas elegidas (o sugeridas) del curso.
+    @State private var techniqueScores: [Int64: Double] = [:]
+    /// Marca que no se pudo guardar, para ofrecer «Reintentar».
+    @State private var failedMark: FailedMark?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -433,12 +440,31 @@ struct NotebookGroupBoardView: View {
         .animation(.snappy(duration: 0.2), value: selectedStudentIds.isEmpty)
         .onAppear {
             seedDraft()
+            reloadMarks()
         }
         .appOnChange(of: groupSignature) { _ in
             seedDraft()
+            reloadMarks()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .workGroupMarksDidChange)) { _ in
+            reloadMarks()
+        }
+        .alert(
+            "No se pudo guardar la marca",
+            isPresented: Binding(
+                get: { failedMark != nil },
+                set: { if !$0 { failedMark = nil } }
+            ),
+            presenting: failedMark
+        ) { failed in
+            Button("Reintentar") { setMark(failed.mark, for: failed.studentIds) }
+            Button("Cancelar", role: .cancel) {}
+        } message: { _ in
+            Text("La marca vuelve a como estaba.")
         }
         .appOnChange(of: memberSignature) { _ in
             seedDraft()
+            reloadMarks()
             // Un alumno que ya no está en el curso no puede seguir seleccionado.
             let valid = Set(students.map(\.id))
             selectedStudentIds.formIntersection(valid)
@@ -461,23 +487,28 @@ struct NotebookGroupBoardView: View {
         .sheet(isPresented: $showingAutoCompose) {
             if let data {
                 NotebookGroupAutoComposeSheet(
+                    bridge: bridge,
+                    classId: bridge.currentNotebookClassId,
                     studentCount: students.count,
+                    marks: marks,
                     classSituations: classSituations
-                ) { groupCount, strategy, mixSex, spreadInjured, situationId in
+                ) { choice in
                     let tabId = NotebookWorkGroupPolicy.canonicalTabId(
                         tabs: data.sheet.tabs,
                         requestedTabId: bridge.selectedNotebookTabId,
                         selectedTabId: bridge.selectedNotebookTabId
                     ) ?? data.sheet.tabs.first?.id
                     let composed = bridge.autoComposeNotebookWorkGroups(
-                        groupCount: groupCount,
-                        strategy: strategy,
-                        mixSex: mixSex,
-                        spreadInjured: spreadInjured,
-                        learningSituationId: situationId,
-                        tabId: tabId
+                        groupCount: choice.groupCount,
+                        strategy: choice.strategy,
+                        mixSex: choice.mixSex,
+                        spreadInjured: choice.spreadInjured,
+                        learningSituationId: choice.situationId,
+                        tabId: tabId,
+                        skill: choice.skill
                     )
-                    draft.applyComposed(composed, tabId: tabId ?? "", learningSituationId: situationId)
+                    draft.applyComposed(composed, tabId: tabId ?? "", learningSituationId: choice.situationId)
+                    reloadMarks()
                     onToast("Grupos creados", .success)
                 }
             }
@@ -582,6 +613,13 @@ struct NotebookGroupBoardView: View {
                 Label("Mover a…", systemImage: "arrow.right.circle").frame(minHeight: 32)
             }
             .groupGlassButton()
+            Menu {
+                markMenuItems(studentIds: Array(selectedStudentIds))
+            } label: {
+                Label("Marcar", systemImage: "star").frame(minHeight: 32)
+            }
+            .groupGlassButton()
+            .accessibilityLabel("Marcar seleccionados")
             Button("Listo") {
                 isSelecting = false
                 selectedStudentIds.removeAll()
@@ -665,6 +703,8 @@ struct NotebookGroupBoardView: View {
             }
             .frame(minHeight: 32)
 
+            groupSummary(students)
+
             Group {
                 if let situation {
                     Label("SA · \(situation)", systemImage: "link")
@@ -701,7 +741,10 @@ struct NotebookGroupBoardView: View {
             handleDrop(items: items, groupId: group.id)
         } isTargeted: { setTargeted($0, key: key) }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(group.name), \(students.count) alumnos, \(situation.map { "SA \($0)" } ?? "sin SA")")
+        .accessibilityLabel(
+            "\(group.name), \(students.count) alumnos, \(situation.map { "SA \($0)" } ?? "sin SA")"
+                + (summaryText(students).map { ", \($0)" } ?? "")
+        )
     }
 
     private var newGroupTile: some View {
@@ -785,6 +828,14 @@ struct NotebookGroupBoardView: View {
             Text(name)
                 .font(.subheadline)
                 .lineLimit(dynamicTypeSize >= .accessibility1 ? 2 : 1)
+            if let mark = marks[student.id] {
+                if !compactWidth { Spacer(minLength: 0) }
+                Image(systemName: mark.systemImage)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(mark.tint)
+                    .accessibilityHidden(true)
+                    .help(mark.title)
+            }
         }
         .padding(.horizontal, 8)
         .frame(maxWidth: compactWidth ? nil : .infinity, minHeight: height, maxHeight: height, alignment: .leading)
@@ -813,9 +864,11 @@ struct NotebookGroupBoardView: View {
             moveMenu(studentIds: dragIds, currentGroupId: currentGroupId) {
                 Text(dragIds.count > 1 ? "Mover \(dragIds.count) a…" : "Mover a…")
             }
+            Divider()
+            markMenuItems(studentIds: dragIds)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(name)
+        .accessibilityLabel(name + (marks[student.id].map { ", \($0.spokenTitle)" } ?? ""))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityHint(isSelecting ? "Toca para elegir" : "")
         .accessibilityActions {
@@ -825,7 +878,119 @@ struct NotebookGroupBoardView: View {
             ForEach(draft.groups.filter { $0.id != currentGroupId }) { group in
                 Button("Mover a \(group.name)") { move(dragIds, to: group.id) }
             }
+            ForEach(WorkGroupMarkUI.allCases.filter { $0 != (marks[student.id] ?? .unmarked) }) { option in
+                Button(option == .unmarked ? "Quitar marca" : "Marcar: \(option.spokenTitle)") {
+                    setMark(option, for: dragIds)
+                }
+            }
         }
+    }
+
+    // MARK: Marcas
+
+    /// Opciones de marca para el menú contextual y la barra de selección.
+    /// Con un solo alumno, la marca actual lleva un check.
+    @ViewBuilder
+    private func markMenuItems(studentIds: [Int64]) -> some View {
+        let current: WorkGroupMarkUI? = studentIds.count == 1 ? (marks[studentIds[0]] ?? .unmarked) : nil
+        ForEach(WorkGroupMarkUI.allCases) { option in
+            Button {
+                setMark(option, for: studentIds)
+            } label: {
+                Label(option.title, systemImage: current == option ? "checkmark" : option.systemImage)
+            }
+        }
+    }
+
+    private func reloadMarks() {
+        guard let classId = bridge.currentNotebookClassId else {
+            marks = [:]
+            techniqueScores = [:]
+            return
+        }
+        techniqueScores = bridge.workGroupDimensionScores(
+            columnIds: bridge.workGroupSkillSelection(classId: classId, dimension: .technique)
+        )
+        Task {
+            // Si falla la lectura se conservan las marcas que ya se veían.
+            if let loaded = try? await bridge.workGroupMarks(classId: classId),
+               bridge.currentNotebookClassId == classId {
+                marks = loaded
+            }
+        }
+    }
+
+    /// Cambio optimista: se ve al momento y vuelve atrás si no se puede guardar.
+    private func setMark(_ mark: WorkGroupMarkUI, for studentIds: [Int64]) {
+        guard let classId = bridge.currentNotebookClassId, !studentIds.isEmpty else { return }
+        let previous = marks
+        for id in studentIds {
+            marks[id] = mark == .unmarked ? nil : mark
+        }
+        Task {
+            do {
+                try await bridge.saveWorkGroupMark(mark, studentIds: studentIds, classId: classId)
+                announce(studentIds.count == 1
+                         ? (mark == .unmarked ? "Marca quitada" : "Marcado: \(mark.spokenTitle)")
+                         : "\(studentIds.count) alumnos: \(mark.spokenTitle)")
+            } catch {
+                marks = previous
+                announce("No se pudo guardar la marca")
+                failedMark = FailedMark(mark: mark, studentIds: studentIds)
+            }
+        }
+    }
+
+    private func summaryText(_ students: [Student]) -> String? {
+        let strong = students.filter { marks[$0.id] == .strong }.count
+        let support = students.filter { marks[$0.id] == .support }.count
+        var parts: [String] = []
+        if strong > 0 { parts.append(strong == 1 ? "1 fuerte" : "\(strong) fuertes") }
+        if support > 0 { parts.append("\(support) apoyo") }
+        if let technique = techniqueMean(students) { parts.append("técnica \(technique)") }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
+    private func techniqueMean(_ students: [Student]) -> String? {
+        let scores = students.compactMap { techniqueScores[$0.id] }
+        guard !scores.isEmpty else { return nil }
+        let mean = scores.reduce(0, +) / Double(scores.count)
+        return mean.formatted(.number.precision(.fractionLength(1)))
+    }
+
+    /// «★ 1 fuerte · ✋ 1 apoyo · Técnica 6,8». Solo si hay algo que contar.
+    @ViewBuilder
+    private func groupSummary(_ students: [Student]) -> some View {
+        let strong = students.filter { marks[$0.id] == .strong }.count
+        let support = students.filter { marks[$0.id] == .support }.count
+        let technique = techniqueMean(students)
+        if strong > 0 || support > 0 || technique != nil {
+            HStack(spacing: 8) {
+                if strong > 0 {
+                    summaryLabel(strong == 1 ? "1 fuerte" : "\(strong) fuertes", mark: .strong)
+                }
+                if support > 0 {
+                    summaryLabel("\(support) apoyo", mark: .support)
+                }
+                if let technique {
+                    Text("Técnica \(technique)")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .font(.caption)
+            .lineLimit(1)
+            .frame(minHeight: 18)
+            .accessibilityHidden(true)
+        }
+    }
+
+    private func summaryLabel(_ text: String, mark: WorkGroupMarkUI) -> some View {
+        Label {
+            Text(text)
+        } icon: {
+            Image(systemName: mark.systemImage).foregroundStyle(mark.tint)
+        }
+        .labelStyle(.titleAndIcon)
     }
 
     private func moveMenu<LabelView: View>(
@@ -974,47 +1139,132 @@ struct NotebookGroupBoardView: View {
     }
 }
 
+/// Marca que no se pudo guardar: se ofrece «Reintentar» con los mismos datos.
+private struct FailedMark {
+    let mark: WorkGroupMarkUI
+    let studentIds: [Int64]
+}
+
+extension WorkGroupMarkUI {
+    /// Color del icono. Nunca va solo: siempre con texto o etiqueta de voz.
+    var tint: Color {
+        switch self {
+        case .unmarked: return .secondary
+        case .strong: return .orange
+        case .support: return .purple
+        }
+    }
+}
+
+/// Lo que elige el docente en «Agrupar automáticamente».
+struct NotebookAutoComposeChoice {
+    let groupCount: Int32
+    let strategy: String
+    let mixSex: Bool
+    let spreadInjured: Bool
+    let situationId: Int64?
+    /// Solo con el criterio «Por nivel técnico».
+    let skill: WorkGroupSkillRequest?
+}
+
 private struct NotebookGroupAutoComposeSheet: View {
+    @ObservedObject var bridge: KmpBridge
+    let classId: Int64?
     let studentCount: Int
+    let marks: [Int64: WorkGroupMarkUI]
     let classSituations: [LearningSituation]
-    let onCompose: (Int32, String, Bool, Bool, Int64?) -> Void
+    let onCompose: (NotebookAutoComposeChoice) -> Void
+
+    private static let skillStrategy = "skill_level"
 
     @Environment(\.dismiss) private var dismiss
     @State private var groupCount: Int
     @State private var strategy = "heterogeneous_grade"
     @State private var mixSex = true
     @State private var spreadInjured = true
+    @State private var oneLeaderPerGroup = true
+    @State private var spreadLowBehaviour = true
     @State private var selectedSituationId: Int64? = nil
+    @State private var techniqueIds: [String] = []
+    @State private var behaviourIds: [String] = []
+    @State private var leadershipIds: [String] = []
+    @State private var didLoad = false
 
     init(
+        bridge: KmpBridge,
+        classId: Int64?,
         studentCount: Int,
+        marks: [Int64: WorkGroupMarkUI],
         classSituations: [LearningSituation],
-        onCompose: @escaping (Int32, String, Bool, Bool, Int64?) -> Void
+        onCompose: @escaping (NotebookAutoComposeChoice) -> Void
     ) {
+        self.bridge = bridge
+        self.classId = classId
         self.studentCount = studentCount
+        self.marks = marks
         self.classSituations = classSituations
         self.onCompose = onCompose
         let suggested = max(2, min(6, studentCount / 4))
         _groupCount = State(initialValue: max(2, min(max(studentCount, 2), suggested)))
     }
 
+    private var isSkill: Bool { strategy == Self.skillStrategy }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section("Tamaño") {
+                Section {
                     Stepper(value: $groupCount, in: 2...max(2, studentCount)) {
                         Text("\(groupCount) grupos")
                     }
+                } header: {
+                    Text("Tamaño")
+                } footer: {
+                    if studentCount > 0 {
+                        Text("Unos \(Int(ceil(Double(studentCount) / Double(groupCount)))) alumnos por grupo.")
+                    }
                 }
+
                 Section("Criterio") {
                     Picker("Reparto", selection: $strategy) {
+                        Text("Por nivel técnico").tag(Self.skillStrategy)
                         Text("Heterogéneos por nota").tag("heterogeneous_grade")
                         Text("Homogéneos por nota").tag("homogeneous_grade")
                         Text("Azar equilibrado").tag("random_balanced")
                     }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                }
+
+                if isSkill {
+                    Section {
+                        dimensionRow(.technique, title: "Técnica", selection: $techniqueIds)
+                        dimensionRow(.behaviour, title: "Comportamiento", selection: $behaviourIds)
+                        dimensionRow(.leadership, title: "Liderazgo", selection: $leadershipIds)
+                    } header: {
+                        Text("Qué notas usar")
+                    } footer: {
+                        Text(techniqueFooter)
+                    }
+                }
+
+                Section {
+                    if isSkill {
+                        Toggle("Un líder en cada grupo", isOn: $oneLeaderPerGroup)
+                            .disabled(leadershipIds.isEmpty)
+                        Toggle("Repartir comportamiento bajo", isOn: $spreadLowBehaviour)
+                            .disabled(behaviourIds.isEmpty)
+                    }
                     Toggle("Mezclar chicos y chicas", isOn: $mixSex)
                     Toggle("Repartir alumnado lesionado", isOn: $spreadInjured)
+                } header: {
+                    Text("Reparto")
+                } footer: {
+                    if isSkill {
+                        Text(distributionFooter)
+                    }
                 }
+
                 if !classSituations.isEmpty {
                     Section("Situación de aprendizaje") {
                         Picker("Asociar a", selection: $selectedSituationId) {
@@ -1026,6 +1276,7 @@ private struct NotebookGroupAutoComposeSheet: View {
                     }
                 }
             }
+            .formStyle(.grouped)
             .navigationTitle("Agrupar automáticamente")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -1035,16 +1286,195 @@ private struct NotebookGroupAutoComposeSheet: View {
                     Button("Cancelar") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Crear grupos") {
-                        onCompose(Int32(groupCount), strategy, mixSex, spreadInjured, selectedSituationId)
-                        dismiss()
-                    }
+                    Button("Crear grupos", action: create)
+                        .disabled(studentCount == 0)
+                }
+            }
+            .onAppear(perform: loadSelection)
+        }
+        #if os(iOS)
+        .presentationDetents([.large])
+        #endif
+        #if os(macOS)
+        .frame(minWidth: 480, minHeight: 560)
+        #endif
+    }
+
+    // MARK: Filas y textos
+
+    private func dimensionRow(
+        _ dimension: WorkGroupSkillDimension,
+        title: String,
+        selection: Binding<[String]>
+    ) -> some View {
+        NavigationLink {
+            WorkGroupSkillColumnPicker(
+                title: title,
+                columns: bridge.workGroupSkillCandidateColumns(),
+                isSuggested: { bridge.workGroupSkillSuggests($0, dimension: dimension) },
+                selection: selection
+            )
+        } label: {
+            LabeledContent(title) {
+                switch selection.wrappedValue.count {
+                case 0:
+                    Text("Elegir").foregroundStyle(.orange)
+                case 1:
+                    Text("1 instrumento")
+                default:
+                    Text("\(selection.wrappedValue.count) instrumentos")
                 }
             }
         }
-        #if os(macOS)
-        .frame(minWidth: 440, minHeight: 460)
-        #endif
+    }
+
+    private var techniqueFooter: String {
+        guard !techniqueIds.isEmpty else {
+            return "No hay instrumentos de técnica elegidos. Elige alguno o se usará la media de cada alumno."
+        }
+        let withScore = bridge.workGroupDimensionScores(columnIds: techniqueIds).count
+        let rest = max(0, studentCount - withScore)
+        if rest == 0 { return "Todo el alumnado tiene nota de técnica." }
+        return "\(withScore) de \(studentCount) alumnos tienen nota de técnica. "
+            + (rest == 1 ? "El otro usa su media." : "Los otros \(rest) usan su media.")
+    }
+
+    private var distributionFooter: String {
+        var lines: [String] = []
+        let strong = marks.values.filter { $0 == .strong }.count
+        let support = marks.values.filter { $0 == .support }.count
+        if strong + support > 0 {
+            lines.append("Las marcas Fuerte y Necesita apoyo siempre cuentan: \(strong) \(strong == 1 ? "fuerte" : "fuertes") y \(support) de apoyo en este curso.")
+        }
+        if leadershipIds.isEmpty {
+            lines.append("Para repartir líderes, elige un instrumento de liderazgo.")
+        }
+        if behaviourIds.isEmpty {
+            lines.append("Para repartir el comportamiento bajo, elige un instrumento de comportamiento.")
+        }
+        return lines.joined(separator: " ")
+    }
+
+    // MARK: Acciones
+
+    private func loadSelection() {
+        guard !didLoad else { return }
+        didLoad = true
+        guard let classId else { return }
+        techniqueIds = bridge.workGroupSkillSelection(classId: classId, dimension: .technique)
+        behaviourIds = bridge.workGroupSkillSelection(classId: classId, dimension: .behaviour)
+        leadershipIds = bridge.workGroupSkillSelection(classId: classId, dimension: .leadership)
+        // «Por nivel técnico» sale primero cuando hay notas de técnica.
+        if !techniqueIds.isEmpty { strategy = Self.skillStrategy }
+    }
+
+    private func create() {
+        var skill: WorkGroupSkillRequest?
+        if isSkill {
+            if let classId {
+                WorkGroupSkillSelectionStore.save(techniqueIds, classId: classId, dimension: .technique)
+                WorkGroupSkillSelectionStore.save(behaviourIds, classId: classId, dimension: .behaviour)
+                WorkGroupSkillSelectionStore.save(leadershipIds, classId: classId, dimension: .leadership)
+            }
+            let strongIds = marks.filter { $0.value == .strong }.keys.sorted().map { KotlinLong(value: $0) }
+            let supportIds = marks.filter { $0.value == .support }.keys.sorted().map { KotlinLong(value: $0) }
+            skill = WorkGroupSkillRequest(
+                techniqueColumnIds: techniqueIds,
+                behaviourColumnIds: behaviourIds,
+                leadershipColumnIds: leadershipIds,
+                strongStudentIds: strongIds,
+                supportStudentIds: supportIds,
+                oneLeaderPerGroup: oneLeaderPerGroup && !leadershipIds.isEmpty,
+                spreadLowBehaviour: spreadLowBehaviour && !behaviourIds.isEmpty
+            )
+        }
+        onCompose(
+            NotebookAutoComposeChoice(
+                groupCount: Int32(groupCount),
+                strategy: strategy,
+                mixSex: mixSex,
+                spreadInjured: spreadInjured,
+                situationId: selectedSituationId,
+                skill: skill
+            )
+        )
+        dismiss()
+    }
+}
+
+/// Lista de columnas con nota para un apartado (Técnica, Comportamiento o Liderazgo).
+private struct WorkGroupSkillColumnPicker: View {
+    let title: String
+    let columns: [NotebookColumnDefinition]
+    let isSuggested: (String) -> Bool
+    @Binding var selection: [String]
+
+    var body: some View {
+        Group {
+            if columns.isEmpty {
+                ContentUnavailableView(
+                    "Sin instrumentos con nota",
+                    systemImage: "tablecells",
+                    description: Text("Añade una rúbrica o una columna numérica al Cuaderno.")
+                )
+            } else {
+                Form {
+                    Section {
+                        ForEach(columns, id: \.id) { column in
+                            row(column)
+                        }
+                    } header: {
+                        Text("Rúbricas e instrumentos con nota")
+                    } footer: {
+                        Text("Sugeridas por su nombre o su tipo. Se recuerda tu elección en este equipo.")
+                    }
+                }
+                .formStyle(.grouped)
+            }
+        }
+        .navigationTitle(title)
+    }
+
+    private func row(_ column: NotebookColumnDefinition) -> some View {
+        let isSelected = selection.contains(column.id)
+        return Button {
+            if isSelected {
+                selection.removeAll { $0 == column.id }
+            } else {
+                selection.append(column.id)
+            }
+        } label: {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(column.title)
+                        .foregroundStyle(.primary)
+                    Text(subtitle(column))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.tint)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func subtitle(_ column: NotebookColumnDefinition) -> String {
+        let kind: String
+        switch column.type {
+        case .rubric: kind = "Rúbrica"
+        case .ordinal: kind = "Escala"
+        default: kind = "Numérica"
+        }
+        return isSuggested(column.id) ? "\(kind) · Sugerida" : kind
     }
 }
 

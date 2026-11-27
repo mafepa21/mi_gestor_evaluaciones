@@ -29,6 +29,8 @@ extension KmpBridge {
 
     func loadDashboard(mode: DashboardMode) async throws {
         await refreshInjuriesIfDayChanged()
+        // «Sin mirar» (los viernes): una vez al día o tras guardar una observación.
+        await refreshUnseenSummariesIfNeeded()
         dashboardFilters = DashboardFilters(
             classId: dashboardFilters.classId,
             severity: dashboardFilters.severity,

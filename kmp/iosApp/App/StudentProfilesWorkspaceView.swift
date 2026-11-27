@@ -16,6 +16,8 @@ private enum StudentTrackingFilter: String, CaseIterable {
     case sinCurso = "Sin curso"
     case seguimiento = "Seguimiento"
     case lesionados = "Lesionados"
+    /// «Alumnos invisibles»: sin ningún registro en 14 días lectivos en su grupo.
+    case sinMirar = "Sin mirar"
 }
 
 struct StudentProfilesWorkspaceView: View {
@@ -45,6 +47,9 @@ struct StudentProfilesWorkspaceView: View {
     @State private var debouncedSearchText = ""
     @State private var searchDebounceTask: Task<Void, Never>?
     @State private var trackingFilter: StudentTrackingFilter = .todos
+    /// Alumnado «Sin mirar» del grupo elegido (o de todos los grupos sin elegir ninguno).
+    @State private var unseenStudentIds: Set<Int64> = []
+    @ObservedObject private var unseenStore = UnseenStudentsStore.shared
     @State private var profile: KmpBridge.StudentProfileSnapshot?
     @State private var isLoadingProfile = false
     @State private var showFollowUpConfirm = false
@@ -98,12 +103,26 @@ struct StudentProfilesWorkspaceView: View {
             tracked = base.filter { _ in true } // isFollowUp not on Student model — show all for now
         case .lesionados:
             tracked = base.filter { $0.isInjured }
+        case .sinMirar:
+            tracked = base.filter { unseenStudentIds.contains($0.id) }
         }
 
         guard !query.isEmpty else { return tracked }
         return tracked.filter {
             "\($0.firstName) \($0.lastName)".localizedCaseInsensitiveContains(query)
         }
+    }
+
+    /// Ids «Sin mirar» del grupo elegido, o de todos los grupos si no hay ninguno elegido.
+    private func loadUnseenStudentIds() async -> Set<Int64> {
+        let classIds = selectedClassId.map { [$0] } ?? studentsBridgeStore.classes.map(\.id)
+        var ids = Set<Int64>()
+        for classId in classIds {
+            if let result = try? await bridge.unseenStudents(classId: classId) {
+                ids.formUnion(result.unseen.map(\.studentId))
+            }
+        }
+        return ids
     }
 
     private func scheduleSearchDebounce() {
@@ -387,6 +406,10 @@ struct StudentProfilesWorkspaceView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .task(id: "\(trackingFilter.rawValue)|\(selectedClassId ?? -1)|\(unseenStore.version)") {
+                    guard trackingFilter == .sinMirar else { return }
+                    unseenStudentIds = await loadUnseenStudentIds()
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)

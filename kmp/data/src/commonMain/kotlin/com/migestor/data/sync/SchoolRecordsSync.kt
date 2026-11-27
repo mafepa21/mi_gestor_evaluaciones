@@ -10,6 +10,9 @@ import com.migestor.shared.injury.InjuryRole
 import com.migestor.shared.injury.StudentInjury
 import com.migestor.shared.sync.SyncAck
 import com.migestor.shared.sync.SyncChange
+import com.migestor.shared.workgroup.StudentGroupMark
+import com.migestor.shared.workgroup.StudentGroupMarkKeys
+import com.migestor.shared.workgroup.WorkGroupMark
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
@@ -27,7 +30,7 @@ import kotlinx.serialization.json.longOrNull
 /**
  * Sync LAN de las actas y del seguimiento de Inclusión: reuniones, sus acuerdos,
  * medidas de apoyo, tutorías con familias, asignaturas, valoraciones del docente
- * por trimestre y lesiones con fecha.
+ * por trimestre, lesiones con fecha y marcas Fuerte / Necesita apoyo para grupos.
  *
  * La app Apple ya encolaba estos cambios, pero ningún lado sabía aplicarlos:
  * `SqlDelightSyncAdapter` los contaba como `ignored`, el iPad soltaba su cola
@@ -139,6 +142,20 @@ class SchoolRecordsSync(
                 updatedAtEpochMs = injury.trace.updatedAt.toEpochMilliseconds(),
                 deviceId = injury.trace.deviceId ?: localDeviceId,
                 payload = injuryPayload(injury),
+            )
+        }
+
+        // Marcas para grupos (migración 52): clave natural `alumno|grupo`. Igual que las
+        // lesiones, se mandan siempre todas (son pocas): un aparato que aún no tenía la
+        // migración 52 las ignoró y se pone al día en cuanto se actualice.
+        container.studentGroupMarkRepository.listAll().forEach { mark ->
+            live.getValue(STUDENT_GROUP_MARKS) += mark.syncId
+            changes += SyncChange(
+                entity = STUDENT_GROUP_MARKS,
+                id = mark.syncId,
+                updatedAtEpochMs = mark.trace.updatedAt.toEpochMilliseconds(),
+                deviceId = mark.trace.deviceId ?: localDeviceId,
+                payload = groupMarkPayload(mark),
             )
         }
 
@@ -279,6 +296,7 @@ class SchoolRecordsSync(
     private suspend fun apply(change: SyncChange): Outcome {
         if (change.entity == TERM_TEACHER_NOTES) return applyTermTeacherNote(change)
         if (change.entity == STUDENT_INJURIES) return applyInjury(change)
+        if (change.entity == STUDENT_GROUP_MARKS) return applyGroupMark(change)
         val id = change.id.toLongOrNull() ?: return Outcome.SKIPPED
         val payload = runCatching { json.parseToJsonElement(change.payload).jsonObject }.getOrNull()
             ?: error("payload ilegible: ${change.entity} ${change.id}")
@@ -462,7 +480,39 @@ class SchoolRecordsSync(
         return Outcome.APPLIED
     }
 
+    /**
+     * Marca para grupos: LWW por `updated_at`, empate resuelto por deviceId como en las
+     * lesiones. La clave viaja en el id; no se exige que el alumno y el grupo existan ya.
+     */
+    private suspend fun applyGroupMark(change: SyncChange): Outcome {
+        val (studentId, classId) = StudentGroupMarkKeys.parseSyncId(change.id) ?: return Outcome.SKIPPED
+        val payload = runCatching { json.parseToJsonElement(change.payload).jsonObject }.getOrNull()
+            ?: error("payload ilegible: ${change.entity} ${change.id}")
+        val repository = container.studentGroupMarkRepository
+        val existing = repository.get(studentId, classId)
+        if (existing != null) {
+            val local = existing.trace.updatedAt.toEpochMilliseconds()
+            if (local > change.updatedAtEpochMs) return Outcome.STALE
+            if (local == change.updatedAtEpochMs && change.deviceId <= (existing.trace.deviceId ?: "")) return Outcome.STALE
+        }
+        // No resucitar marcas de un alumno ya borrado (las FK están apagadas).
+        if (container.syncTombstoneRepository.isDeletedAtOrAfter("student", studentId.toString(), change.updatedAtEpochMs)) {
+            return Outcome.SKIPPED
+        }
+        val mark = WorkGroupMark.fromStorage(payload.text("mark", existing?.mark?.name))
+        repository.save(studentId, classId, mark, change.updatedAtEpochMs, change.deviceId)
+        return Outcome.APPLIED
+    }
+
     private suspend fun delete(change: SyncChange): Boolean {
+        if (change.entity == STUDENT_GROUP_MARKS) {
+            val (studentId, classId) = StudentGroupMarkKeys.parseSyncId(change.id) ?: return false
+            val repository = container.studentGroupMarkRepository
+            val existing = repository.get(studentId, classId)
+            if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() > change.updatedAtEpochMs) return false
+            repository.delete(studentId, classId)
+            return true
+        }
         if (change.entity == STUDENT_INJURIES) {
             val existing = container.studentInjuryRepository.get(change.id)
             if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() > change.updatedAtEpochMs) return false
@@ -536,9 +586,13 @@ class SchoolRecordsSync(
         const val TUTORING_SESSIONS = "student_tutoring_sessions"
         const val TERM_TEACHER_NOTES = "student_term_teacher_notes"
         const val STUDENT_INJURIES = "student_injuries"
+        const val STUDENT_GROUP_MARKS = "student_group_marks"
 
         /** En orden de aplicación: padres antes que hijos. */
-        val ENTITIES: List<String> = listOf(SUBJECT, MEETINGS, MEETING_AGREEMENTS, SUPPORT_MEASURES, TUTORING_SESSIONS, TERM_TEACHER_NOTES, STUDENT_INJURIES)
+        val ENTITIES: List<String> = listOf(
+            SUBJECT, MEETINGS, MEETING_AGREEMENTS, SUPPORT_MEASURES, TUTORING_SESSIONS,
+            TERM_TEACHER_NOTES, STUDENT_INJURIES, STUDENT_GROUP_MARKS,
+        )
 
         fun handles(entity: String): Boolean = entity in ENTITIES
 
@@ -555,6 +609,16 @@ class SchoolRecordsSync(
             put("proofDelivered", JsonPrimitive(injury.proofDelivered))
             put("isDeleted", JsonPrimitive(injury.isDeleted))
             put("createdAtEpochMs", JsonPrimitive(injury.trace.createdAt.toEpochMilliseconds()))
+        }.toString()
+
+        /**
+         * Payload de una marca para grupos. Lo usan el Mac (collect) y la app Apple al
+         * encolar (`KmpBridge+WorkGroups.swift`), así los dos lados mandan lo mismo.
+         */
+        fun groupMarkPayload(mark: StudentGroupMark): String = buildJsonObject {
+            put("studentId", JsonPrimitive(mark.studentId))
+            put("classId", JsonPrimitive(mark.classId))
+            put("mark", JsonPrimitive(mark.mark.name))
         }.toString()
 
         /** Upserts por orden de padres a hijos; los borrados al final, de hijos a padres. */

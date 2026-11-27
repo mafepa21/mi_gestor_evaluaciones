@@ -514,6 +514,8 @@ class StudentsRepositorySqlDelight(
             db.evaluationSessionQueries.deleteSessionStudentsByStudent(studentId)
             // Igual con sus valoraciones del docente por trimestre.
             db.appDatabaseQueries.deleteTermTeacherNotesByStudent(studentId)
+            // Y sus marcas Fuerte / Necesita apoyo para grupos.
+            db.studentGroupMarkQueries.deleteGroupMarksByStudent(studentId)
             // Y con sus lesiones (migración 51).
             db.studentInjuryQueries.deleteInjuriesByStudent(studentId)
             db.appDatabaseQueries.deleteStudent(studentId)
@@ -734,6 +736,8 @@ class ClassesRepositorySqlDelight(
             db.evaluationSessionQueries.deleteSessionsByClass(classId)
             // Igual con las valoraciones del docente escritas para este grupo.
             db.appDatabaseQueries.deleteTermTeacherNotesByClass(classId)
+            // Y las marcas Fuerte / Necesita apoyo de este grupo.
+            db.studentGroupMarkQueries.deleteGroupMarksByClass(classId)
             db.appDatabaseQueries.deleteClass(classId)
         }
     }

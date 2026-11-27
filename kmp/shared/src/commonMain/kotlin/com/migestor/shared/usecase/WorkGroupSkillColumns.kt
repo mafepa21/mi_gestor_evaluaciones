@@ -17,10 +17,22 @@ data class WorkGroupSkillRequest(
     val techniqueColumnIds: List<String> = emptyList(),
     val behaviourColumnIds: List<String> = emptyList(),
     val leadershipColumnIds: List<String> = emptyList(),
-    val marks: Map<Long, WorkGroupMark> = emptyMap(),
+    /** Ids con marca «Fuerte». Listas y no un Map: un Map de Kotlin no se recorre bien desde Swift. */
+    val strongStudentIds: List<Long> = emptyList(),
+    /** Ids con marca «Necesita apoyo». */
+    val supportStudentIds: List<Long> = emptyList(),
     val oneLeaderPerGroup: Boolean = true,
     val spreadLowBehaviour: Boolean = true,
-)
+) {
+    fun markFor(studentId: Long): WorkGroupMark = when (studentId) {
+        in strongStudentIds -> WorkGroupMark.STRONG
+        in supportStudentIds -> WorkGroupMark.SUPPORT
+        else -> WorkGroupMark.NONE
+    }
+}
+
+/** Nota de un alumno en un apartado. Para Swift (un Map<Long, …> de Kotlin no se recorre bien allí). */
+data class WorkGroupStudentScore(val studentId: Long, val score: Double)
 
 /** Qué mide un grupo de instrumentos al organizar grupos por nivel. */
 enum class WorkGroupSkillDimension {

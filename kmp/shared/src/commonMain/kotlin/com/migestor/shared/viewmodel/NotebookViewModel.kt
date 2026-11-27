@@ -1920,7 +1920,7 @@ class NotebookViewModel(
                 technique = technique[id],
                 behaviour = behaviour[id],
                 leadership = leadership[id],
-                mark = skill?.marks?.get(id) ?: WorkGroupMark.NONE,
+                mark = skill?.markFor(id) ?: WorkGroupMark.NONE,
             )
         }
         val composed = ComposeWorkGroupsUseCase().compose(
@@ -1960,6 +1960,10 @@ class NotebookViewModel(
         val currentState = _state.value as? NotebookUiState.Data ?: return emptyList()
         return WorkGroupSkillColumns.suggest(currentState.sheet.columns, dimension)
     }
+
+    /** Lo mismo que [workGroupDimensionScores] en lista, para Swift. */
+    fun workGroupDimensionScoreList(columnIds: List<String>): List<WorkGroupStudentScore> =
+        workGroupDimensionScores(columnIds).map { (studentId, score) -> WorkGroupStudentScore(studentId, score) }
 
     /** Nota de 0 a 10 por alumno con esas columnas (media de las que tienen nota). */
     fun workGroupDimensionScores(columnIds: List<String>): Map<Long, Double> {

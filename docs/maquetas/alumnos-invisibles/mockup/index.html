@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta · Alumnos invisibles</title>
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--fg:#1d1d1f;--mut:#6e6e73;--line:#e5e5ea;--acc:#0066cc;--ok:#1a7f37;--warn:#9a5b00;--err:#c41e3a;--chip:#e9e9ee;--incl:#6b3fa0;--inclbg:#efe7fa}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--card:#1c1c1e;--fg:#f5f5f7;--mut:#a1a1a6;--line:#38383a;--acc:#4da3ff;--ok:#4cd964;--warn:#ffb340;--err:#ff6961;--chip:#3a3a3c;--incl:#d4b8ff;--inclbg:#2e2340}}
+*{box-sizing:border-box}
+body{margin:0;font:1rem/1.45 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header.tabs{display:flex;gap:8px;padding:16px 24px;flex-wrap:wrap;align-items:center;background:var(--card);border-bottom:1px solid var(--line)}
+header.tabs b{margin-right:8px}
+header.tabs button{min-height:32px;padding:0 16px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;font:inherit;font-size:.875rem}
+header.tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.state{display:none;padding:24px}.state.on{display:block}
+.note{color:var(--mut);font-size:.875rem;margin:0 0 16px;max-width:720px}
+.note code{font-size:.8125rem}
+.sheet{background:var(--bg);border:1px solid var(--line);border-radius:24px;max-width:600px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.12)}
+.sheet.mac{border-radius:12px;max-width:640px}
+.nav{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;min-height:56px;background:var(--card);border-bottom:1px solid var(--line)}
+.nav h2{margin:0;font-size:1.0625rem;text-align:center}
+.nav h2 small{display:block;font-weight:400;font-size:.8125rem;color:var(--mut)}
+.link{color:var(--acc);background:none;border:none;font:inherit;min-height:44px;cursor:pointer;padding:0 8px}
+.link.b{font-weight:600}
+.body{padding:16px}
+.ctx{color:var(--mut);font-size:.875rem;margin:0 0 16px;padding:0 16px}
+.sec{margin-bottom:24px}
+.sec h3{margin:0 0 8px;padding:0 16px;font-size:.8125rem;color:var(--mut);font-weight:500}
+.group{background:var(--card);border-radius:12px;overflow:hidden}
+.row{display:flex;align-items:center;gap:16px;padding:8px 16px;min-height:56px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:none}
+.row .t{flex:1;min-width:0}
+.row .t small{display:block;color:var(--mut);font-size:.875rem}
+.av{width:36px;height:36px;border-radius:50%;background:var(--chip);display:flex;align-items:center;justify-content:center;font-size:.8125rem;font-weight:600;flex:none}
+.days{font-variant-numeric:tabular-nums;font-weight:600;color:var(--warn);font-size:.9375rem;white-space:nowrap}
+.pill{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:11px;background:var(--chip);color:var(--mut);font-size:.75rem;margin-left:8px;vertical-align:middle}
+.days::before{content:"◷ ";font-weight:400}
+.row.tap{cursor:pointer}
+.recent .row{opacity:.75}
+.btn{min-height:44px;padding:0 16px;border-radius:12px;border:none;background:var(--chip);color:var(--acc);font:inherit;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
+.btn.pri{background:var(--acc);color:#fff}
+.btn.icon{width:44px;padding:0}
+.btn.sm{min-height:44px;border-radius:10px;padding:0 12px}
+.foot{color:var(--mut);font-size:.8125rem;padding:8px 16px 0;margin:0}
+.center{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:48px 24px}
+.center .big{font-size:2.5rem;color:var(--ok)}
+.center p{margin:0;color:var(--mut);max-width:420px}
+.sk{height:16px;margin:16px;border-radius:8px;background:var(--line);animation:p 1.2s infinite alternate}
+@keyframes p{to{opacity:.4}}
+@media(prefers-reduced-motion:reduce){.sk{animation:none}}
+.band{font-size:.8125rem;font-weight:700;letter-spacing:.04em;color:var(--mut);text-transform:uppercase;margin:0 0 8px}
+.card{background:var(--card);border-radius:16px;padding:16px;max-width:640px}
+.arow{display:flex;align-items:center;gap:16px;min-height:56px;padding:8px 0;border-top:1px solid var(--line)}
+.arow:first-of-type{border-top:none}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.dot.risk{background:var(--err)}.dot.alert{background:var(--warn)}.dot.pend{background:var(--acc)}
+.arow .t{flex:1}.arow .t small{display:block;color:var(--mut);font-size:.875rem}
+.chev{color:var(--mut)}
+.toast{display:flex;align-items:center;gap:16px;padding:12px 16px;margin:16px 0 0;border-radius:12px;background:var(--fg);color:var(--bg);max-width:600px}
+.toast .t{flex:1}
+.toast button{background:none;border:none;color:var(--acc);font:inherit;font-weight:600;min-height:44px;cursor:pointer;filter:brightness(1.4)}
+textarea{width:100%;min-height:96px;border:none;background:transparent;color:var(--fg);font:inherit;padding:16px;resize:vertical}
+.seg{display:inline-flex;background:var(--chip);border-radius:9px;padding:2px}
+.seg span{padding:6px 12px;border-radius:7px;font-size:.875rem}
+.seg .on{background:var(--card);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+table{border-collapse:collapse;width:100%;background:var(--card);border-radius:12px;overflow:hidden;font-size:.9375rem}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+th{font-size:.8125rem;color:var(--mut);font-weight:500}
+.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.menu{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 12px;border-radius:8px;background:var(--chip);font-size:.875rem}
+.menu.on{background:var(--acc);color:#fff}
+.err{color:var(--err)}
+.mut{color:var(--mut)}
+</style></head><body>
+
+<header class="tabs"><b>Estados</b>
+<button data-s="hoy" class="on">1 · Hoy (viernes)</button>
+<button data-s="lista">2 · Lista «Sin mirar»</button>
+<button data-s="obs">3 · Observación rápida</button>
+<button data-s="visto">4 · Tras «Visto»</button>
+<button data-s="vacia">5 · Todos mirados</button>
+<button data-s="cargando">6 · Cargando</button>
+<button data-s="error">7 · Error</button>
+<button data-s="alumnado">8 · Alumnado (Mac)</button>
+<button data-s="ficha">9 · Ficha</button>
+<button data-s="mac">10 · Lista en Mac</button>
+</header>
+
+<!-- 1 HOY -->
+<section class="state on" id="hoy">
+<p class="note">Los viernes, «Hoy» › Atención añade una fila por grupo con alumnado sin mirar. Va como «pendiente»: es un recordatorio, no un riesgo. Cada tipo de fila lleva su símbolo (no solo color): <code>eye.slash</code> para «sin mirar». Si un grupo no tiene a nadie, no sale. Tocar la fila abre la lista de ese grupo (estado 2). El resto de días no sale nada en «Hoy»: el filtro de Alumnado (estado 8) siempre está.</p>
+<div class="card">
+  <p class="band">Atención <span class="mut">· 3</span></p>
+  <div class="arow" role="button" tabindex="0" aria-label="Alerta. Asistencia pendiente de hoy. Abre Asistencia."><span aria-hidden="true">☑︎</span><span class="t">Asistencia pendiente de hoy<small>Abre Asistencia para pasar lista.</small></span><span class="chev" aria-hidden="true">›</span></div>
+  <div class="arow" role="button" tabindex="0" aria-label="Pendiente. 2º ESO B: 4 alumnos sin mirar en 2 semanas. Abre la lista."><span aria-hidden="true">⊘</span><span class="t">2º ESO B: 4 sin mirar en 2 semanas<small>Ana López, Pablo García y 2 más</small></span><span class="chev" aria-hidden="true">›</span></div>
+  <div class="arow" role="button" tabindex="0" aria-label="Pendiente. 1º BACH A: 1 alumno sin mirar en 2 semanas. Abre la lista."><span aria-hidden="true">⊘</span><span class="t">1º BACH A: 1 sin mirar en 2 semanas<small>Lucía Martín</small></span><span class="chev" aria-hidden="true">›</span></div>
+</div>
+</section>
+
+<!-- 2 LISTA -->
+<section class="state" id="lista">
+<p class="note">Hoja con el alumnado de un grupo sin ningún registro en 14 días lectivos. Orden: primero quien tiene medida de nivel III/IV, luego más días sin registro. Cada fila dice los días y lo último que registraste. Una sola acción visible por fila: «Observación…» (abre el estado 3); tocar la fila hace lo mismo. «Abrir ficha» y «Visto (7 días)» van en el menú contextual y al deslizar la fila (sin deslizamiento completo, para evitar toques sin querer). VoiceOver lee cada fila entera y ofrece las tres acciones con nombre. El rombo gris (◆) indica «tiene medida de apoyo» sin decir cuál; se oculta si la pantalla se está compartiendo o proyectando. Los días llevan símbolo de reloj y texto («sin registro»), no solo color. Con letra muy grande la fila pasa a dos líneas. Datos inventados.</p>
+<div class="sheet">
+  <div class="nav"><span style="width:72px"></span><h2>Sin mirar<small>2º ESO B · 4 de 28</small></h2><button class="link b">Hecho</button></div>
+  <div class="body">
+    <p class="ctx">Sin nota, observación ni comentario en 14 días lectivos (no cuentan vacaciones ni festivos).</p>
+    <div class="group" role="list">
+      <div class="row tap" role="listitem" aria-label="Ana López, con medida de apoyo, 17 días sin registro, último: nota en Hockey el 10 de noviembre. Acciones: Observación, Abrir ficha, Visto 7 días."><span class="av" aria-hidden="true">AL</span><span class="t">Ana López<span class="pill" title="Tiene medida de apoyo (se ve el detalle en su ficha)" aria-hidden="true">◆</span><small>Último: nota en Hockey, 10 nov</small></span><span class="days">17 días sin registro</span><button class="btn sm">Observación…</button></div>
+      <div class="row" role="listitem"><span class="av" aria-hidden="true">PG</span><span class="t">Pablo García<small>Último: comentario en Bádminton, 6 nov</small></span><span class="days">19 días sin registro</span><button class="btn sm">Observación…</button></div>
+      <div class="row" role="listitem"><span class="av" aria-hidden="true">JR</span><span class="t">Jorge Ruiz<small>Último: prueba física, 7 nov</small></span><span class="days">16 días sin registro</span><button class="btn sm">Observación…</button></div>
+      <div class="row" role="listitem"><span class="av" aria-hidden="true">MS</span><span class="t">Marta Sanz<small>Sin registros desde que empezó el curso</small></span><span class="days">Ningún registro</span><button class="btn sm">Observación…</button></div>
+    </div>
+    <p class="foot">Pasar lista sin escribir nada no cuenta. «Visto» esconde al alumno 7 días, solo en este aparato.</p>
+  </div>
+</div>
+</section>
+
+<!-- 3 OBSERVACION -->
+<section class="state" id="obs">
+<p class="note">Observación rápida sin salir de la lista. Se guarda como las observaciones de siempre (la misma vía que «Nueva observación» de «Hoy»), así cuenta como registro y el alumno sale de la lista al guardar. Dictado con el micrófono del teclado del sistema. El cursor ya está en el campo. «Guardar» se apaga si está vacío. Si cancelas con texto escrito, pregunta «¿Descartar observación?».</p>
+<div class="sheet">
+  <div class="nav"><button class="link">Cancelar</button><h2>Observación<small>Ana López · 2º ESO B</small></h2><button class="link b">Guardar</button></div>
+  <div class="body">
+    <div class="group"><textarea aria-label="Observación" placeholder="Qué has visto hoy">Participa más en grupo pequeño; le cuesta arrancar en gran grupo.</textarea></div>
+    <p class="foot">Se guarda con la fecha de hoy y la ves en su ficha.</p>
+  </div>
+</div>
+</section>
+
+<!-- 4 VISTO -->
+<section class="state" id="visto">
+<p class="note">Tras «Visto», la fila baja a «Vistos hace poco», al final de la lista, con «Mostrar de nuevo». No hay aviso que desaparezca solo: se puede deshacer siempre mientras dure (y con ⌘Z en Mac). VoiceOver anuncia «Pablo García oculto 7 días». El contador de la cabecera baja.</p>
+<div class="sheet">
+  <div class="nav"><span style="width:72px"></span><h2>Sin mirar<small>2º ESO B · 3 de 28</small></h2><button class="link b">Hecho</button></div>
+  <div class="body">
+    <div class="group" role="list">
+      <div class="row tap" role="listitem" aria-label="Ana López, con medida de apoyo, 17 días sin registro, último: nota en Hockey el 10 de noviembre. Acciones: Observación, Abrir ficha, Visto 7 días."><span class="av" aria-hidden="true">AL</span><span class="t">Ana López<span class="pill" title="Tiene medida de apoyo (se ve el detalle en su ficha)" aria-hidden="true">◆</span><small>Último: nota en Hockey, 10 nov</small></span><span class="days">17 días sin registro</span><button class="btn sm">Observación…</button></div>
+      <div class="row" role="listitem"><span class="av" aria-hidden="true">JR</span><span class="t">Jorge Ruiz<small>Último: prueba física, 7 nov</small></span><span class="days">16 días sin registro</span><button class="btn sm">Observación…</button></div>
+      <div class="row" role="listitem"><span class="av" aria-hidden="true">MS</span><span class="t">Marta Sanz<small>Sin registros desde que empezó el curso</small></span><span class="days">Ningún registro</span><button class="btn sm">Observación…</button></div>
+    </div>
+    <div class="sec recent" style="margin-top:24px"><h3>VISTOS HACE POCO · SOLO EN ESTE APARATO</h3><div class="group">
+      <div class="row"><span class="av" aria-hidden="true">PG</span><span class="t">Pablo García<small>Vuelve a la lista el 4 dic</small></span><button class="btn sm">Mostrar de nuevo</button></div>
+    </div></div>
+  </div>
+</div>
+</section>
+
+<!-- 5 VACIA -->
+<section class="state" id="vacia">
+<p class="note">Nadie sin mirar: mensaje en positivo, sin botones de más (en la app, <code>ContentUnavailableView</code> con <code>checkmark.circle</code>).</p>
+<div class="sheet">
+  <div class="nav"><span style="width:72px"></span><h2>Sin mirar<small>2º ESO B</small></h2><button class="link b">Hecho</button></div>
+  <div class="center"><span class="big" aria-hidden="true">✓</span><strong>Todos mirados</strong><p>Todo el grupo tiene algún registro tuyo en los últimos 14 días lectivos.</p></div>
+</div>
+</section>
+
+<!-- 6 CARGANDO -->
+<section class="state" id="cargando">
+<p class="note">Se calcula en segundo plano. Normalmente no se llega a ver.</p>
+<div class="sheet">
+  <div class="nav"><span style="width:72px"></span><h2>Sin mirar<small>2º ESO B</small></h2><button class="link b">Hecho</button></div>
+  <div class="body" role="status" aria-busy="true" aria-label="Calculando"><div class="group"><div class="sk" style="width:60%"></div><div class="sk" style="width:45%"></div><div class="sk" style="width:55%"></div></div></div>
+</div>
+</section>
+
+<!-- 7 ERROR -->
+<section class="state" id="error">
+<p class="note">Si falla el cálculo, se dice qué pasó y se ofrece reintentar (<code>ContentUnavailableView</code> con acción). En «Hoy» la fila simplemente no sale (no bloquea el resto).</p>
+<div class="sheet">
+  <div class="nav"><span style="width:72px"></span><h2>Sin mirar<small>2º ESO B</small></h2><button class="link b">Hecho</button></div>
+  <div class="center" role="alert"><strong>No se pudo calcular</strong><p>No se han leído los registros del grupo. Tus datos no han cambiado.</p><button class="btn">Reintentar</button></div>
+</div>
+</section>
+
+<!-- 8 ALUMNADO -->
+<section class="state" id="alumnado">
+<p class="note">Alumnado en Mac: el menú de seguimiento suma «Sin mirar» (y en iPad, el filtro equivalente). Con ese filtro la tabla (<code>Table</code> nativa, ordenable por «Último registro», con búsqueda y menú contextual) muestra la columna. Siempre disponible, no solo los viernes.</p>
+<div class="toolbar"><span class="menu on">Sin mirar ▾</span><span class="menu">2º ESO B ▾</span><span class="mut" style="font-size:.875rem">4 alumnos</span></div>
+<table>
+  <thead><tr><th>Alumno</th><th>Grupo</th><th>Último registro</th><th>Qué fue</th></tr></thead>
+  <tbody>
+    <tr><td>Ana López <span class="pill" title="Tiene medida de apoyo (se ve el detalle en su ficha)" aria-hidden="true">◆</span></td><td>2º ESO B</td><td class="days">17 días sin registro</td><td>Nota en Hockey</td></tr>
+    <tr><td>Pablo García</td><td>2º ESO B</td><td class="days">19 días sin registro</td><td>Comentario en Bádminton</td></tr>
+    <tr><td>Jorge Ruiz</td><td>2º ESO B</td><td class="days">16 días sin registro</td><td>Prueba física</td></tr>
+    <tr><td>Marta Sanz</td><td>2º ESO B</td><td class="days">Ningún registro</td><td class="mut">—</td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- 9 FICHA -->
+<section class="state" id="ficha">
+<p class="note">En la ficha del alumno, una línea discreta debajo de su nombre con el último registro en el grupo que estás viendo. Si pasa de 14 días lectivos lleva símbolo de reloj y el texto «sin registro» (además del color).</p>
+<div class="card">
+  <strong style="font-size:1.25rem">Ana López</strong><span class="pill" title="Tiene medida de apoyo (se ve el detalle en su ficha)" aria-hidden="true">◆</span>
+  <p class="mut" style="margin:4px 0 0">2º ESO B · <span class="days">17 días sin registro</span> (último: nota en Hockey)</p>
+</div>
+<div class="card" style="margin-top:16px">
+  <strong style="font-size:1.25rem">Lucía Martín</strong>
+  <p class="mut" style="margin:4px 0 0">2º ESO B · Último registro: hace 2 días (observación)</p>
+</div>
+</section>
+
+<!-- 10 MAC -->
+<section class="state" id="mac">
+<p class="note">En Mac la lista es una hoja de 640 pt con los mismos datos. «Hecho» es el botón por defecto. Con el teclado: flechas para moverse, Intro sobre la fila = Observación…, ⌘I = abrir ficha, ⌘Z = deshacer «Visto». Esc cierra. Menú contextual con las tres acciones; los atajos salen también en el menú de la barra.</p>
+<div class="sheet mac">
+  <div class="body">
+    <p class="ctx" style="padding:0;font-weight:600;color:var(--fg)">Sin mirar · 2º ESO B <span class="mut" style="font-weight:400">· 4 de 28</span></p>
+    <div class="group" role="list">
+      <div class="row tap" role="listitem" aria-label="Ana López, con medida de apoyo, 17 días sin registro, último: nota en Hockey el 10 de noviembre. Acciones: Observación, Abrir ficha, Visto 7 días."><span class="av" aria-hidden="true">AL</span><span class="t">Ana López<span class="pill" title="Tiene medida de apoyo (se ve el detalle en su ficha)" aria-hidden="true">◆</span><small>Último: nota en Hockey, 10 nov</small></span><span class="days">17 días sin registro</span><button class="btn sm">Observación…</button></div>
+      <div class="row" role="listitem"><span class="av" aria-hidden="true">PG</span><span class="t">Pablo García<small>Último: comentario en Bádminton, 6 nov</small></span><span class="days">19 días sin registro</span><button class="btn sm">Observación…</button></div>
+    </div>
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:8px;padding:16px;border-top:1px solid var(--line);background:var(--card)"><button class="btn sm pri">Hecho</button></div>
+</div>
+</section>
+
+<script>
+document.querySelectorAll('header.tabs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('header.tabs button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.state').forEach(s=>s.classList.toggle('on',s.id===b.dataset.s));
+});
+</script>
+</body></html>

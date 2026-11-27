@@ -1,0 +1,102 @@
+-- «Alumnos invisibles»: último registro del docente por alumno en un grupo.
+-- Solo lectura: no hay tablas nuevas ni cambio de esquema.
+-- Cada consulta carga el grupo entero de una vez (nunca alumno a alumno).
+-- Fecha de cada fila: updated_at si existe; si es 0 (filas antiguas), created_at.
+-- Con MAX() en SQLite, las columnas sueltas (label) son las de la fila del máximo.
+
+lastGradeByStudent:
+SELECT g.student_id,
+       MAX(COALESCE(NULLIF(g.updated_at_epoch_ms, 0), g.created_at_epoch_ms)) AS at_ms,
+       c.title AS label
+FROM grades g
+LEFT JOIN notebook_columns c ON c.id = g.column_id
+WHERE g.class_id = ? AND g.value IS NOT NULL
+GROUP BY g.student_id;
+
+lastCellEntryByStudent:
+SELECT e.student_id,
+       MAX(COALESCE(NULLIF(e.updated_at_epoch_ms, 0), e.created_at_epoch_ms)) AS at_ms,
+       c.title AS label
+FROM notebook_cell_entries e
+LEFT JOIN notebook_columns c ON c.id = e.column_id
+WHERE e.class_id = ?
+GROUP BY e.student_id;
+
+lastRubricByStudent:
+SELECT r.student_id,
+       MAX(COALESCE(NULLIF(r.updated_at_epoch_ms, 0), r.created_at_epoch_ms)) AS at_ms,
+       ev.name AS label
+FROM rubric_assessments r
+JOIN evaluations ev ON ev.id = r.evaluation_id
+WHERE ev.class_id = ?
+GROUP BY r.student_id;
+
+lastPhysicalTestByStudent:
+SELECT p.student_id,
+       MAX(p.observed_at_epoch_ms) AS at_ms,
+       d.name AS label
+FROM physical_test_results p
+LEFT JOIN physical_test_definitions d ON d.id = p.test_id
+WHERE p.class_id = ? AND (p.raw_value IS NOT NULL OR p.raw_text != '' OR p.score IS NOT NULL)
+GROUP BY p.student_id;
+
+lastIncidentByStudent:
+SELECT i.student_id,
+       MAX(i.date_epoch_ms) AS at_ms,
+       i.title AS label
+FROM incidents i
+WHERE i.class_id = ? AND i.student_id IS NOT NULL
+GROUP BY i.student_id;
+
+-- Pasar lista sin escribir nada no cuenta: solo filas con nota.
+lastAttendanceNoteByStudent:
+SELECT a.student_id,
+       MAX(a.date_epoch_ms) AS at_ms
+FROM attendance a
+WHERE a.class_id = ? AND TRIM(a.note) != ''
+GROUP BY a.student_id;
+
+lastTermNoteByStudent:
+SELECT t.student_id,
+       MAX(COALESCE(NULLIF(t.updated_at_epoch_ms, 0), t.created_at_epoch_ms)) AS at_ms
+FROM student_term_teacher_notes t
+WHERE t.class_id = ? AND TRIM(t.note) != ''
+GROUP BY t.student_id;
+
+-- Fecha ISO (yyyy-MM-dd) de la sesión del diario.
+lastJournalNoteByStudent:
+SELECT n.student_id,
+       MAX(s.date) AS date_iso
+FROM session_journal_individual_note n
+JOIN session_journal j ON j.id = n.journal_id
+JOIN planner_session s ON s.id = j.planning_session_id
+WHERE s.group_id = ? AND n.student_id IS NOT NULL AND TRIM(n.note) != ''
+GROUP BY n.student_id;
+
+-- Reuniones con la familia: son del alumno, cuentan en todos sus grupos.
+-- Alumnado del grupo = matrícula activa del curso del grupo (igual que selectStudentsByClass).
+lastTutoringByStudent:
+SELECT t.student_id,
+       MAX(t.date_iso) AS date_iso
+FROM student_tutoring_sessions t
+JOIN student_enrollments se ON se.student_id = t.student_id AND se.status = 'ACTIVE'
+JOIN classes c ON c.id = se.class_id AND se.academic_year_id = c.academic_year_id
+WHERE se.class_id = ?
+GROUP BY t.student_id;
+
+-- Cuándo entró al grupo (matrícula activa más antigua). Sin fila: alumno antiguo.
+enrollmentStartByStudent:
+SELECT e.student_id,
+       MIN(e.created_at_epoch_ms) AS at_ms
+FROM student_enrollments e
+JOIN classes c ON c.id = e.class_id AND e.academic_year_id = c.academic_year_id
+WHERE e.class_id = ? AND e.status = 'ACTIVE' AND e.created_at_epoch_ms > 0
+GROUP BY e.student_id;
+
+-- Alumnado del grupo con alguna medida activa de nivel III o IV.
+studentsWithSupportMeasure:
+SELECT DISTINCT m.student_id
+FROM student_support_measures m
+JOIN student_enrollments se ON se.student_id = m.student_id AND se.status = 'ACTIVE'
+JOIN classes c ON c.id = se.class_id AND se.academic_year_id = c.academic_year_id
+WHERE se.class_id = ? AND m.is_active = 1 AND m.level IN ('III', 'IV');

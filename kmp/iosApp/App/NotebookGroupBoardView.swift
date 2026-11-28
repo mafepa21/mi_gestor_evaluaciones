@@ -934,7 +934,9 @@ struct NotebookGroupBoardView: View {
                          ? (mark == .unmarked ? "Marca quitada" : "Marcado: \(mark.spokenTitle)")
                          : "\(studentIds.count) alumnos: \(mark.spokenTitle)")
             } catch {
+                // Si falló a mitad, parte ya quedó guardada: se relee de la base.
                 marks = previous
+                reloadMarks()
                 announce("No se pudo guardar la marca")
                 failedMark = FailedMark(mark: mark, studentIds: studentIds)
             }

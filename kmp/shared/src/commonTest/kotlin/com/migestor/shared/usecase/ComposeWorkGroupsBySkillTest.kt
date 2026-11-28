@@ -53,6 +53,23 @@ class ComposeWorkGroupsBySkillTest {
     }
 
     @Test
+    fun `un lider lesionado sigue contando como lider de su grupo`() {
+        val students = (1L..9L).map { id ->
+            WorkGroupStudentInput(
+                studentId = id,
+                technique = 5.0,
+                leadership = if (id <= 3) 9.0 - id / 10.0 else 2.0,
+                isInjured = id == 1L || id == 2L,
+            )
+        }
+        val groups = useCase.compose(students, skillOptions(groupCount = 3))
+        groups.forEach { group ->
+            assertEquals(1, group.studentIds.count { it <= 3 }, "Líderes: ${group.studentIds}")
+        }
+        groups.forEach { group -> assertTrue(group.studentIds.count { it == 1L || it == 2L } <= 1) }
+    }
+
+    @Test
     fun `el comportamiento bajo se reparte entre grupos`() {
         val students = (1L..9L).map { id ->
             WorkGroupStudentInput(studentId = id, technique = 10.0 - id, behaviour = if (id in setOf(1L, 2L, 3L)) 2.0 else 8.0)

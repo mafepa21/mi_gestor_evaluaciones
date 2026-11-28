@@ -116,8 +116,8 @@ class ComposeWorkGroupsUseCase {
 
     /**
      * Reparto por nivel técnico, en este orden:
-     * 1. lesionados repartidos (si se pide);
-     * 2. un líder por grupo: los de mejor nota de liderazgo;
+     * 1. un líder por grupo: los de mejor nota de liderazgo (lesionados incluidos);
+     * 2. lesionados repartidos (si se pide): cada uno al grupo con menos lesionados;
      * 3. comportamiento bajo repartido: cada uno al grupo que menos tenga;
      * 4. el resto, de más a menos nivel, al grupo más pequeño y, a igualdad, al de menos
      *    nivel acumulado. Así los tamaños quedan iguales y los niveles parecidos;
@@ -133,6 +133,7 @@ class ComposeWorkGroupsUseCase {
         val hasLeader = BooleanArray(buckets.size)
         val leaderIds = mutableSetOf<Long>()
         val lowBehaviourCount = IntArray(buckets.size)
+        val injuredCount = IntArray(buckets.size)
 
         fun level(bucket: List<WorkGroupStudentInput>) = bucket.sumOf { it.skillLevel }
         fun isLowBehaviour(student: WorkGroupStudentInput) =
@@ -141,6 +142,7 @@ class ComposeWorkGroupsUseCase {
         fun place(student: WorkGroupStudentInput, index: Int) {
             buckets[index].add(student)
             if (isLowBehaviour(student)) lowBehaviourCount[index]++
+            if (student.isInjured) injuredCount[index]++
             remaining.remove(student)
         }
 
@@ -153,12 +155,6 @@ class ComposeWorkGroupsUseCase {
                     .thenBy { it },
             )
 
-        if (options.spreadInjured) {
-            remaining.filter { it.isInjured }.forEachIndexed { index, student ->
-                place(student, index % buckets.size)
-            }
-        }
-
         if (options.oneLeaderPerGroup) {
             remaining.filter { it.leadership != null }
                 .sortedWith(compareByDescending<WorkGroupStudentInput> { it.leadership }.thenBy { it.studentId })
@@ -169,6 +165,14 @@ class ComposeWorkGroupsUseCase {
                     hasLeader[index] = true
                     leaderIds += leader.studentId
                 }
+        }
+
+        // Los lesionados van después de los líderes: un líder lesionado sigue contando
+        // como el líder de su grupo y no deja otro grupo sin líder.
+        if (options.spreadInjured) {
+            remaining.filter { it.isInjured }.forEach { student ->
+                place(student, bestBucket(buckets.indices.toList()) { injuredCount[it] })
+            }
         }
 
         if (options.spreadLowBehaviour) {

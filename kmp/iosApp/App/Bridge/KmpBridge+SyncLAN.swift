@@ -947,6 +947,11 @@ extension KmpBridge {
                 userInfo: [LanSyncRefreshPlan.entitiesUserInfoKey: remoteEntities]
             )
         }
+        // Marcas Fuerte / Necesita apoyo: el tablero de grupos las relee. Aquí y no en
+        // el Task de refresco, que puede cancelarse o fallar antes de llegar.
+        if remoteEntities.contains(SchoolRecordsSync.companion.STUDENT_GROUP_MARKS) {
+            NotificationCenter.default.post(name: .workGroupMarksDidChange, object: nil)
+        }
 
         // Ejecutamos los refreshes en una Task de utilidad para no bloquear el
         // MainActor run loop durante las queries encadenadas. Esto evita que la UI
@@ -978,10 +983,6 @@ extension KmpBridge {
                 if entities.contains(SchoolRecordsSync.companion.SUBJECT) {
                     try await self.refreshSubjects()
                     guard !Task.isCancelled else { return }
-                }
-                // Marcas Fuerte / Necesita apoyo: el tablero de grupos las relee.
-                if entities.contains(SchoolRecordsSync.companion.STUDENT_GROUP_MARKS) {
-                    NotificationCenter.default.post(name: .workGroupMarksDidChange, object: nil)
                 }
                 if plan.rubrics {
                     try await self.refreshRubrics()

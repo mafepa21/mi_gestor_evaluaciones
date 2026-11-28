@@ -495,8 +495,11 @@ class SchoolRecordsSync(
             if (local > change.updatedAtEpochMs) return Outcome.STALE
             if (local == change.updatedAtEpochMs && change.deviceId <= (existing.trace.deviceId ?: "")) return Outcome.STALE
         }
-        // No resucitar marcas de un alumno ya borrado (las FK están apagadas).
-        if (container.syncTombstoneRepository.isDeletedAtOrAfter("student", studentId.toString(), change.updatedAtEpochMs)) {
+        // No resucitar marcas de un alumno o de un grupo ya borrado (las FK están apagadas).
+        val tombstones = container.syncTombstoneRepository
+        if (tombstones.isDeletedAtOrAfter("student", studentId.toString(), change.updatedAtEpochMs) ||
+            tombstones.isDeletedAtOrAfter("class", classId.toString(), change.updatedAtEpochMs)
+        ) {
             return Outcome.SKIPPED
         }
         val mark = WorkGroupMark.fromStorage(payload.text("mark", existing?.mark?.name))

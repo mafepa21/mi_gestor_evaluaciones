@@ -108,11 +108,16 @@ class StudentGroupMarkRepositoryAndSyncTest {
     }
 
     @Test
-    fun noResucitaMarcasDeUnAlumnoBorrado() = runTest {
+    fun noResucitaMarcasDeUnAlumnoOGrupoBorrado() = runTest {
         val (_, mac) = newContainer()
         mac.syncTombstoneRepository.recordTombstone(entity = "student", entityId = "4", deletedAtEpochMs = 5_000, deviceId = "mac")
-        assertEquals(1, SchoolRecordsSync(mac, "mac").applyAll(listOf(markChange(4, 10, "STRONG", 4_000))).ignored)
+        mac.syncTombstoneRepository.recordTombstone(entity = "class", entityId = "20", deletedAtEpochMs = 5_000, deviceId = "mac")
+        val ack = SchoolRecordsSync(mac, "mac").applyAll(
+            listOf(markChange(4, 10, "STRONG", 4_000), markChange(6, 20, "SUPPORT", 4_000)),
+        )
+        assertEquals(2, ack.ignored)
         assertNull(mac.studentGroupMarkRepository.get(4, 10))
+        assertNull(mac.studentGroupMarkRepository.get(6, 20))
     }
 
     @Test

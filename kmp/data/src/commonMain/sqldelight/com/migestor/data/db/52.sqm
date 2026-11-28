@@ -1,0 +1,19 @@
+-- Migración 52: marcas «Fuerte» / «Necesita apoyo» para organizar grupos. Solo aditiva.
+--
+-- Una marca por alumno y grupo-clase (clave natural, igual en todos los dispositivos,
+-- sin ids que reconciliar al sincronizar). Quitar la marca guarda 'NONE' en vez de
+-- borrar la fila, así viaja por Sync LAN como un cambio más con su hora (LWW).
+-- Sin FK (en producción PRAGMA foreign_keys = 0): el borrado de un alumno o de un
+-- grupo limpia sus marcas a mano.
+-- El DDL debe coincidir letra por letra con StudentGroupMark.sq (test de ruta canónica).
+CREATE TABLE IF NOT EXISTS student_group_marks (
+    student_id INTEGER NOT NULL,
+    class_id INTEGER NOT NULL,
+    mark TEXT NOT NULL DEFAULT 'NONE',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (student_id, class_id)
+);
+CREATE INDEX IF NOT EXISTS idx_student_group_marks_class ON student_group_marks(class_id);

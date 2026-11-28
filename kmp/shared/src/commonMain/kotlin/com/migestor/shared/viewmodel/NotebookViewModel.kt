@@ -1,6 +1,7 @@
 package com.migestor.shared.viewmodel
 
 import com.migestor.shared.usecase.NotebookEvaluation
+import com.migestor.shared.workgroup.WorkGroupMark
 import com.migestor.shared.domain.*
 import com.migestor.shared.formula.FormulaEvaluator
 import com.migestor.shared.notebook.validateFormula
@@ -1891,6 +1892,7 @@ class NotebookViewModel(
         learningSituationId: Long? = null,
         tabId: String? = null,
         clearExisting: Boolean = true,
+        skill: WorkGroupSkillRequest? = null,
     ): List<ComposedWorkGroup> {
         if (activeClassId == null) return emptyList()
         val currentState = _state.value as? NotebookUiState.Data ?: return emptyList()
@@ -1902,14 +1904,23 @@ class NotebookViewModel(
         val parsedStrategy = when (strategy) {
             "homogeneous_grade" -> WorkGroupComposeStrategy.HOMOGENEOUS_GRADE
             "random_balanced" -> WorkGroupComposeStrategy.RANDOM_BALANCED
+            "skill_level" -> WorkGroupComposeStrategy.SKILL_LEVEL
             else -> WorkGroupComposeStrategy.HETEROGENEOUS_GRADE
         }
+        val technique = workGroupDimensionScores(skill?.techniqueColumnIds.orEmpty())
+        val behaviour = workGroupDimensionScores(skill?.behaviourColumnIds.orEmpty())
+        val leadership = workGroupDimensionScores(skill?.leadershipColumnIds.orEmpty())
         val inputs = currentState.sheet.rows.map { row ->
+            val id = row.student.id
             WorkGroupStudentInput(
-                studentId = row.student.id,
+                studentId = id,
                 average = row.weightedAverage,
                 sex = row.student.sex,
                 isInjured = row.student.isInjured,
+                technique = technique[id],
+                behaviour = behaviour[id],
+                leadership = leadership[id],
+                mark = skill?.markFor(id) ?: WorkGroupMark.NONE,
             )
         }
         val composed = ComposeWorkGroupsUseCase().compose(
@@ -1919,6 +1930,8 @@ class NotebookViewModel(
                 strategy = parsedStrategy,
                 mixSex = mixSex,
                 spreadInjured = spreadInjured,
+                oneLeaderPerGroup = skill?.oneLeaderPerGroup ?: true,
+                spreadLowBehaviour = skill?.spreadLowBehaviour ?: true,
             ),
         )
         val situationId = learningSituationId?.takeUnless { it == -1L }
@@ -1934,6 +1947,33 @@ class NotebookViewModel(
             clearExisting = clearExisting,
         )
         return composed
+    }
+
+    /** Columnas con nota que se pueden usar para Técnica, Comportamiento o Liderazgo. */
+    fun workGroupSkillCandidateColumns(): List<NotebookColumnDefinition> {
+        val currentState = _state.value as? NotebookUiState.Data ?: return emptyList()
+        return WorkGroupSkillColumns.candidates(currentState.sheet.columns)
+    }
+
+    /** Ids de las columnas que parecen de ese apartado (sugerencia inicial). */
+    fun workGroupSkillSuggestion(dimension: WorkGroupSkillDimension): List<String> {
+        val currentState = _state.value as? NotebookUiState.Data ?: return emptyList()
+        return WorkGroupSkillColumns.suggest(currentState.sheet.columns, dimension)
+    }
+
+    /** Lo mismo que [workGroupDimensionScores] en lista, para Swift. */
+    fun workGroupDimensionScoreList(columnIds: List<String>): List<WorkGroupStudentScore> =
+        workGroupDimensionScores(columnIds).map { (studentId, score) -> WorkGroupStudentScore(studentId, score) }
+
+    /** Nota de 0 a 10 por alumno con esas columnas (media de las que tienen nota). */
+    fun workGroupDimensionScores(columnIds: List<String>): Map<Long, Double> {
+        val currentState = _state.value as? NotebookUiState.Data ?: return emptyMap()
+        return WorkGroupSkillColumns.scores(
+            rows = currentState.sheet.rows,
+            columns = currentState.sheet.columns,
+            columnIds = columnIds,
+            numericDrafts = currentState.numericDrafts,
+        )
     }
 
     fun renameWorkGroup(groupId: Long, name: String) {

@@ -562,6 +562,7 @@
 		8616CD3D6B5F9C60063F69D3 /* RubricVisualCriterionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 883933902FD72B04CC30241D /* RubricVisualCriterionRow.swift */; };
 		861AF99A486CC8EA7B8399F8 /* PlannerSessionDetailComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3CA8D09864762412D9ACD81 /* PlannerSessionDetailComponents.swift */; };
 		862649F736706DF92205B83B /* LearningSituationsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0746E64BBDE5A93E303F823 /* LearningSituationsComponents.swift */; };
+		863914B7E9419F838E1AA8B0 /* KmpBridge+WorkGroupMarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 826C73D54773EA5512792FAF /* KmpBridge+WorkGroupMarks.swift */; };
 		864BD267739CF9BC84E41BB1 /* AppleAIOrchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D47CE5CC1A1F907BFA2E477 /* AppleAIOrchestrator.swift */; };
 		867593B8E7A8FA4FE268F0B9 /* PlannerWorkspaceViewModel+WeekBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2F0852F9CAA60482FA9785 /* PlannerWorkspaceViewModel+WeekBoard.swift */; };
 		86BC90A2A4604BC6B4545E27 /* IPadWorkspaceShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */; };
@@ -1044,6 +1045,7 @@
 		F3EF2A03225D74BCCF271EFC /* KmpBridge+Notebook.swift in Sources */ = {isa = PBXBuildFile; fileRef = A682E1CAE862C15E3F1B2065 /* KmpBridge+Notebook.swift */; };
 		F452AFCFF761A99E3E5E44DB /* TournamentPhaseTimelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CCC94057BCC6003F1710550 /* TournamentPhaseTimelineTests.swift */; };
 		F4E26E4B8D0895AF6C970EB2 /* PlannerSessionGlance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316939D68DF5F8E07E2635E9 /* PlannerSessionGlance.swift */; };
+		F517067026DC1ECB2DE8EB08 /* KmpBridge+WorkGroupMarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 826C73D54773EA5512792FAF /* KmpBridge+WorkGroupMarks.swift */; };
 		F57B3AEB826FCC022A0E48DC /* MiGestorKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9B37D82D4C30174CBD843E47 /* MiGestorKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		F5B53E702D8FF43EAC82D921 /* AddColumnSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583BC23E9E292D736CC9EF49 /* AddColumnSheet.swift */; };
 		F5D4B655C174800ABAD76329 /* AppleFoundationAnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */; };
@@ -1446,6 +1448,7 @@
 		810903E198F9573C820FD886 /* EvaluationSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationSessionView.swift; sourceTree = "<group>"; };
 		810BD5FA53DE6CA784B5AA3F /* KmpBridge+CalendarCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+CalendarCleanup.swift"; sourceTree = "<group>"; };
 		821B86EBC3A6F3E280190B15 /* KmpBridge+LearningSituations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+LearningSituations.swift"; sourceTree = "<group>"; };
+		826C73D54773EA5512792FAF /* KmpBridge+WorkGroupMarks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+WorkGroupMarks.swift"; sourceTree = "<group>"; };
 		8276973B17FFEC86124147B2 /* PageSearchList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageSearchList.swift; sourceTree = "<group>"; };
 		82F349363D7DF9A0AD8CAD85 /* NotebookFormulaEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookFormulaEvaluator.swift; sourceTree = "<group>"; };
 		831A193F350D0D1EF8FA3BF6 /* KmpBridge+Dashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+Dashboard.swift"; sourceTree = "<group>"; };
@@ -2182,6 +2185,7 @@
 				8D36E2B0E0781B7DF8B043A2 /* KmpBridge+Tournaments.swift */,
 				DE312BA57F9A792774CDB233 /* KmpBridge+TypeConverters.swift */,
 				EAB9EAD726530D8C61519E3E /* KmpBridge+WebForms.swift */,
+				826C73D54773EA5512792FAF /* KmpBridge+WorkGroupMarks.swift */,
 				4A47C8FEAEAB280FF9E56FDA /* KmpBridgeModels.swift */,
 				88590DE40405667ADB84E5CF /* KmpFlowSupport.swift */,
 				0A721D85250D04A5EF2F4512 /* LanSyncClient.swift */,
@@ -3022,6 +3026,7 @@
 				05A9FE080CF70724B151F746 /* KmpBridge+Tournaments.swift in Sources */,
 				F07679375EA6CB9F134BB877 /* KmpBridge+TypeConverters.swift in Sources */,
 				0DB15A5D839EF35D8A33E231 /* KmpBridge+WebForms.swift in Sources */,
+				F517067026DC1ECB2DE8EB08 /* KmpBridge+WorkGroupMarks.swift in Sources */,
 				A891426FA79E3A7AB4670107 /* KmpBridge.swift in Sources */,
 				FD2174F0F00D3AED49472BA1 /* KmpBridgeModels.swift in Sources */,
 				3A77A11B8A5081671AE092FB /* KmpBridgeObservationStores.swift in Sources */,
@@ -3528,6 +3533,7 @@
 				D03BDDCBAA284944F7695306 /* KmpBridge+Tournaments.swift in Sources */,
 				DA5618E34C26A320E830C60E /* KmpBridge+TypeConverters.swift in Sources */,
 				CC871883DB2586C8F0FD5293 /* KmpBridge+WebForms.swift in Sources */,
+				863914B7E9419F838E1AA8B0 /* KmpBridge+WorkGroupMarks.swift in Sources */,
 				B7CB07BCB74E309D55528193 /* KmpBridge.swift in Sources */,
 				B7F027000353B51BD33360B0 /* KmpBridgeModels.swift in Sources */,
 				DE0B12080EEE1DBB3FB8F826 /* KmpBridgeObservationStores.swift in Sources */,

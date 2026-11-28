@@ -75,6 +75,8 @@ enum class WipeCategory(
             "student_term_teacher_notes",
             // Fichas propias de «Valoración rápida» (migración 50).
             "quick_note_phrases",
+            // Marcas Fuerte / Necesita apoyo para grupos: cuelgan del grupo (migración 52).
+            "student_group_marks",
             // Los torneos cuelgan de un curso (con o sin SdA): sin esto quedarían huérfanos al borrar cursos.
             "learning_situation_tournaments"
         )
@@ -90,7 +92,9 @@ enum class WipeCategory(
             // Filas de alumnado en las juntas: sin esto quedarían huérfanas al borrar alumnado.
             "evaluation_session_students",
             // Lesiones con fecha (migración 51).
-            "student_injuries"
+            "student_injuries",
+            // Marcas para grupos: sin esto quedarían huérfanas al borrar alumnado (migración 52).
+            "student_group_marks"
         )
     ),
     RUBRICS(

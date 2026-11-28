@@ -358,7 +358,8 @@ extension KmpBridge {
         spreadInjured: Bool,
         learningSituationId: Int64? = nil,
         tabId: String? = nil,
-        clearExisting: Bool = true
+        clearExisting: Bool = true,
+        skill: WorkGroupSkillRequest? = nil
     ) -> [ComposedWorkGroup] {
         let situationKotlin = learningSituationId.map { KotlinLong(value: $0) }
         let composed = notebookViewModel.autoComposeWorkGroups(
@@ -368,7 +369,8 @@ extension KmpBridge {
             spreadInjured: spreadInjured,
             learningSituationId: situationKotlin,
             tabId: tabId,
-            clearExisting: clearExisting
+            clearExisting: clearExisting,
+            skill: skill
         )
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleNotebookSnapshotSync(forClassId: classId)

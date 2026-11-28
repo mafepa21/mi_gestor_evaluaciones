@@ -10,6 +10,8 @@ struct DashboardInspectorContent: View {
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
     let onNewObservation: () -> Void
     let onClose: () -> Void
+    /// Para la lista «Sin mirar» (alumnos invisibles), que carga sus propios datos.
+    var bridge: KmpBridge? = nil
 
     var body: some View {
         ScrollView {
@@ -74,6 +76,18 @@ struct DashboardInspectorContent: View {
                 }
             case .injuryReturn(let studentId):
                 injuryReturnDetail(studentId: studentId)
+            case .unseen(let classId):
+                if let bridge {
+                    UnseenStudentsListView(
+                        bridge: bridge,
+                        classId: classId,
+                        className: snapshot.groupSummaries.first(where: { $0.classId == classId })?.groupName
+                            ?? bridge.classes.first(where: { $0.id == classId })?.name ?? "Grupo",
+                        onOpenStudent: { studentId in onOpenModule(.students, classId, studentId) }
+                    )
+                } else {
+                    unavailable("Sin datos")
+                }
             case .none:
                 unavailable("Elige una fila para ver su detalle.")
             }

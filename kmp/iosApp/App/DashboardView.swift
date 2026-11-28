@@ -18,6 +18,8 @@ struct DashboardView: View {
     @ObservedObject var dashboardStore: DashboardBridgeStore
     /// «Vuelve hoy» (lesiones con fecha) entra en Atención como fila extra.
     @ObservedObject private var injuryStore = StudentInjuryStore.shared
+    /// «Sin mirar» (alumnos invisibles): filas de Atención los viernes.
+    @ObservedObject private var unseenStore = UnseenStudentsStore.shared
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -120,7 +122,8 @@ struct DashboardView: View {
                     selection: inspectorSelection,
                     onOpenModule: openModuleResolved,
                     onNewObservation: performObservation,
-                    onClose: closeInspector
+                    onClose: closeInspector,
+                    bridge: bridge
                 )
                 .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
             }
@@ -234,7 +237,7 @@ struct DashboardView: View {
     }
 
     private func loadedContent(snapshot: DashboardSnapshot) -> some View {
-        let presentation = presentationCache.model(for: snapshot, extraItems: DashboardAttentionItem.injuryReturns(injuryStore.returningToday))
+        let presentation = presentationCache.model(for: snapshot, extraItems: DashboardAttentionItem.injuryReturns(injuryStore.returningToday) + DashboardAttentionItem.unseenGroups(unseenStore.summaries))
         return Group {
             if isClassroomMode {
                 DashboardClassroomView(
@@ -453,6 +456,8 @@ struct DashboardView: View {
             inspectorKey = "attendance_\(classId)"
         case .injuryReturn(let studentId):
             inspectorKey = "injury_return_\(studentId)"
+        case .unseen(let classId):
+            inspectorKey = "unseen_\(classId)"
         case .none:
             inspectorKey = "none"
         }
@@ -512,7 +517,7 @@ struct DashboardView: View {
 
     private func openInspectorForCurrentSnapshot() {
         guard let snapshot = dashboardStore.dashboardSnapshot else { return }
-        if let first = presentationCache.model(for: snapshot, extraItems: DashboardAttentionItem.injuryReturns(injuryStore.returningToday)).queue.first {
+        if let first = presentationCache.model(for: snapshot, extraItems: DashboardAttentionItem.injuryReturns(injuryStore.returningToday) + DashboardAttentionItem.unseenGroups(unseenStore.summaries)).queue.first {
             inspectorSelection = first.inspector
         } else if let firstSession = snapshot.todaySessions.first {
             inspectorSelection = .session(firstSession.id)

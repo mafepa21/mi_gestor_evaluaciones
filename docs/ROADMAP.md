@@ -41,6 +41,7 @@ Prioridad: alta.
   Pendiente: los quizzes no se autocorrigen. `QuizQuestionDraft` importa pregunta y opciones pero no la respuesta correcta, y `saveResponses` solo deriva nota para la rejilla de observacion 1-4 y la checklist proporcional. Faltan clave de respuestas, contrato de autoria en el DOCX, puntuacion por pregunta, versionado de la clave y derivacion local verificable. Detalle en `docs/importacion_documentos_sa.md`.
 - Asistencia: flujo diario rapido y consistente.
 - Alumnado: perfiles utiles, busqueda y datos relevantes.
+  Avance (2026-11-27): marcas «Fuerte» / «Necesita apoyo» por alumno y grupo (migración 52, Sync LAN) y criterio «Por nivel técnico» en «Agrupar automáticamente» con notas de técnica, comportamiento y liderazgo. Pendiente: QA en iPad y Mac con datos inventados; decidir si unir el generador «Equipos cooperativos (IA)», que duplica el reparto y no usa IA.
   Avance (2026-11-26): lesiones con fecha de fin, papel en clase y aviso «Vuelve hoy»; la marca `is_injured` pasa a derivarse de las fechas (migración 51). Pendiente fase 2: decidir si las notas de los días de lesión salen de la media.
   Avance: registro y seguimiento de medidas de respuesta educativa Nivel III/IV (Decreto 104/2018 + Orden 20/2019, CV) en la ficha de alumno de iOS/iPadOS y macOS, con badge en el Cuaderno y aviso determinista de revision anual, sin IA generativa ni contenido clinico persistido. Verificado con builds reales macOS e iOS Simulator (BUILD SUCCEEDED en ambos).
 - Planificacion: sesiones, situaciones de aprendizaje y continuidad docente.
@@ -57,6 +58,7 @@ Prioridad: alta.
   mediante el composer existente. Su carril fijo y línea temporal única quedan cubiertos por pruebas
   de proyección; se mantiene fuera de alcance la edición directa por drag & drop.
 - Dashboard: Radar docente proactivo para priorizar que pasa ahora, por que importa y que accion diaria ejecutar.
+  Avance (2026-11-27): «Alumnos invisibles»: los viernes, Atención avisa del alumnado sin ningún registro en 2 semanas por grupo; filtro «Sin mirar» en Alumnado. Pendiente: QA en iPad y decidir si «Visto» debe viajar por Sync LAN.
   Avance: las recargas por filtros del Dashboard se cancelan y debouncean para evitar tareas solapadas durante cambios rápidos de contexto.
   Avance: Dashboard macOS "Hoy" prioriza la clase actual o próxima, pendiente principal y acción recomendada antes que los paneles secundarios.
   Avance: Dashboard iOS/iPadOS y macOS fusionan Radar y cockpit diario en una unica entrada "Hoy"; se retira Radar del menu visible y el flujo queda centrado en acciones, sesiones, pendientes, riesgo y agenda.

@@ -16,6 +16,8 @@ enum DashboardInspectorSelection: Hashable {
     case attendance(classId: Int64)
     /// «Vuelve hoy»: su lesión terminó ayer (lesiones con fecha, migración 51).
     case injuryReturn(studentId: Int64)
+    /// «Sin mirar»: alumnado del grupo sin registros en 14 días lectivos (los viernes).
+    case unseen(classId: Int64)
 }
 
 // MARK: - Atención
@@ -595,6 +597,25 @@ extension DashboardAttentionItem {
                     title: "Ver ficha",
                     route: .module(.students, classId: nil, studentId: notice.studentId)
                 )
+            )
+        }
+    }
+}
+
+extension DashboardAttentionItem {
+    /// Los viernes, una fila por grupo con alumnado sin mirar. Pendiente, no riesgo:
+    /// es un recordatorio. La lista se abre en el inspector.
+    static func unseenGroups(_ summaries: [UnseenGroupSummary]) -> [DashboardAttentionItem] {
+        summaries.map { summary in
+            DashboardAttentionItem(
+                id: "unseen-\(summary.classId)",
+                kind: .pending,
+                title: summary.title,
+                detail: summary.detail,
+                classId: summary.classId,
+                studentId: nil,
+                inspector: .unseen(classId: summary.classId),
+                action: DashboardAttentionAction(title: "Ver lista", route: .inspector)
             )
         }
     }

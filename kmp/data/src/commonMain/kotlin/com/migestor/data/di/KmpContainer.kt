@@ -94,6 +94,9 @@ class KmpContainer(val driver: SqlDriver) {
     // Lesiones con fecha (migración 51). Viajan por Sync LAN con SchoolRecordsSync.
     val studentInjuryRepository: com.migestor.shared.injury.StudentInjuryRepository =
         com.migestor.data.repository.StudentInjuryRepositorySqlDelight(database)
+    // Marcas Fuerte / Necesita apoyo para grupos (migración 52). Viajan con SchoolRecordsSync.
+    val studentGroupMarkRepository: com.migestor.shared.workgroup.StudentGroupMarkRepository =
+        com.migestor.data.repository.StudentGroupMarkRepositorySqlDelight(database)
     val meetingRepository: MeetingRepository = MeetingRepositorySqlDelight(database)
     val plannerWeekPlanRepository: PlannerWeekPlanRepository = PlannerWeekPlanRepositorySqlDelight(database)
 
@@ -227,6 +230,15 @@ class KmpContainer(val driver: SqlDriver) {
     val studentInjuries = com.migestor.shared.injury.StudentInjuryUseCase(
         repository = studentInjuryRepository,
         newId = { com.migestor.shared.injury.StudentInjuryUseCase.randomId() },
+        today = {
+            kotlinx.datetime.Clock.System.now()
+                .toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date
+        },
+    )
+
+    // «Alumnos invisibles»: solo lectura, por lotes de grupo (Attention.sq).
+    val unseenStudents = com.migestor.shared.attention.UnseenStudentsUseCase(
+        repository = com.migestor.data.repository.UnseenStudentsRepositorySqlDelight(database, classesRepository),
         today = {
             kotlinx.datetime.Clock.System.now()
                 .toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date

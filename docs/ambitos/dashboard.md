@@ -26,3 +26,16 @@
 - Si el botón principal de AHORA se desactiva, el motivo va escrito debajo (`DashboardNowCard.primaryDisabledReason`, un solo texto), también como pista de VoiceOver y `.help` en Mac. No añadir un segundo aviso: ya lo pinta `content(_:state:)`.
 - Tope de Dynamic Type en `DashboardView.body`; en tamaños de accesibilidad la vista pasa a una columna.
 - `xcodebuild` reescribe `*.xcscheme`: restaurar antes de commitear.
+
+## Alumnos invisibles («Sin mirar», 2026-11-27)
+
+- Datos: `kmp/data/.../db/Attention.sq` (solo lectura) + `UnseenStudentsRepositorySqlDelight`; lógica en `kmp/shared/.../attention/`; puente `App/Bridge/KmpBridge+Attention.swift`; vista `App/UnseenStudentsListView.swift`.
+- «Hoy» › Atención solo los viernes, como filas `.pending` con inspector `.unseen(classId:)`. El cálculo se lanza sin `await` desde `loadDashboard` (`scheduleUnseenSummariesRefresh`): no hacer esperar a «Hoy».
+- `UnseenStudentsStore.version` sube con cada observación o «Visto» y vacía la caché por grupo; `publish` descarta un resultado calculado con una `version` vieja.
+- Alumnado del grupo = matrícula activa del curso del grupo (igual que `selectStudentsByClass`), no `class_students`.
+- Ventana: 14 días naturales sin contar los no lectivos del calendario (los fines de semana sí cuentan). En pantalla se dice «2 semanas», no «días lectivos».
+- Se cuenta desde lo más reciente entre el último registro y el alta en el grupo.
+- Las celdas del Cuaderno solo cuentan si tienen algo dentro (una celda borrada conserva su fila).
+- Privacidad: la marca de medida de apoyo es un rombo sin texto y se oculta con pantalla compartida (iPad) o más de una pantalla (Mac). La vista previa de «Hoy» ordena por días, no por medida.
+- No pasar `Map` ni `Set` de Kotlin a Swift: los no lectivos y los «Vistos» van como listas.
+- «Visto» es local (`UserDefaults`, clave `attention.seen.v1`), 7 días.

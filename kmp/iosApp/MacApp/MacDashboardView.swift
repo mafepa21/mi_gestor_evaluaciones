@@ -39,6 +39,8 @@ struct MacDashboardView: View {
     @ObservedObject var dashboardStore: DashboardBridgeStore
     /// «Vuelve hoy» (lesiones con fecha) entra en Atención como fila extra.
     @ObservedObject private var injuryStore = StudentInjuryStore.shared
+    /// «Sin mirar» (alumnos invisibles): filas de Atención los viernes.
+    @ObservedObject private var unseenStore = UnseenStudentsStore.shared
     @ObservedObject var backupStore: MacBackupStore
     let bootstrap: AppleBridgeBootstrap
     var onNavigate: (MacDashboardDestination) -> Void = { _ in }
@@ -132,7 +134,8 @@ struct MacDashboardView: View {
                 selection: inspectorSelection,
                 onOpenModule: openModule,
                 onNewObservation: { activeSheet = .observation(classId: activeClassId) },
-                onClose: closeInspector
+                onClose: closeInspector,
+                bridge: bridge
             )
             .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
         }
@@ -276,6 +279,7 @@ struct MacDashboardView: View {
     /// de Atención como una fila más, con la misma lógica que el resto.
     private var extraAttentionItems: [DashboardAttentionItem] {
         let injuryReturns = DashboardAttentionItem.injuryReturns(injuryStore.returningToday)
+            + DashboardAttentionItem.unseenGroups(unseenStore.summaries)
         guard let classId = attendancePendingClassId else { return injuryReturns }
         return [
             DashboardAttentionItem(

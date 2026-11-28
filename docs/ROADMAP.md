@@ -58,6 +58,7 @@ Prioridad: alta.
   mediante el composer existente. Su carril fijo y línea temporal única quedan cubiertos por pruebas
   de proyección; se mantiene fuera de alcance la edición directa por drag & drop.
 - Dashboard: Radar docente proactivo para priorizar que pasa ahora, por que importa y que accion diaria ejecutar.
+  Avance (2026-11-27): «Alumnos invisibles»: los viernes, Atención avisa del alumnado sin ningún registro en 2 semanas por grupo; filtro «Sin mirar» en Alumnado. Pendiente: QA en iPad y decidir si «Visto» debe viajar por Sync LAN.
   Avance: las recargas por filtros del Dashboard se cancelan y debouncean para evitar tareas solapadas durante cambios rápidos de contexto.
   Avance: Dashboard macOS "Hoy" prioriza la clase actual o próxima, pendiente principal y acción recomendada antes que los paneles secundarios.
   Avance: Dashboard iOS/iPadOS y macOS fusionan Radar y cockpit diario en una unica entrada "Hoy"; se retira Radar del menu visible y el flujo queda centrado en acciones, sesiones, pendientes, riesgo y agenda.

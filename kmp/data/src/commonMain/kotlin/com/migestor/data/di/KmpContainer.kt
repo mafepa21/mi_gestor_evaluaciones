@@ -236,6 +236,15 @@ class KmpContainer(val driver: SqlDriver) {
         },
     )
 
+    // «Alumnos invisibles»: solo lectura, por lotes de grupo (Attention.sq).
+    val unseenStudents = com.migestor.shared.attention.UnseenStudentsUseCase(
+        repository = com.migestor.data.repository.UnseenStudentsRepositorySqlDelight(database, classesRepository),
+        today = {
+            kotlinx.datetime.Clock.System.now()
+                .toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date
+        },
+    )
+
     /**
      * Borrado total: vacia todas las tablas por SQL, con la conexion que ya esta abierta.
      *

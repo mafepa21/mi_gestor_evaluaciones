@@ -261,6 +261,11 @@ struct StudentProfile360Sheet: View {
                         }
                     }
                 }
+
+                // «Alumnos invisibles»: último registro tuyo en este grupo.
+                if let classId = profile?.schoolClass?.id ?? classId, let student = currentStudent {
+                    LastContactLine(bridge: bridge, classId: classId, studentId: student.id)
+                }
             }
 
             if !dynamicTypeSize.isAccessibilitySize {

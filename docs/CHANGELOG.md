@@ -15,6 +15,18 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Alumnos invisibles («Sin mirar»)** (iPad y Mac): alumnado de un grupo sin ningún registro tuyo (nota, rúbrica, comentario o sello, observación, incidencia, nota de asistencia, «Tu valoración», nota del diario, prueba física o reunión con la familia) en 2 semanas, sin contar los no lectivos del calendario. Pasar lista sin escribir nada no cuenta. Los viernes, «Hoy» › Atención añade una fila por grupo («2º ESO B: 4 sin mirar en 2 semanas») y la lista se abre en el inspector con «Observación…», «Abrir ficha» y «Visto» (7 días, solo en ese aparato, con «Vistos hace poco» y «Mostrar de nuevo»). Alumnado suma el filtro «Sin mirar» (en Mac con columna «Último registro») y la ficha muestra el último registro en el grupo. El alumnado con medida de nivel III/IV sale primero con un rombo gris sin texto, que se oculta con la pantalla compartida o proyectada. Maqueta: `docs/maquetas/alumnos-invisibles/mockup/index.html`. Ticket: `docs/planes/ticket_alumnos_invisibles_2026-11-27.md`.
+
+### Data
+
+- `Attention.sq`: consultas de solo lectura por lotes de grupo para el último registro de cada tipo, la fecha de alta y la medida de apoyo. Sin tablas nuevas ni cambio de esquema. Lógica en `com.migestor.shared.attention` (`UnseenStudentsUseCase`).
+
+### Verification
+
+- Alumnos invisibles: `./gradlew :shared:desktopTest :data:desktopTest` (8 pruebas nuevas de reglas y caso de uso, 2 de consultas con SQLite real) OK: 230 y 272 pruebas, 0 fallos. `./scripts/verify_apple_builds.sh` OK (macOS e iOS simulador). `xcodebuild test -scheme MiGestorPlannerTests` (macOS): 853 pruebas, 1 fallo ajeno ya conocido (`testBachilleratoSA2BadmintonSessionsImportBothRoutes` lee un documento personal del Escritorio). Revisiones: `ui-reviewer` (maqueta, 13 hallazgos aplicados, incluida la privacidad de la marca de apoyo) y `reviewer` (código, 10 hallazgos aplicados). Sin QA manual en dispositivo.
+
+### Added
+
 - **Lesiones con fecha de fin** (iPad y Mac): la lesión deja de ser un sí/no. Hoja «Lesión» con desde/hasta o «sin fecha de fin», papel en clase (árbitro, cronometrador, ayudante de material, ficha teórica, otro), casilla «Justificante entregado» y nota corta sin datos médicos (`StudentInjurySheet`). La ficha del alumno y los inspectores de Asistencia (iPad y Mac) y Alumnado (Mac) muestran «Hasta el 12 dic · Árbitro», «Ha vuelto», «Editar» e historial (`StudentInjuryCard`). Asistencia pinta «Lesionado hasta el 12 dic · Árbitro». La lesión se quita sola el día siguiente al «hasta» y «Hoy» › Atención avisa «Vuelve hoy». Los interruptores rápidos de siempre siguen funcionando (crean una lesión desde hoy sin fecha de fin o marcan «ha vuelto»). Maqueta: `docs/maquetas/lesiones-con-fecha/mockup/index.html`. ADR: `kmp/docs/architecture/ADR-2026-11-26-lesiones-con-fecha.md`.
 
 ### Data

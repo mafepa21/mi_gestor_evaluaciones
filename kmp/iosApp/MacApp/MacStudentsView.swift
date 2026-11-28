@@ -70,6 +70,11 @@ struct MacStudentsView: View {
     @FocusState private var isSearchFocused: Bool
     @State private var debouncedSearchText = ""
     @State private var searchDebounceTask: Task<Void, Never>?
+    /// «Alumnos invisibles»: filas «Sin mirar» por alumno (grupo elegido o todos).
+    @State private var unseenByStudent: [Int64: UnseenStudentRow] = [:]
+    /// «Calculando…» o el aviso de error del filtro «Sin mirar».
+    @State private var unseenFilterNote: String?
+    @ObservedObject private var unseenStore = UnseenStudentsStore.shared
 
     private var filteredRows: [KmpBridge.MacStudentRowSnapshot] {
         let query = StudentListSearch.queryForList(liveText: store.searchText, settledText: debouncedSearchText)
@@ -85,6 +90,8 @@ struct MacStudentsView: View {
                     return row.isFollowUp
                 case "lesionados":
                     return row.isInjured
+                case "sin_mirar":
+                    return unseenByStudent[row.id] != nil
                 default:
                     return true
                 }
@@ -686,10 +693,32 @@ struct MacStudentsView: View {
                 Text("Sin curso").tag("sin_curso")
                 Text("Seguimiento").tag("seguimiento")
                 Text("Lesionados").tag("lesionados")
+                Text("Sin mirar").tag("sin_mirar")
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
+            .task(id: "\(store.trackingFilter)|\(selectedClassId ?? -1)|\(unseenStore.version)") {
+                guard store.trackingFilter == "sin_mirar" else { unseenFilterNote = nil; return }
+                unseenFilterNote = "Calculando…"
+                let classIds = selectedClassId.map { [$0] } ?? studentsBridgeStore.classes.map(\.id)
+                var rows: [Int64: UnseenStudentRow] = [:]
+                var failed = 0
+                for classId in classIds {
+                    do {
+                        for row in try await bridge.unseenStudents(classId: classId).unseen where rows[row.studentId] == nil {
+                            rows[row.studentId] = row
+                        }
+                    } catch {
+                        failed += 1
+                    }
+                    // Cambio de grupo o de filtro a mitad: no se pinta un resultado a medias.
+                    if Task.isCancelled { return }
+                }
+                unseenByStudent = rows
+                unseenFilterNote = failed > 0 ? "No se pudo calcular \(failed) grupo(s)." : nil
+            }
+            .help(unseenFilterNote ?? "")
     }
 
     @ViewBuilder
@@ -862,6 +891,23 @@ struct MacStudentsView: View {
                     }
                     .width(min: 80, ideal: 100)
                 }
+                // «Sin mirar»: cuánto lleva y qué fue lo último (solo con ese filtro).
+                if store.trackingFilter == "sin_mirar" {
+                    TableColumn("Último registro") { row in
+                        if let unseen = unseenByStudent[row.id] {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Label(unseen.daysText, systemImage: "clock.badge.exclamationmark")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(MacAppStyle.warningTint)
+                                Text(unseen.lastDescription)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
+                    .width(min: 160, ideal: 220)
+                }
                 // Solo se pinta lo que se sale de lo normal; lo normal queda vacío.
                 TableColumn("Seguimiento") { row in
                     if row.isInjured || row.isFollowUp {
@@ -1019,6 +1065,11 @@ struct MacStudentsView: View {
                                 .buttonStyle(.bordered)
                             }
                         }
+                    }
+
+                    if let classId = selectedRow.classId ?? selectedClassId {
+                        // «Alumnos invisibles»: último registro tuyo en este grupo.
+                        LastContactLine(bridge: bridge, classId: classId, studentId: selectedRow.id)
                     }
 
                     inspectorSection("Condición física") {

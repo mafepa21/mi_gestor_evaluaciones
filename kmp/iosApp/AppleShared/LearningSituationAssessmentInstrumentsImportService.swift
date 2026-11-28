@@ -731,6 +731,16 @@ struct LearningSituationAssessmentInstrumentsImportService {
             visualKey = "hockey.push_flick"
         } else if normTitle.contains("tiro a porteria") && (normAll.contains("portero") || normAll.contains("esquina")) {
             visualKey = "hockey.shot_on_goal"
+        } else if normTitle.contains("motor adaptability") || normTitle.contains("adaptabilidad motriz") {
+            visualKey = "coop.motor_adaptability"
+        } else if normTitle.contains("tactical design") || normTitle.contains("diseno tactico") {
+            visualKey = "coop.tactical_roles"
+        } else if normTitle.contains("inclusive dialogue") || normTitle.contains("dialogo inclusivo") {
+            visualKey = "coop.inclusive_dialogue"
+        } else if normTitle.contains("rally") && (normTitle.contains("execution") || normTitle.contains("ejecucion")) {
+            visualKey = "coop.rally_execution"
+        } else if normTitle.contains("challenge creation") || normTitle.contains("creacion de un reto") || normTitle.contains("creacion del reto") {
+            visualKey = "coop.challenge_creation"
         } else {
             visualKey = nil
         }

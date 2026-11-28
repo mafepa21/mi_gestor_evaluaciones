@@ -506,6 +506,89 @@ enum RubricTemplateCatalog {
                 )
             ]
         ),
+        // 10. Retos cooperativos: dibujos y cronómetro
+        RubricTemplateItem(
+            id: "ef-retos-cooperativos-visual",
+            title: "Retos cooperativos · Rúbrica visual con cronómetro (1º BAC)",
+            category: .sportsAndGames,
+            subject: "Educación Física",
+            stage: "1º Bachillerato",
+            description: "Challenge Yourself. Retos cooperativos en equipo: adaptación motriz, diseño táctico con liderazgo compartido, diálogo inclusivo, rally cronometrado (cortes de 90, 120 y 150 s) y creación de un reto propio. Dibujos por nivel en los criterios sin tiempo.",
+            criteria: [
+                RubricTemplateCriterion(
+                    id: "c1",
+                    name: "🤸 Motor Adaptability under Constraints (2.1)",
+                    weight: 15.0 / 90.0,
+                    levels: [
+                        RubricTemplateLevel(id: "c1_l1", order: 1, name: "Level 1 (Beginning)", points: 1, description: "Moves erratically and repeats faults (touching the floor, breaking links) without adjusting to the rule."),
+                        RubricTemplateLevel(id: "c1_l2", order: 2, name: "Level 2 (Developing)", points: 2, description: "Solves basic challenges but needs repeated trials to balance or synchronise."),
+                        RubricTemplateLevel(id: "c1_l3", order: 3, name: "Level 3 (Proficient)", points: 3, description: "Adapts footwork, posture and forces and clears the constraint smoothly."),
+                        RubricTemplateLevel(id: "c1_l4", order: 4, name: "Level 4 (Advanced)", points: 4, description: "Anticipates the team's balance shifts with maximum efficiency and keeps peers safe.")
+                    ],
+                    visualKey: "coop.motor_adaptability"
+                ),
+                RubricTemplateCriterion(
+                    id: "c2",
+                    name: "💡 Tactical Design & Shared Leadership (3.2)",
+                    weight: 15.0 / 90.0,
+                    levels: [
+                        RubricTemplateLevel(id: "c2_l1", order: 1, name: "Level 1 (Beginning)", points: 1, description: "Tries to solve the challenge alone and ignores the assigned role."),
+                        RubricTemplateLevel(id: "c2_l2", order: 2, name: "Level 2 (Developing)", points: 2, description: "Follows others passively and proposes nothing when the team gets stuck."),
+                        RubricTemplateLevel(id: "c2_l3", order: 3, name: "Level 3 (Proficient)", points: 3, description: "Proposes a viable idea in the 60 s of planning and fulfils the role."),
+                        RubricTemplateLevel(id: "c2_l4", order: 4, name: "Level 4 (Advanced)", points: 4, description: "Leads the team decision, uses everyone's strengths and adjusts the plan after errors.")
+                    ],
+                    visualKey: "coop.tactical_roles"
+                ),
+                RubricTemplateCriterion(
+                    id: "c3",
+                    name: "🤝 Inclusive Dialogue & Conflict Resolution (3.3)",
+                    weight: 15.0 / 90.0,
+                    levels: [
+                        RubricTemplateLevel(id: "c3_l1", order: 1, name: "Level 1 (Beginning)", points: 1, description: "Talks over or dismisses teammates and leaves out less skilled peers."),
+                        RubricTemplateLevel(id: "c3_l2", order: 2, name: "Level 2 (Developing)", points: 2, description: "Respects others when prompted but leaves some aside; needs the teacher to settle disagreements."),
+                        RubricTemplateLevel(id: "c3_l3", order: 3, name: "Level 3 (Proficient)", points: 3, description: "Settles disagreements calmly and adapts roles so everybody takes part."),
+                        RubricTemplateLevel(id: "c3_l4", order: 4, name: "Level 4 (Advanced)", points: 4, description: "Mediates conflicts, gives everyone a voice and a role and challenges stereotypes.")
+                    ],
+                    visualKey: "coop.inclusive_dialogue"
+                ),
+                RubricTemplateCriterion(
+                    id: "c4",
+                    name: "⏱️ Rally Official Time · cronómetro (2.1)",
+                    weight: 10.0 / 90.0,
+                    levels: [
+                        RubricTemplateLevel(id: "c4_l1", order: 1, name: "Level 1 (Beginning)", points: 1, description: "150 s or more, or the team does not finish the three stations."),
+                        RubricTemplateLevel(id: "c4_l2", order: 2, name: "Level 2 (Developing)", points: 2, description: "Between 120 and 150 s."),
+                        RubricTemplateLevel(id: "c4_l3", order: 3, name: "Level 3 (Proficient)", points: 3, description: "Between 90 and 120 s."),
+                        RubricTemplateLevel(id: "c4_l4", order: 4, name: "Level 4 (Advanced)", points: 4, description: "Under 90 s.")
+                    ],
+                    timingConfig: "lower;90.0;120.0;150.0"
+                ),
+                RubricTemplateCriterion(
+                    id: "c5",
+                    name: "🏁 Rally Execution: Transitions & Penalties (2.1 · 3.3)",
+                    weight: 15.0 / 90.0,
+                    levels: [
+                        RubricTemplateLevel(id: "c5_l1", order: 1, name: "Level 1 (Beginning)", points: 1, description: "Three or more penalties, chaotic transitions and blame after mistakes."),
+                        RubricTemplateLevel(id: "c5_l2", order: 2, name: "Level 2 (Developing)", points: 2, description: "Two penalties and slow transitions; the team waits to restart."),
+                        RubricTemplateLevel(id: "c5_l3", order: 3, name: "Level 3 (Proficient)", points: 3, description: "One penalty at most, quick transitions and the penalty done together with positive language."),
+                        RubricTemplateLevel(id: "c5_l4", order: 4, name: "Level 4 (Advanced)", points: 4, description: "No penalties, transitions planned in advance and constant encouragement under the clock.")
+                    ],
+                    visualKey: "coop.rally_execution"
+                ),
+                RubricTemplateCriterion(
+                    id: "c6",
+                    name: "🧩 Cooperative Challenge Creation (3.2)",
+                    weight: 20.0 / 90.0,
+                    levels: [
+                        RubricTemplateLevel(id: "c6_l1", order: 1, name: "Level 1 (Beginning)", points: 1, description: "Does not design a challenge or copies one without changes; no safety rule."),
+                        RubricTemplateLevel(id: "c6_l2", order: 2, name: "Level 2 (Developing)", points: 2, description: "Designs a challenge with unclear rules or one that a single person could solve."),
+                        RubricTemplateLevel(id: "c6_l3", order: 3, name: "Level 3 (Proficient)", points: 3, description: "Designs a challenge that needs the whole team, with clear rules, a safety rule and a success criterion, and explains it to another team."),
+                        RubricTemplateLevel(id: "c6_l4", order: 4, name: "Level 4 (Advanced)", points: 4, description: "Original and inclusive challenge with difficulty levels; tests it, adjusts it after watching another team try it and leads it safely.")
+                    ],
+                    visualKey: "coop.challenge_creation"
+                )
+            ]
+        ),
     ]
 
     /// Genera la representación TSV que entiende `KmpBridge.importRubricDraft(tsv:)`.

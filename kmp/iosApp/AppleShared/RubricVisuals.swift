@@ -21,6 +21,16 @@ enum RubricVisuals {
                summary: "Pase raso firme contra la pared y recepción amortiguada tras el rebote."),
         Option(key: "hockey.shot_on_goal", title: "Hockey · Vuelta al slalom y parada en línea de inicio",
                summary: "Regreso en zigzag por los 4 conos y detención controlada antes de la línea de salida."),
+        Option(key: "coop.motor_adaptability", title: "Retos cooperativos · Adaptación motriz",
+               summary: "Equilibrio y apoyo del equipo sobre la colchoneta o el banco sin tocar el suelo."),
+        Option(key: "coop.tactical_roles", title: "Retos cooperativos · Diseño táctico y liderazgo compartido",
+               summary: "Aportación del alumno a la decisión del equipo y reparto de roles."),
+        Option(key: "coop.inclusive_dialogue", title: "Retos cooperativos · Diálogo inclusivo",
+               summary: "Círculo de diálogo donde todas las personas participan y los conflictos se resuelven."),
+        Option(key: "coop.rally_execution", title: "Retos cooperativos · Ejecución del rally",
+               summary: "Recorrido de tres estaciones con transiciones y penalizaciones hasta la meta."),
+        Option(key: "coop.challenge_creation", title: "Retos cooperativos · Creación de un reto",
+               summary: "Diseño de un reto con recorrido, reglas, seguridad y niveles de dificultad."),
     ]
 
     static func isKnown(_ key: String?) -> Bool {
@@ -59,6 +69,12 @@ enum RubricVisuals {
         case startLine
         /// Cabeza del stick abajo a la derecha: cara plana (bien) o redondeada (mal).
         case stick(flatFace: Bool)
+        /// Colchoneta o banco (rectángulo claro con borde).
+        case mat(CGRect)
+        /// Contacto o cuerda entre personas (trazo blanco grueso, puede ser ondulado).
+        case link(Path)
+        /// Flecha de intención o aportación (de un punto a otro).
+        case arrow(CGPoint, CGPoint)
     }
 
     struct Scene {
@@ -107,6 +123,27 @@ enum RubricVisuals {
         return path
     }
 
+    // MARK: - Retos cooperativos
+
+    private static let coopMat = CGRect(x: 48, y: 30, width: 72, height: 36)
+    private static func wavy(_ a: CGPoint, _ b: CGPoint) -> Path {
+        var path = Path()
+        path.move(to: a)
+        let mid = p((a.x + b.x) / 2, (a.y + b.y) / 2)
+        path.addQuadCurve(to: mid, control: p(mid.x - 4, mid.y - 8))
+        path.addQuadCurve(to: b, control: p(mid.x + 4, mid.y + 8))
+        return path
+    }
+    /// Círculo de 5 personas alrededor de (80, 48), radio 26; el índice 0 queda arriba.
+    private static let circle5: [CGPoint] = [p(80, 22), p(104.7, 40), p(95.3, 69), p(64.7, 69), p(55.3, 40)]
+    private static func others(_ points: [CGPoint]) -> [Mark] { points.map { Mark.player($0, isStudent: false) } }
+    private static var circleLinks: [Mark] {
+        circle5.indices.map { i in Mark.link(line(circle5[i], circle5[(i + 1) % circle5.count])) }
+    }
+    private static let rallyCones: [Mark] = [.cone(p(52, 48)), .cone(p(88, 48)), .cone(p(120, 48))]
+    private static let finishZone: Mark = .target(CGRect(x: 134, y: 30, width: 16, height: 36))
+    private static let coopCentre: Mark = .target(CGRect(x: 70, y: 40, width: 20, height: 16))
+
     private static let catalog: [String: [Scene]] = [
         "hockey.dribble_flat_face": [
             Scene(marks: [.startLine, .run(line(p(18, 48), p(44, 48))), .ball(p(46, 54)), .miss(p(60, 58)),
@@ -139,6 +176,66 @@ enum RubricVisuals {
                   [.run(slalomBack), .ball(p(25, 48)), .player(p(32, 48), isStudent: true)]),
             Scene(marks: [.startLine, .target(CGRect(x: 20, y: 36, width: 14, height: 24))] + cones +
                   [.run(slalomBack), .ball(p(24, 48)), .player(p(28, 48), isStudent: true), .stick(flatFace: true)]),
+        ],
+        "coop.motor_adaptability": [
+            Scene(marks: [.mat(coopMat)] + others([p(62, 42), p(82, 42), p(102, 42), p(82, 56)]) +
+                  [.miss(p(34, 76)), .player(p(30, 66), isStudent: true)]),
+            Scene(marks: [.mat(coopMat), .link(wavy(p(56, 62), p(66, 44)))] + others([p(66, 40), p(90, 40), p(108, 52)]) +
+                  [.player(p(54, 62), isStudent: true)]),
+            Scene(marks: [.mat(coopMat)] + others([p(62, 48), p(80, 48), p(98, 48)]) +
+                  [.player(p(110, 48), isStudent: true)]),
+            // Nivel 4: el alumno sostiene el equilibrio del grupo (enlaces visibles con cada compañero).
+            Scene(marks: [.mat(coopMat),
+                          .link(line(p(84, 40), p(60, 40))), .link(line(p(84, 40), p(108, 40))), .link(line(p(84, 40), p(84, 58)))] +
+                  others([p(60, 40), p(108, 40), p(84, 58)]) +
+                  [.player(p(84, 40), isStudent: true)]),
+        ],
+        "coop.tactical_roles": [
+            Scene(marks: [coopCentre] + others([circle5[0], circle5[1], circle5[2], circle5[4]]) +
+                  [.miss(p(30, 70)), .player(p(22, 80), isStudent: true)]),
+            Scene(marks: [coopCentre] + others([circle5[0], circle5[1], circle5[2], circle5[4]]) +
+                  [.player(p(24, 22), isStudent: true)]),
+            Scene(marks: [coopCentre, .arrow(p(64, 62), p(76, 54))] + others([circle5[0], circle5[1], circle5[2], circle5[4]]) +
+                  [.player(circle5[3], isStudent: true)]),
+            Scene(marks: [coopCentre, .arrow(p(80, 44), p(80, 29)), .arrow(p(84, 48), p(97, 42)),
+                          .arrow(p(84, 52), p(91, 62)), .arrow(p(76, 48), p(62, 44))] +
+                  others([circle5[0], circle5[1], circle5[2], circle5[4]]) +
+                  [.player(p(80, 48), isStudent: true)]),
+        ],
+        "coop.inclusive_dialogue": [
+            Scene(marks: others([circle5[1], circle5[2], circle5[3]]) +
+                  [.player(circle5[0], isStudent: true), .miss(p(132, 74)), .player(p(144, 80), isStudent: false)]),
+            Scene(marks: others([circle5[1], circle5[2], circle5[3], p(20, 26)]) +
+                  [.player(circle5[0], isStudent: true)]),
+            Scene(marks: others(Array(circle5[1...])) + [.player(circle5[0], isStudent: true)]),
+            Scene(marks: circleLinks + others(Array(circle5[1...])) + [.player(circle5[0], isStudent: true)]),
+        ],
+        "coop.rally_execution": [
+            Scene(marks: [.startLine, finishZone] + rallyCones +
+                  [.run(line(p(18, 48), p(84, 48))), .miss(p(40, 34)), .miss(p(66, 62)), .miss(p(100, 34)),
+                   .player(p(90, 48), isStudent: true)]),
+            Scene(marks: [.startLine, finishZone] + rallyCones +
+                  [.run(line(p(18, 48), p(112, 48))), .miss(p(70, 34)), .miss(p(100, 62)),
+                   .player(p(118, 48), isStudent: true)]),
+            Scene(marks: [.startLine, finishZone] + rallyCones +
+                  [.run(line(p(18, 48), p(140, 48))), .miss(p(70, 62)),
+                   .player(p(142, 48), isStudent: true)]),
+            Scene(marks: [.startLine, finishZone] + rallyCones +
+                  [.run(line(p(18, 48), p(140, 48))), .player(p(142, 48), isStudent: true)]),
+        ],
+        "coop.challenge_creation": [
+            Scene(marks: [.miss(p(84, 48)), .player(p(30, 48), isStudent: true)]),
+            Scene(marks: [.cone(p(44, 24)), .cone(p(120, 30)), .cone(p(70, 74)), .cone(p(132, 72)),
+                          .player(p(86, 50), isStudent: true)]),
+            Scene(marks: [.startLine, .target(CGRect(x: 132, y: 34, width: 16, height: 28)),
+                          .run(line(p(18, 48), p(50, 48), p(80, 62), p(110, 40), p(132, 48))),
+                          .cone(p(50, 38)), .cone(p(80, 52)), .cone(p(110, 50)),
+                          .player(p(18, 48), isStudent: true)]),
+            Scene(marks: [.startLine, .target(CGRect(x: 132, y: 30, width: 16, height: 36)),
+                          .run(line(p(18, 48), p(40, 30), p(132, 30))), .run(line(p(18, 48), p(40, 66), p(132, 66))),
+                          .cone(p(70, 40)), .cone(p(100, 40)), .cone(p(70, 56)), .cone(p(100, 56)),
+                          .player(p(86, 30), isStudent: true), .player(p(60, 66), isStudent: false),
+                          .player(p(110, 66), isStudent: false)]),
         ],
     ]
 }
@@ -236,6 +333,22 @@ struct RubricVisualSceneView: View {
             linePath.addLine(to: CGPoint(x: 18, y: 82))
             context.stroke(linePath, with: .color(.white.opacity(0.9)),
                            style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [4, 3]))
+        case let .mat(rect):
+            context.fill(Path(roundedRect: rect, cornerRadius: 4), with: .color(.white.opacity(0.35)))
+            context.stroke(Path(roundedRect: rect, cornerRadius: 4), with: .color(.white), lineWidth: 1.4)
+        case let .link(path):
+            context.stroke(path, with: .color(.white), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+        case let .arrow(from, to):
+            var shaft = Path()
+            shaft.move(to: from)
+            shaft.addLine(to: to)
+            let angle = atan2(to.y - from.y, to.x - from.x)
+            for delta in [CGFloat.pi * 0.85, -CGFloat.pi * 0.85] {
+                shaft.move(to: to)
+                shaft.addLine(to: CGPoint(x: to.x + 6 * cos(angle + delta), y: to.y + 6 * sin(angle + delta)))
+            }
+            context.stroke(shaft, with: .color(.white),
+                           style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
         case let .stick(flatFace):
             drawStick(flatFace: flatFace, in: &context)
         }

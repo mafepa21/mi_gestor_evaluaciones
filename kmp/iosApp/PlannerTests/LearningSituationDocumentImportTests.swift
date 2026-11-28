@@ -1672,6 +1672,50 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         }
     }
 
+    func testCooperativeChallengeCriteriaGetVisualKeysAndStopwatch() {
+        let service = LearningSituationAssessmentInstrumentsImportService.self
+        let cases: [(String, String?)] = [
+            ("🤸 Motor Adaptability under Constraints (2.1)", "coop.motor_adaptability"),
+            ("💡 Tactical Design & Shared Leadership (3.2)", "coop.tactical_roles"),
+            ("🤝 Inclusive Dialogue & Conflict Resolution (3.3)", "coop.inclusive_dialogue"),
+            ("⏱️ Rally Official Time · cronómetro (2.1)", nil),
+            ("🏁 Rally Execution: Transitions & Penalties (2.1 · 3.3)", "coop.rally_execution"),
+            ("🧩 Cooperative Challenge Creation (3.2)", "coop.challenge_creation"),
+            ("Slalom de ida en 4 conos (30 cm) con cara plana", "hockey.dribble_flat_face"),
+            ("Pase push a la pared y control tras rebote", "hockey.push_flick"),
+            ("Vuelta al slalom y finalización antes de la línea de inicio", "hockey.shot_on_goal"),
+        ]
+        for (title, expected) in cases {
+            XCTAssertEqual(service.inferCriterionPresentation(title: title, descriptors: []).visualKey, expected, title)
+        }
+
+        let stopwatch = service.inferCriterionPresentation(
+            title: "⏱️ Rally Official Time · cronómetro (2.1)",
+            descriptors: [
+                "150 s or more, or the team does not finish the three stations.",
+                "Between 120 and 150 s.",
+                "Between 90 and 120 s.",
+                "Under 90 s."
+            ]
+        )
+        XCTAssertNil(stopwatch.visualKey)
+        XCTAssertEqual(stopwatch.timingConfig, "lower;90.0;120.0;150.0")
+    }
+
+    func testCooperativeChallengeVisualsHaveFourScenesPerKey() {
+        for key in ["coop.motor_adaptability", "coop.tactical_roles", "coop.inclusive_dialogue",
+                    "coop.rally_execution", "coop.challenge_creation"] {
+            XCTAssertTrue(RubricVisuals.isKnown(key), key)
+            for rank in 0..<4 {
+                XCTAssertNotNil(RubricVisuals.scene(key: key, rank: rank), "\(key) nivel \(rank + 1)")
+            }
+            XCTAssertNil(RubricVisuals.scene(key: key, rank: 4), key)
+        }
+        let template = RubricTemplateCatalog.templates.first { $0.id == "ef-retos-cooperativos-visual" }
+        XCTAssertEqual(template?.criteria.count, 6)
+        XCTAssertEqual(template?.criteria.map(\.weight).reduce(0, +) ?? 0, 1.0, accuracy: 0.0001)
+    }
+
     private func makeAssessmentInstrumentDocx() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("assessment-instrument-docx-\(UUID().uuidString)", isDirectory: true)

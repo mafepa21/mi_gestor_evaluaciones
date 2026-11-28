@@ -27,7 +27,7 @@ final class RubricFamilyPDFAndCatalogTests: XCTestCase {
                     XCTAssertEqual(level.order, idx + 1, "El orden del nivel debe coincidir con su posición (1 a 4)")
                     XCTAssertEqual(level.points, idx + 1, "Los puntos del nivel deben coincidir con su orden (1 a 4)")
                     XCTAssertFalse(level.description.isEmpty, "La descripción del nivel no debe estar vacía")
-                    XCTAssertTrue(level.name.contains("Nivel \(idx + 1)"), "El nombre debe identificar el Nivel \(idx + 1)")
+                    XCTAssertTrue(level.name.contains("Nivel \(idx + 1)") || level.name.contains("Level \(idx + 1)"), "El nombre debe identificar el Nivel \(idx + 1)")
                 }
             }
         }

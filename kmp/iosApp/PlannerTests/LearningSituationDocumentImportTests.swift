@@ -117,6 +117,55 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertFalse(draft.warnings.contains { $0.contains("No se ha podido interpretar") })
     }
 
+    private func tableXML(_ rows: [[String]]) -> String {
+        let body = rows.map { row in
+            "<w:tr>" + row.map { "<w:tc><w:p><w:r><w:t xml:space=\"preserve\">\($0)</w:t></w:r></w:p></w:tc>" }.joined() + "</w:tr>"
+        }.joined()
+        return "<w:tbl>\(body)</w:tbl>"
+    }
+
+    /// Un instrumento de observación con varias tablas repetía `obs_i0`… y el id del ítem
+    /// chocaba con UNIQUE al crear la columna en el Cuaderno.
+    func testObservationInstrumentWithSeveralTablesGetsUniqueFieldKeys() throws {
+        let body = [
+            paragraph("1. Teacher observation grid - CE 2.1 - 20%"),
+            tableXML([["Indicador", "1", "2", "3", "4"], ["Postura", "a", "b", "c", "d"], ["Equilibrio", "a", "b", "c", "d"]]),
+            tableXML([["Indicador", "1", "2", "3", "4"], ["Diálogo", "a", "b", "c", "d"], ["Roles", "a", "b", "c", "d"]]),
+        ].joined(separator: "\n")
+        let docxURL = try makeDocx(named: "observacion-varias-tablas", body: body)
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: Data(contentsOf: docxURL)
+        )
+        let instrument = try XCTUnwrap(draft.instruments.first)
+
+        XCTAssertEqual(instrument.observationFields.map(\.title), ["Postura", "Equilibrio", "Diálogo", "Roles"])
+        XCTAssertEqual(instrument.observationFields.compactMap(\.key), ["obs_i0", "obs_i1", "obs_i2", "obs_i3"])
+    }
+
+    /// Dos rejillas sesión × indicador en el mismo instrumento siguen la numeración de
+    /// sesiones y conservan la forma `obs_s<N>_i<M>` que agrupa la nota en KMP.
+    func testSessionGridsInSeveralTablesContinueSessionNumbering() throws {
+        let header = ["Alumno/a", "Momento", "Postura", "Diálogo", "Nota (1-4)"]
+        let body = [
+            paragraph("1. Teacher observation grid - CE 2.1 - 20%"),
+            tableXML([header, ["", "U03", "", "", ""], ["", "U04", "", "", ""]]),
+            tableXML([header, ["", "U05", "", "", ""]]),
+        ].joined(separator: "\n")
+        let docxURL = try makeDocx(named: "observacion-sesiones-varias-tablas", body: body)
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: Data(contentsOf: docxURL)
+        )
+        let keys = try XCTUnwrap(draft.instruments.first).observationFields.compactMap(\.key)
+
+        XCTAssertEqual(keys, ["obs_s0_i0", "obs_s0_i1", "obs_s1_i0", "obs_s1_i1", "obs_s2_i0", "obs_s2_i1"])
+    }
+
     func testSeveralWordDocumentsMergeIntoOneReview() throws {
         let instrumentos = try makeDocx(named: "instrumentos", body: [
             paragraph("1. Rúbrica de juego - CE 2.2 - 100%"),
@@ -1621,6 +1670,50 @@ final class LearningSituationDocumentImportTests: XCTestCase {
             XCTAssertEqual(draft.routeVariants[.longFirst]?.count, 7)
             XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.allSatisfy { !$0.title.isEmpty && !$0.objective.isEmpty })
         }
+    }
+
+    func testCooperativeChallengeCriteriaGetVisualKeysAndStopwatch() {
+        let service = LearningSituationAssessmentInstrumentsImportService.self
+        let cases: [(String, String?)] = [
+            ("🤸 Motor Adaptability under Constraints (2.1)", "coop.motor_adaptability"),
+            ("💡 Tactical Design & Shared Leadership (3.2)", "coop.tactical_roles"),
+            ("🤝 Inclusive Dialogue & Conflict Resolution (3.3)", "coop.inclusive_dialogue"),
+            ("⏱️ Rally Official Time · cronómetro (2.1)", nil),
+            ("🏁 Rally Execution: Transitions & Penalties (2.1 · 3.3)", "coop.rally_execution"),
+            ("🧩 Cooperative Challenge Creation (3.2)", "coop.challenge_creation"),
+            ("Slalom de ida en 4 conos (30 cm) con cara plana", "hockey.dribble_flat_face"),
+            ("Pase push a la pared y control tras rebote", "hockey.push_flick"),
+            ("Vuelta al slalom y finalización antes de la línea de inicio", "hockey.shot_on_goal"),
+        ]
+        for (title, expected) in cases {
+            XCTAssertEqual(service.inferCriterionPresentation(title: title, descriptors: []).visualKey, expected, title)
+        }
+
+        let stopwatch = service.inferCriterionPresentation(
+            title: "⏱️ Rally Official Time · cronómetro (2.1)",
+            descriptors: [
+                "150 s or more, or the team does not finish the three stations.",
+                "Between 120 and 150 s.",
+                "Between 90 and 120 s.",
+                "Under 90 s."
+            ]
+        )
+        XCTAssertNil(stopwatch.visualKey)
+        XCTAssertEqual(stopwatch.timingConfig, "lower;90.0;120.0;150.0")
+    }
+
+    func testCooperativeChallengeVisualsHaveFourScenesPerKey() {
+        for key in ["coop.motor_adaptability", "coop.tactical_roles", "coop.inclusive_dialogue",
+                    "coop.rally_execution", "coop.challenge_creation"] {
+            XCTAssertTrue(RubricVisuals.isKnown(key), key)
+            for rank in 0..<4 {
+                XCTAssertNotNil(RubricVisuals.scene(key: key, rank: rank), "\(key) nivel \(rank + 1)")
+            }
+            XCTAssertNil(RubricVisuals.scene(key: key, rank: 4), key)
+        }
+        let template = RubricTemplateCatalog.templates.first { $0.id == "ef-retos-cooperativos-visual" }
+        XCTAssertEqual(template?.criteria.count, 6)
+        XCTAssertEqual(template?.criteria.map(\.weight).reduce(0, +) ?? 0, 1.0, accuracy: 0.0001)
     }
 
     private func makeAssessmentInstrumentDocx() throws -> URL {

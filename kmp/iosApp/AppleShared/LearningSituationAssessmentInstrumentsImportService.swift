@@ -731,6 +731,16 @@ struct LearningSituationAssessmentInstrumentsImportService {
             visualKey = "hockey.push_flick"
         } else if normTitle.contains("tiro a porteria") && (normAll.contains("portero") || normAll.contains("esquina")) {
             visualKey = "hockey.shot_on_goal"
+        } else if normTitle.contains("motor adaptability") || normTitle.contains("adaptabilidad motriz") {
+            visualKey = "coop.motor_adaptability"
+        } else if normTitle.contains("tactical design") || normTitle.contains("diseno tactico") {
+            visualKey = "coop.tactical_roles"
+        } else if normTitle.contains("inclusive dialogue") || normTitle.contains("dialogo inclusivo") {
+            visualKey = "coop.inclusive_dialogue"
+        } else if normTitle.contains("rally") && (normTitle.contains("execution") || normTitle.contains("ejecucion")) {
+            visualKey = "coop.rally_execution"
+        } else if normTitle.contains("challenge creation") || normTitle.contains("creacion de un reto") || normTitle.contains("creacion del reto") {
+            visualKey = "coop.challenge_creation"
         } else {
             visualKey = nil
         }
@@ -1193,21 +1203,44 @@ struct LearningSituationAssessmentInstrumentsImportService {
 
     private func makeObservationFields(kind: AssessmentInstrumentKind, tables: [[[String]]]) -> [ObservationFieldDraft] {
         guard kind == .teacherObservation || kind == .observationGrid else { return [] }
-        return tables.flatMap { table -> [ObservationFieldDraft] in
+        // Las claves deben ser únicas en todo el instrumento: el id del ítem es
+        // `template_<columna>_<clave>` y una clave repetida rompe el UNIQUE al crear la
+        // columna. Antes cada tabla numeraba desde 0. Ahora la numeración sigue entre tablas
+        // (`obs_i<n>` continuo; en rejillas sesión × indicador, la sesión se desplaza) y se
+        // mantiene la forma `obs_s<N>_i<M>` que agrupa la nota en KMP. Con una sola tabla
+        // las claves no cambian.
+        var nextGenericIndex = 0
+        var sessionOffset = 0
+        var fields: [ObservationFieldDraft] = []
+        for table in tables {
             if let sessionFields = sessionIndicatorObservationFields(from: table) {
-                return sessionFields
+                var maxSession = -1
+                for var field in sessionFields {
+                    if let key = field.key,
+                       key.range(of: #"^obs_s\d+_i\d+$"#, options: .regularExpression) != nil {
+                        let parts = key.dropFirst("obs_s".count).components(separatedBy: "_i")
+                        if parts.count == 2, let session = Int(parts[0]) {
+                            maxSession = max(maxSession, session)
+                            field.key = "obs_s\(session + sessionOffset)_i\(parts[1])"
+                        }
+                    }
+                    fields.append(field)
+                }
+                sessionOffset += maxSession + 1
+                continue
             }
             let header = table.first ?? []
             let scale = header.dropFirst().filter { !$0.isEmpty }.joined(separator: " / ")
-            let fieldTitles = observationFieldTitles(from: table)
-            return fieldTitles.enumerated().map { index, title in
-                ObservationFieldDraft(
+            for title in observationFieldTitles(from: table) {
+                fields.append(ObservationFieldDraft(
                     title: title,
                     scaleLabel: scale.isEmpty ? "1-4" : scale,
-                    key: "obs_i\(index)"
-                )
+                    key: "obs_i\(nextGenericIndex)"
+                ))
+                nextGenericIndex += 1
             }
         }
+        return fields
     }
 
     /// Detecta la forma "Alumno/a | Momento | indicador1 | ... | indicadorN | Nota (1-4)"

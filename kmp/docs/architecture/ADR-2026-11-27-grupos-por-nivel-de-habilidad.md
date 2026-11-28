@@ -13,7 +13,7 @@ Estado: aceptado (ticket L aprobado en sesión el 2026-11-27; maqueta `docs/maqu
 3. Sync LAN por `SchoolRecordsSync` (entidad `student_group_marks`). Se mandan siempre todas, como las lesiones, para que un aparato actualizado tarde converja.
 4. Qué columnas cuentan como Técnica, Comportamiento o Liderazgo **no se guarda en la base**: se sugiere por nombre y tipo de instrumento (`WorkGroupSkillColumns`) y la elección se recuerda en `UserDefaults` por curso y equipo.
 5. La nota de cada apartado es la media simple de las columnas elegidas con nota (`gradeValueFor`, 0-10). Las calculadas quedan fuera.
-6. Algoritmo `SKILL_LEVEL` en `ComposeWorkGroupsUseCase`: lesionados repartidos → un líder por grupo → comportamiento bajo (< 5) repartido → resto, de más a menos nivel, al grupo más pequeño y con menos nivel acumulado → mezcla de sexos sin mover líderes ni lesionados. La marca «Fuerte» sube el nivel al menos a 8,5 y «Necesita apoyo» lo baja como mucho a 3,5. Determinista. Los criterios anteriores no cambian.
+6. Algoritmo `SKILL_LEVEL` en `ComposeWorkGroupsUseCase`: un líder por grupo (un líder lesionado sigue contando como líder) → lesionados repartidos, cada uno al grupo con menos lesionados → comportamiento bajo (< 5) repartido → resto, de más a menos nivel, al grupo más pequeño y con menos nivel acumulado → mezcla de sexos sin mover líderes ni lesionados. La marca «Fuerte» sube el nivel al menos a 8,5 y «Necesita apoyo» lo baja como mucho a 3,5. Determinista. Los criterios anteriores no cambian.
 7. Lógica en paquetes propios (`com.migestor.shared.workgroup`, `usecase`); no se toca `shared/domain/`.
 
 ## Alternativas descartadas
